@@ -30,7 +30,8 @@ function gaussKernel(sigma) {
 }
 
 // Separable gaussian blur of a single-channel field, clamping at the borders.
-export function blur(src, w, h, sigma) {
+// Kept as the reference for blur() and for very small sigmas.
+export function gaussianBlur(src, w, h, sigma) {
   if (sigma <= 0) return Float32Array.from(src);
   const { k, r } = gaussKernel(sigma);
   const tmp = new Float32Array(w * h);
@@ -59,6 +60,49 @@ export function blur(src, w, h, sigma) {
   return out;
 }
 
+// Widths of n box filters whose cascade has standard deviation sigma
+// (Kovesi, "Fast almost-Gaussian filtering", 2010).
+export function boxWidths(sigma, n = 3) {
+  const ideal = Math.sqrt((12 * sigma * sigma) / n + 1);
+  let wl = Math.floor(ideal);
+  if (wl % 2 === 0) wl--;
+  const wu = wl + 2;
+  const m = Math.round((12 * sigma * sigma - n * wl * wl - 4 * n * wl - 3 * n) / (-4 * wl - 4));
+  return Array.from({ length: n }, (_, i) => (i < m ? wl : wu));
+}
+
+// One running-sum box pass over `len` samples spaced `stride` apart.
+function boxLine(src, dst, start, stride, len, r) {
+  const inv = 1 / (2 * r + 1);
+  const at = (i) => src[start + (i < 0 ? 0 : i >= len ? len - 1 : i) * stride];
+  let s = 0;
+  for (let i = -r; i <= r; i++) s += at(i);
+  for (let i = 0; i < len; i++) {
+    dst[start + i * stride] = s * inv;
+    s += at(i + r + 1) - at(i - r);
+  }
+}
+
+// Almost-gaussian blur: three box passes per axis, cost independent of sigma.
+// Stays within a few percent of the true gaussian (see test/image.test.js).
+export function blur(src, w, h, sigma) {
+  if (sigma <= 0) return Float32Array.from(src);
+  if (sigma < 2) return gaussianBlur(src, w, h, sigma);
+  const widths = boxWidths(sigma);
+  let a = Float32Array.from(src), b = new Float32Array(w * h);
+  for (const bw of widths) {
+    const r = (bw - 1) >> 1;
+    for (let y = 0; y < h; y++) boxLine(a, b, y * w, 1, w, r);
+    [a, b] = [b, a];
+  }
+  for (const bw of widths) {
+    const r = (bw - 1) >> 1;
+    for (let x = 0; x < w; x++) boxLine(a, b, x, w, h, r);
+    [a, b] = [b, a];
+  }
+  return a;
+}
+
 export function sobel(g, w, h) {
   const gx = new Float32Array(w * h);
   const gy = new Float32Array(w * h);
@@ -73,13 +117,24 @@ export function sobel(g, w, h) {
   return { gx, gy };
 }
 
-// Scale so the given percentile maps to 1, then clamp. Robust to a few hot pixels.
+// Scale so the given percentile maps to 1, then clamp. Robust to a few hot
+// pixels. The percentile comes from a 2048-bin histogram instead of a sort.
 export function normalizePercentile(a, pct = 0.98) {
-  const sorted = Float32Array.from(a).sort();
-  const hi = sorted[Math.min(sorted.length - 1, Math.floor(pct * sorted.length))] || 1e-6;
-  const lo = sorted[0];
+  let lo = Infinity, max = -Infinity;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] < lo) lo = a[i];
+    if (a[i] > max) max = a[i];
+  }
+  const BINS = 2048, span = max - lo || 1e-6;
+  const hist = new Uint32Array(BINS);
+  for (let i = 0; i < a.length; i++) hist[Math.min(BINS - 1, ((a[i] - lo) / span) * BINS) | 0]++;
+  const target = pct * a.length;
+  let acc = 0, bin = 0;
+  while (bin < BINS - 1 && acc + hist[bin] <= target) acc += hist[bin++];
+  const hi = lo + ((bin + 1) / BINS) * span;
   const out = new Float32Array(a.length);
-  for (let i = 0; i < a.length; i++) out[i] = Math.min(1, Math.max(0, (a[i] - lo) / (hi - lo || 1e-6)));
+  const inv = 1 / (hi - lo || 1e-6);
+  for (let i = 0; i < a.length; i++) out[i] = Math.min(1, Math.max(0, (a[i] - lo) * inv));
   return out;
 }
 
