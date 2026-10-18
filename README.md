@@ -8,7 +8,7 @@ Trencadís convierte una foto en un mosaico de azulejo roto, como los bancos del
 
 La app abre con un cuadro de ejemplo ya convertido. Sube tu foto con «Subir foto» o arrastrándola sobre la imagen.
 
-A la derecha están los cuatro pasos, en orden: 1 Detalle, 2 Trozos, 3 Colores y 4 Acabado. Cada uno tiene sus controles principales, «Más ajustes» con el resto, «¿Qué hace?» con la explicación y la fórmula, y «Ver este paso», que cambia la imagen grande por el resultado parcial de ese paso. El icono ⓘ junto a cada control explica qué hace.
+A la derecha están los cuatro pasos, en orden: 1 Detalle, 2 Trozos, 3 Colores y 4 Acabado. Cada uno tiene sus controles principales, «Más ajustes» con el resto, «¿Qué hace?» con la explicación y la fórmula, y «Ver este paso», que cambia la imagen grande por el resultado parcial de ese paso. El icono ⓘ junto a cada control explica qué hace, y ↺ (solo aparece si lo has cambiado) lo devuelve a su valor de origen.
 
 Algunos controles principales mueven varios parámetros a la vez («Tamaño de los trozos», «Parecido a la foto», «Brillo del esmalte»). «Ajustar a mano» los desactiva y muestra esos parámetros por separado; «Volver al control simple» deshace el cambio.
 

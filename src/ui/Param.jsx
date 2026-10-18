@@ -1,6 +1,6 @@
 import { useId } from 'react';
-import { macroKeys } from '../core/macros.js';
-import { PARAM } from '../core/params.js';
+import { applyMacro, MACRO_DEFAULTS, macroKeys } from '../core/macros.js';
+import { DEFAULTS, PARAM } from '../core/params.js';
 import { MACRO_INFO } from './steps.js';
 
 const toPos = (q, v) => (q.log ? Math.log(v / q.min) / Math.log(q.max / q.min) : (v - q.min) / (q.max - q.min));
@@ -36,25 +36,37 @@ function Range({ id, value, onChange, disabled }) {
   );
 }
 
-function Label({ htmlFor, label, help, children }) {
+// Shown only when the value differs from its default.
+function ResetButton({ label, onReset }) {
+  return (
+    <button type="button" className="reset" onClick={onReset} aria-label={`Restablecer «${label}»`} title="Restablecer">↺</button>
+  );
+}
+
+function Label({ htmlFor, label, help, children, onReset }) {
   return (
     <div className="field-row">
       <label htmlFor={htmlFor}>{label}</label>
       <InfoTip text={help} label={label} />
       <span className="field-value">{children}</span>
+      {onReset && <ResetButton label={label} onReset={onReset} />}
     </div>
   );
 }
 
-export function Param({ k, engine }) {
+const differs = (q, a, b) => (typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) > (q.step ?? 0) / 2 : a !== b);
+
+// `def` overrides the schema default (parameters a simple control sets).
+export function Param({ k, engine, def = DEFAULTS[k] }) {
   const q = PARAM[k];
   const value = engine.params[k];
   const set = (v) => engine.setParam(k, v);
   const id = `p-${k}`;
+  const reset = differs(q, value, def) ? () => set(def) : null;
   if (q.type === 'select') {
     return (
       <div className="field">
-        <Label htmlFor={id} label={q.label} help={q.help} />
+        <Label htmlFor={id} label={q.label} help={q.help} onReset={reset} />
         <select id={id} value={value} onChange={(e) => set(e.target.value)}>
           {q.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
@@ -65,14 +77,14 @@ export function Param({ k, engine }) {
     return (
       <div className="field field-inline">
         <input id={id} type="checkbox" checked={value} onChange={(e) => set(e.target.checked)} />
-        <Label htmlFor={id} label={q.label} help={q.help} />
+        <Label htmlFor={id} label={q.label} help={q.help} onReset={reset} />
       </div>
     );
   }
   if (q.type === 'color') {
     return (
       <div className="field">
-        <Label htmlFor={id} label={q.label} help={q.help}>
+        <Label htmlFor={id} label={q.label} help={q.help} onReset={reset}>
           <input id={id} type="color" value={value} onChange={(e) => set(e.target.value)} />
         </Label>
       </div>
@@ -80,7 +92,7 @@ export function Param({ k, engine }) {
   }
   return (
     <div className="field">
-      <Label htmlFor={id} label={q.label} help={q.help}><output htmlFor={id}>{format(q, value)}</output></Label>
+      <Label htmlFor={id} label={q.label} help={q.help} onReset={reset}><output htmlFor={id}>{format(q, value)}</output></Label>
       <Range id={id} value={toPos(q, value)} onChange={(t) => set(fromPos(q, t))} />
     </div>
   );
@@ -95,9 +107,14 @@ export function Macro({ id, engine }) {
   const manual = !!engine.macros.manual[id];
   const value = engine.macros.values[id];
   const fid = `m-${id}`;
+  const reset = manual || Math.abs(value - MACRO_DEFAULTS[id]) > 0.005
+    ? () => { if (manual) engine.setManual(id, false); engine.setMacro(id, MACRO_DEFAULTS[id]); }
+    : null;
+  // In hand mode, a parameter's default is what this control sets at its default.
+  const macroDefaults = applyMacro(engine.params, id, MACRO_DEFAULTS[id]);
   return (
     <div className={`field macro${manual ? ' is-manual' : ''}`}>
-      <Label htmlFor={fid} label={info.label} help={info.help}>
+      <Label htmlFor={fid} label={info.label} help={info.help} onReset={reset}>
         <output htmlFor={fid}>{manual ? 'a mano' : word(value)}</output>
       </Label>
       <Range id={fid} value={value} disabled={manual} onChange={(v) => engine.setMacro(id, v)} />
@@ -106,7 +123,7 @@ export function Macro({ id, engine }) {
       </button>
       {manual && (
         <div className="macro-params">
-          {keys.map((k) => <Param key={k} k={k} engine={engine} />)}
+          {keys.map((k) => <Param key={k} k={k} engine={engine} def={macroDefaults[k]} />)}
         </div>
       )}
     </div>
