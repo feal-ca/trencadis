@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>thumbs</title>
+<canvas id="c"></canvas>
+<script type="module">
+// Renders the style and method thumbnails; scripts/thumbs.mjs collects them.
+import { createPipeline } from '/src/core/pipeline.js';
+import { DEFAULTS } from '/src/core/params.js';
+import { applyMacroDefaults, applyStyle, STYLES } from '/src/core/macros.js';
+import { fromImageData } from '/src/core/image.js';
+import { tessellationImage } from '/src/core/vis.js';
+import { createRenderer } from '/src/gl/renderer.js';
+import { ALGORITHMS } from '/src/core/params.js';
+
+const bmp = await createImageBitmap(await (await fetch('/samples/vermeer.jpg')).blob());
+const s = 700 / Math.max(bmp.width, bmp.height);
+const cv = new OffscreenCanvas(Math.round(bmp.width * s), Math.round(bmp.height * s));
+cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+const img = fromImageData(cv.getContext('2d').getImageData(0, 0, cv.width, cv.height));
+const pipe = createPipeline();
+pipe.setImage(img);
+const r = createRenderer(document.getElementById('c'));
+const base = applyMacroDefaults(DEFAULTS);
+const out = {};
+const render = async (p) => {
+  const st = {};
+  await pipe.run(p, (n, v) => { st[n] = v; }, undefined, undefined, undefined, { cpuRender: false });
+  r.setShards(st.tessellation.shards, img.w, img.h);
+  r.setColors(st.color.colors, p.seed);
+  const [W, H] = r.sizeFor(600);
+  r.render(p, W, H);
+  return { url: document.getElementById('c').toDataURL('image/jpeg', 0.85), st };
+};
+for (const style of STYLES) out[style.id] = (await render(applyStyle(base, style.id))).url;
+for (const a of ALGORITHMS) out[`algo-${a.value}`] = (await render({ ...applyStyle(base, 'rectos'), algorithm: a.value })).url;
+const { st } = await render(applyStyle(base, 'rectos'));
+const t = tessellationImage(img, st.tessellation);
+const tc = document.createElement('canvas');
+tc.width = t.width; tc.height = t.height;
+tc.getContext('2d').putImageData(t, 0, 0);
+out.contornos = tc.toDataURL('image/jpeg', 0.85);
+window.result = out;
+document.title = 'done';
+</script>

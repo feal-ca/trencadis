@@ -7,28 +7,29 @@ let latest = 0;
 
 const STRUCTURE_LABEL = { seeds: 'Semillas', cracks: 'Grietas', depth: 'Profundidad de corte' };
 
+// Stage images, built lazily so a preview run only draws what is on screen.
 function visualsFor(stage, value, p, img) {
   switch (stage) {
     case 'analysis':
       return [
-        { key: 'original', label: 'Original', image: vis.originalImage(img) },
-        { key: 'detail', label: 'Detalle', image: vis.detailImage(value) },
-        { key: 'size', label: 'Tamaño de trozo', image: vis.sizeImage(value, p) },
-        { key: 'orientation', label: 'Orientación', image: vis.orientationImage(value) },
+        { key: 'original', label: 'Original', make: () => vis.originalImage(img) },
+        { key: 'detail', label: 'Detalle', make: () => vis.detailImage(value) },
+        { key: 'size', label: 'Tamaño de trozo', make: () => vis.sizeImage(value, p) },
+        { key: 'orientation', label: 'Dirección de los bordes', make: () => vis.orientationImage(value) },
       ];
     case 'tessellation':
       return [
-        { key: 'structure', label: STRUCTURE_LABEL[value.structure.kind], image: vis.structureImage(img, value) },
-        { key: 'tessellation', label: 'Teselación', image: vis.tessellationImage(img, value) },
+        { key: 'structure', label: STRUCTURE_LABEL[value.structure.kind], make: () => vis.structureImage(img, value) },
+        { key: 'tessellation', label: 'Contornos', make: () => vis.tessellationImage(img, value) },
       ];
     case 'color':
       return [
-        { key: 'flat', label: 'Color por trozo', image: vis.flatImage(img, pipe.lastTess, value.flat) },
-        { key: 'palette', label: 'Paleta y variación', image: vis.flatImage(img, pipe.lastTess, value.colors) },
+        { key: 'flat', label: 'Color por trozo', make: () => vis.flatImage(img, pipe.lastTess, value.flat) },
+        { key: 'palette', label: 'Con paleta y variación', make: () => vis.flatImage(img, pipe.lastTess, value.colors) },
       ];
     case 'render':
       // Copy: the transfer would otherwise detach the cached render.
-      return [{ key: 'final', label: 'Mosaico', image: new ImageData(new Uint8ClampedArray(value.data), value.width, value.height) }];
+      return [{ key: 'final', label: 'Mosaico', make: () => new ImageData(new Uint8ClampedArray(value.data), value.width, value.height) }];
     default:
       return [];
   }
@@ -42,6 +43,7 @@ self.onmessage = async (e) => {
   }
   if (msg.type !== 'run') return;
   const id = (latest = msg.id);
+  const visualMs = {};
   const p = msg.params;
   try {
     const res = await pipe.run(
@@ -50,7 +52,12 @@ self.onmessage = async (e) => {
         if (stage === 'tessellation') pipe.lastTess = value;
         if (!recomputed) return;
         const img = pipe.imageFor(msg.preview);
-        const images = visualsFor(stage, value, p, img);
+        const tv = performance.now();
+        const wanted = msg.preview && msg.views ? new Set(msg.views) : null;
+        const images = visualsFor(stage, value, p, img)
+          .filter((v) => !wanted || wanted.has(v.key))
+          .map(({ key, label, make }) => ({ key, label, image: make() }));
+        visualMs[stage] = performance.now() - tv;
         const extra = {};
         // The GPU renderer needs the shards (once per tessellation) and the colours.
         if (stage === 'tessellation') Object.assign(extra, { shards: value.shards.map((s) => s.poly), w: img.w, h: img.h });
@@ -64,7 +71,7 @@ self.onmessage = async (e) => {
       (stage) => self.postMessage({ type: 'progress', id, stage }),
       { preview: !!msg.preview, cpuRender: !!msg.cpuRender },
     );
-    if (res) self.postMessage({ type: 'done', id, ...res });
+    if (res) self.postMessage({ type: 'done', id, preview: !!msg.preview, ...res, visualMs });
   } catch (err) {
     self.postMessage({ type: 'error', id, message: err?.message || String(err) });
   }

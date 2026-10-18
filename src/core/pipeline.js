@@ -62,6 +62,10 @@ export function createPipeline() {
       if (opts.preview) {
         p = { ...p };
         for (const k of LENGTHS) p[k] *= 0.5;
+        // Tessellation cost depends on the number of pieces, not on the image
+        // size, so the preview also does half the search work.
+        p.candidates = Math.max(4, Math.round(p.candidates / 2));
+        p.slicIters = Math.max(2, Math.round(p.slicIters / 2));
       }
       const timings = {};
       const step = async (stage, fn) => {

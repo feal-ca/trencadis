@@ -8,7 +8,8 @@ const img = syntheticImage(800, 947);
 for (const { value } of ALGORITHMS) {
   const pipe = createPipeline();
   pipe.setImage(img);
-  const r = await pipe.run({ ...DEFAULTS, algorithm: value }, () => {});
+  // The mosaic itself is drawn on the GPU; the CPU render is only a fallback.
+  const r = await pipe.run({ ...DEFAULTS, algorithm: value }, () => {}, undefined, undefined, undefined, { cpuRender: false });
   const t = Object.entries(r.timings).map(([k, v]) => `${k} ${v.toFixed(0)}`).join('  ');
   console.log(`${value.padEnd(14)} ${String(r.shards).padStart(5)} trozos  ${t}`);
 }

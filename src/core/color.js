@@ -60,9 +60,17 @@ function statistic(px, rgb, mode, poly, w, h) {
   }
   let sel = px;
   if (mode === 'vivid') {
-    // Mean of the 30% most saturated pixels: keeps colour that averaging greys out.
-    const sat = (i) => Math.max(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]) - Math.min(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]);
-    sel = px.slice().sort((a, b) => sat(b) - sat(a)).slice(0, Math.max(1, Math.ceil(n * 0.3)));
+    // Mean of the ~30% most saturated pixels: keeps colour that averaging
+    // greys out. The cut-off comes from a 64-bin saturation histogram.
+    const bin = new Uint8Array(n), hist = new Uint32Array(64);
+    for (let k = 0; k < n; k++) {
+      const i = px[k];
+      const s = Math.max(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]) - Math.min(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]);
+      hist[(bin[k] = Math.min(63, (s * 64) | 0))]++;
+    }
+    let cut = 63, acc = hist[63];
+    while (cut > 0 && acc < 0.3 * n) acc += hist[--cut];
+    sel = px.filter((_, k) => bin[k] >= cut);
   }
   const m = [0, 0, 0];
   for (const i of sel) { m[0] += rgb[i * 3]; m[1] += rgb[i * 3 + 1]; m[2] += rgb[i * 3 + 2]; }
