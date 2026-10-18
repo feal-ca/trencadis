@@ -97,14 +97,21 @@ function analyzeLuminance(L, w, h, p, mask) {
     }
   }
 
+  for (let i = 0; i < w * h; i++) detail[i] = detail[i] > 0 ? (detail[i] < 1 ? detail[i] : 1) : 0;
   const size = sizeFromDetail(detail, p);
 
   return { w, h, detail, size, theta, coherence };
 }
 
-function sizeFromDetail(detail, p) {
+// Detail is clamped to [0, 1] first: blurs built on running sums leave
+// rounding noise like -3e-19, and a negative number to a fractional power
+// is NaN.
+export function sizeFromDetail(detail, p) {
   const size = new Float32Array(detail.length);
-  for (let i = 0; i < detail.length; i++) size[i] = p.sMax - (p.sMax - p.sMin) * detail[i] ** p.gamma;
+  for (let i = 0; i < detail.length; i++) {
+    const d = detail[i] > 0 ? (detail[i] < 1 ? detail[i] : 1) : 0;
+    size[i] = p.sMax - (p.sMax - p.sMin) * d ** p.gamma;
+  }
   return size;
 }
 

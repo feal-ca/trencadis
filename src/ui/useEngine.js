@@ -16,6 +16,25 @@ export const SAMPLES = [
   { src: './samples/barcas.jpg', label: 'Barcas' },
 ];
 
+// Firefox's fingerprinting protection can return random pixels from canvas
+// reads (until the user allows it). Its lighter mode only adds a little noise,
+// which is fine, so the check tolerates small differences.
+function canvasReadable() {
+  try {
+    const cv = new OffscreenCanvas(2, 1);
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(0, 0, 1, 1);
+    ctx.fillStyle = '#0000ff';
+    ctx.fillRect(1, 0, 1, 1);
+    const d = ctx.getImageData(0, 0, 2, 1).data;
+    const near = (i, v) => Math.abs(d[i] - v) <= 12;
+    return near(0, 255) && near(1, 0) && near(2, 0) && near(4, 0) && near(5, 0) && near(6, 255);
+  } catch {
+    return false;
+  }
+}
+
 function loadParams() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE) || 'null');
@@ -121,8 +140,24 @@ export function useEngine() {
   }, [renderer, requestRender]);
 
   // Send the photo, resized to the working resolution, whenever either changes.
+  // If the browser is hiding canvas pixels, wait for the first click and retry.
+  const [readable, setReadable] = useState(canvasReadable);
   useEffect(() => {
-    if (!bitmap || !worker.current) return;
+    if (readable) return;
+    setError('El navegador está ocultando los píxeles de las imágenes (protección contra el rastreo). Haz clic en la página; si sigue así, permite «extraer datos del canvas» en el icono de la barra de direcciones.');
+    const retry = () => {
+      if (canvasReadable()) { setError(null); setReadable(true); }
+    };
+    window.addEventListener('pointerdown', retry);
+    window.addEventListener('keydown', retry);
+    return () => {
+      window.removeEventListener('pointerdown', retry);
+      window.removeEventListener('keydown', retry);
+    };
+  }, [readable]);
+
+  useEffect(() => {
+    if (!bitmap || !worker.current || !readable) return;
     const s = params.workLong / Math.max(bitmap.width, bitmap.height);
     const w = Math.max(1, Math.round(bitmap.width * s)), h = Math.max(1, Math.round(bitmap.height * s));
     const cv = new OffscreenCanvas(w, h);
@@ -132,7 +167,7 @@ export function useEngine() {
     const data = ctx.getImageData(0, 0, w, h);
     worker.current.postMessage({ type: 'image', image: data }, [data.data.buffer]);
     sent.current = null;
-  }, [bitmap, params.workLong]);
+  }, [bitmap, params.workLong, readable]);
 
   const post = useCallback((p, preview) => {
     const id = ++runId.current;
@@ -144,7 +179,7 @@ export function useEngine() {
 
   useEffect(() => {
     try { localStorage.setItem(STORE, JSON.stringify(params)); } catch { /* ignore */ }
-    if (!bitmap) return;
+    if (!bitmap || !readable) return;
     const kind = changeKind(sent.current, params);
     if (kind === 'none') return;
     if (kind === 'render' && renderer.ok) {
@@ -155,7 +190,7 @@ export function useEngine() {
     const preview = dragging.current;
     const t = setTimeout(() => { sent.current = params; post(params, preview); }, preview ? 30 : 40);
     return () => clearTimeout(t);
-  }, [params, bitmap, renderer, post, requestRender]);
+  }, [params, bitmap, readable, renderer, post, requestRender]);
 
   const endDrag = useCallback(() => {
     if (!dragging.current) return;

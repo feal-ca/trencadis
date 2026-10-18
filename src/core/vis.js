@@ -4,7 +4,8 @@ import { hslToRgb } from './image.js';
 const RAMP = [[0.93, 0.94, 0.925], [0.43, 0.62, 0.84], [0.11, 0.3, 0.6], [0.086, 0.133, 0.231]];
 
 function ramp(t) {
-  const x = Math.min(0.9999, Math.max(0, t)) * (RAMP.length - 1);
+  // A NaN would index past the ramp; show it as the lowest value instead.
+  const x = (Number.isFinite(t) ? Math.min(0.9999, Math.max(0, t)) : 0) * (RAMP.length - 1);
   const i = Math.floor(x), f = x - i;
   return RAMP[i].map((v, c) => v + (RAMP[i + 1][c] - v) * f);
 }

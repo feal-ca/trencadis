@@ -51,3 +51,30 @@ describe('detail control', () => {
     expect(mean(an, 20, 100)).toBeGreaterThan(0.95);
   });
 });
+
+import { sizeFromDetail } from '../src/core/analysis.js';
+
+describe('detail stays finite', () => {
+  it('rounding noise below zero never turns into NaN sizes', () => {
+    // Box-blur running sums can leave values like -3e-19 where 0 is meant.
+    const size = sizeFromDetail(Float32Array.of(-2.9e-19, 0, 0.5, 1 + 1e-7), { ...DEFAULTS, gamma: 0.78 });
+    expect(Array.from(size).every(Number.isFinite)).toBe(true);
+    expect(size[0]).toBeCloseTo(DEFAULTS.sMax, 6);
+  });
+
+  it('ignoreTexture at its maximum never yields NaN', () => {
+    const img = textureAndEdge(400, 300);
+    for (const exactAnalysis of [false, true]) {
+      const an = analyze(img, { ...DEFAULTS, ignoreTexture: 1, exactAnalysis });
+      expect(an.detail.every((v) => v >= 0 && v <= 1)).toBe(true);
+      expect(an.size.every(Number.isFinite)).toBe(true);
+    }
+  });
+
+  it('a fully painted remove-detail brush never yields NaN', () => {
+    const img = textureAndEdge(400, 300);
+    const mask = { w: 64, h: 48, data: new Float32Array(64 * 48).fill(-1) };
+    const an = analyze(img, { ...DEFAULTS, exactAnalysis: true }, mask);
+    expect(an.size.every(Number.isFinite)).toBe(true);
+  });
+});
