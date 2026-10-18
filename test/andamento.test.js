@@ -186,6 +186,29 @@ describe('drawing help', () => {
     expect(radiusError(snapped)).toBeLessThan(1.5);
   });
 
+  it('the snap radius decides how far a stroke may be from the contour', () => {
+    const far = Array.from({ length: 90 }, (_, i) => {
+      const t = (i / 89) * 2 * Math.PI;
+      return [(200 + 115 * Math.cos(t)) / 400, (150 + 115 * Math.sin(t)) / 300];
+    });
+    const [near] = drawnGuides([{ points: far, mode: 'free', snap: true, snapRadius: 0.01 }], 400, 300, edges, DEFAULTS);
+    const [wide] = drawnGuides([{ points: far, mode: 'free', snap: true, snapRadius: 0.05 }], 400, 300, edges, DEFAULTS);
+    expect(radiusError(near)).toBeGreaterThan(10);
+    expect(radiusError(wide)).toBeLessThan(2);
+  });
+
+  it('snapping a point-by-point line moves its vertices and keeps the segments straight', () => {
+    // Three vertices 6 px outside the disc's outline.
+    const verts = [-0.6, 0.2, 1.0].map((t) => [(200 + 106 * Math.cos(t)) / 400, (150 + 106 * Math.sin(t)) / 300]);
+    const [g] = drawnGuides([{ points: verts, mode: 'points', snap: true, snapRadius: 0.03 }], 400, 300, edges, DEFAULTS);
+    const ends = [g[0], g[g.length - 1]];
+    for (const [x, y] of ends) expect(Math.abs(Math.hypot(x - 200, y - 150) - 100)).toBeLessThan(1.5);
+    // Points between vertices are on straight segments: no point bulges
+    // out towards the curved outline by more than the chord allows.
+    const mid = g[Math.floor(g.length / 4)];
+    expect(Math.hypot(mid[0] - 200, mid[1] - 150)).toBeLessThan(100);
+  });
+
   it('point-by-point lines stay straight', () => {
     const [g] = drawnGuides([{ points: [[0.1, 0.5], [0.5, 0.2], [0.9, 0.5]], mode: 'points', snap: false }], 400, 300, edges, DEFAULTS);
     // Every point lies on one of the two segments.

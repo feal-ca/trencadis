@@ -221,3 +221,13 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
 .draw-options .seg { justify-self: start; }
 .draw-options .seg button.on { background: var(--ink); color: var(--wall); box-shadow: none; }
 .draw-options .field-check { font-weight: 500; }
+
+/* Zoom and the tool circle */
+.viewer-box { overflow: hidden; }
+.viewer-zoom { position: absolute; inset: 0; transform-origin: 0 0; }
+.viewer-box.can-pan { cursor: grab; }
+.viewer-box.can-pan:active { cursor: grabbing; }
+.cursor-ring {
+  position: absolute; pointer-events: none; transform: translate(-50%, -50%);
+  border: 1.5px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(37, 34, 30, 0.7);
+}

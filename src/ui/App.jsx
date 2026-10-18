@@ -39,7 +39,7 @@ export default function App() {
       </header>
       <main className="work">
         <div className="work-main">
-          <Viewer engine={engine} view={view} brush={brush} />
+          <Viewer engine={engine} view={view} brush={brush} setTool={setBrush} />
           {peekStep && peekStep.views.length > 1 && (
             <div className="views" role="tablist" aria-label="Vista">
               {peekStep.views.map((v) => (

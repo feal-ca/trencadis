@@ -64,7 +64,7 @@ function RowTools({ engine, tool, setTool, showLines }) {
   const drawing = tool?.kind === 'draw';
   const mode = tool?.mode ?? 'free';
   const snap = tool?.snap ?? true;
-  const set = (patch) => setTool({ kind: 'draw', mode, snap, ...patch });
+  const set = (patch) => setTool({ kind: 'draw', mode, snap, radius: tool?.radius, ...patch });
   return (
     <div className="field rows-block">
       <div className="field-row">
@@ -90,12 +90,12 @@ function RowTools({ engine, tool, setTool, showLines }) {
           <label className="field-check">
             <input type="checkbox" checked={snap} onChange={(e) => set({ snap: e.target.checked })} />
             <span>Pegar al contorno</span>
-            <InfoTip label="Pegar al contorno" text="Al terminar, la línea se acerca al borde más marcado de la foto que tenga cerca: basta con pasar cerca del contorno." />
+            <InfoTip label="Pegar al contorno" text="Al terminar, la línea se acerca al borde más marcado de la foto dentro del círculo que ves en el cursor. Cambia el tamaño del círculo con la rueda del ratón." />
           </label>
           <span className="help">
             {mode === 'free'
-              ? 'Arrastra sobre la foto. El temblor del ratón se suaviza.'
-              : 'Haz clic en cada vértice; doble clic o Intro para terminar, Retroceso quita el último punto y Esc cancela.'}
+              ? 'Arrastra sobre la foto; el temblor del ratón se suaviza. La rueda cambia el círculo de enganche y Ctrl + rueda amplía.'
+              : 'Haz clic en cada vértice; doble clic o Intro para terminar, Retroceso quita el último punto y Esc cancela. La rueda cambia el círculo de enganche y Ctrl + rueda amplía.'}
             {' '}En azul, las líneas que salen de los contornos de la foto; si acabas cerca de una, tu línea se une a ella.
           </span>
         </div>

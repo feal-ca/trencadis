@@ -109,7 +109,7 @@ export function useEngine() {
       const [cw, ch] = view.current;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       const [W, H] = renderer.sizeFor(1000);
-      const s = Math.min((cw * dpr) / W, (ch * dpr) / H, 2400 / Math.max(W, H));
+      const s = Math.min((cw * dpr) / W, (ch * dpr) / H, Math.min(4096, renderer.maxSize) / Math.max(W, H));
       renderer.render(paramsRef.current, Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)));
     });
   }, [renderer]);

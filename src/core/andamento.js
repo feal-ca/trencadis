@@ -344,23 +344,45 @@ export function drawnGuides(list, w, h, edges = null, p = {}) {
     const g = Array.isArray(entry) ? { points: entry, mode: 'free', snap: false } : entry;
     let line = g.points.map(([u, v]) => [u * w, v * h]);
     if (line.length < 2) return null;
-    line = g.mode === 'points' ? resample(line, 3) : smoothChain(resample(line, 1.5));
-    if (g.snap && edges) {
-      line = snapToEdges(line, edges, Math.max(6, 0.8 * (p.sMin ?? 7)));
-      if (g.mode !== 'points') line = smoothChain(line);
+    // snapRadius is a fraction of the image's long side (set with the wheel).
+    const R = g.snapRadius ? g.snapRadius * Math.max(w, h) : Math.max(6, 0.8 * (p.sMin ?? 7));
+    if (g.mode === 'points') {
+      // Only the vertices snap, so the segments between them stay straight.
+      if (g.snap && edges) line = line.map((q) => snapPoint(q, edges, R));
+      return resample(line, 3);
     }
+    line = smoothChain(resample(line, 1.5));
+    if (g.snap && edges) line = smoothChain(snapToEdges(line, edges, R));
     return line;
   }).filter(Boolean);
 }
 
-function snapToEdges(line, edges, R) {
+// Bilinear sample of the scaled edge magnitude.
+function edgeAt(edges, x, y) {
   const { w, h, mag } = edges;
-  const at = (x, y) => {
-    const xi = Math.min(w - 2, Math.max(0, Math.floor(x - 0.5))), yi = Math.min(h - 2, Math.max(0, Math.floor(y - 0.5)));
-    const tx = Math.min(1, Math.max(0, x - 0.5 - xi)), ty = Math.min(1, Math.max(0, y - 0.5 - yi));
-    const i = yi * w + xi;
-    return (mag[i] * (1 - tx) + mag[i + 1] * tx) * (1 - ty) + (mag[i + w] * (1 - tx) + mag[i + w + 1] * tx) * ty;
-  };
+  const xi = Math.min(w - 2, Math.max(0, Math.floor(x - 0.5))), yi = Math.min(h - 2, Math.max(0, Math.floor(y - 0.5)));
+  const tx = Math.min(1, Math.max(0, x - 0.5 - xi)), ty = Math.min(1, Math.max(0, y - 0.5 - yi));
+  const i = yi * w + xi;
+  return (mag[i] * (1 - tx) + mag[i + 1] * tx) * (1 - ty) + (mag[i + w] * (1 - tx) + mag[i + w + 1] * tx) * ty;
+}
+
+// The strongest edge within radius R of a point (nearer ones win ties).
+function snapPoint([x, y], edges, R) {
+  const step = Math.max(0.5, R / 30);
+  let best = [x, y], score = 0.2;
+  for (let dy = -R; dy <= R; dy += step) {
+    for (let dx = -R; dx <= R; dx += step) {
+      const d = Math.hypot(dx, dy);
+      if (d > R) continue;
+      const m = edgeAt(edges, x + dx, y + dy) - (0.06 * d) / R;
+      if (m > score) { score = m; best = [x + dx, y + dy]; }
+    }
+  }
+  return best;
+}
+
+function snapToEdges(line, edges, R) {
+  const at = (x, y) => edgeAt(edges, x, y);
   const normals = line.map((_, i) => {
     const a = line[Math.max(0, i - 2)], b = line[Math.min(line.length - 1, i + 2)];
     const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
@@ -371,15 +393,18 @@ function snapToEdges(line, edges, R) {
   const shift = line.map(([x, y], i) => {
     const [nx, ny] = normals[i];
     let best = 0, score = -Infinity;
-    for (let t = -R; t <= R; t += 0.5) {
-      const m = at(x + nx * t, y + ny * t) - 0.01 * Math.abs(t);
+    for (let t = -R; t <= R; t += Math.max(0.5, R / 40)) {
+      const m = at(x + nx * t, y + ny * t) - (0.06 * Math.abs(t)) / R;
       if (m > score) { score = m; best = t; }
     }
     return score > 0.2 ? best : 0;
   });
+  // A wider search means more chances of jumping between texture edges, so
+  // the shifts are averaged over more points.
+  const win = Math.max(3, Math.round(R / 3));
   return line.map(([x, y], i) => {
     let s = 0, c = 0;
-    for (let k = Math.max(0, i - 3); k <= Math.min(line.length - 1, i + 3); k++) { s += shift[k]; c++; }
+    for (let k = Math.max(0, i - win); k <= Math.min(line.length - 1, i + win); k++) { s += shift[k]; c++; }
     const t = s / c;
     return [x + normals[i][0] * t, y + normals[i][1] * t];
   });
