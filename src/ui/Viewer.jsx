@@ -76,6 +76,53 @@ function BrushLayer({ engine, brush }) {
   );
 }
 
+// The photo with the guide lines; a stroke adds a new line.
+function DrawLayer({ engine }) {
+  const ref = useRef(null);
+  const stroke = useRef(null);
+  const original = engine.images.original;
+  const redraw = () => {
+    const cv = ref.current;
+    if (!cv || !original) return;
+    cv.width = original.width;
+    cv.height = original.height;
+    const ctx = cv.getContext('2d');
+    ctx.putImageData(original, 0, 0);
+    ctx.fillStyle = 'rgba(247, 246, 242, 0.35)';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(3, cv.width / 160);
+    ctx.strokeStyle = '#25221e';
+    for (const g of [...engine.guides, ...(stroke.current ? [stroke.current] : [])]) {
+      ctx.beginPath();
+      g.forEach(([u, v], i) => (i ? ctx.lineTo(u * cv.width, v * cv.height) : ctx.moveTo(u * cv.width, v * cv.height)));
+      ctx.stroke();
+    }
+  };
+  useEffect(redraw, [original, engine.guides]);
+  const toUV = (e) => {
+    const cv = ref.current, r = cv.getBoundingClientRect();
+    const s = Math.min(r.width / cv.width, r.height / cv.height);
+    const ox = (r.width - cv.width * s) / 2, oy = (r.height - cv.height * s) / 2;
+    return [Math.min(1, Math.max(0, (e.clientX - r.left - ox) / (cv.width * s))), Math.min(1, Math.max(0, (e.clientY - r.top - oy) / (cv.height * s)))];
+  };
+  return (
+    <canvas
+      ref={ref}
+      className="viewer-canvas brush-canvas"
+      onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); stroke.current = [toUV(e)]; redraw(); }}
+      onPointerMove={(e) => { if (stroke.current) { stroke.current.push(toUV(e)); redraw(); } }}
+      onPointerUp={() => {
+        const g = stroke.current;
+        stroke.current = null;
+        if (g && g.length > 2) engine.addGuide(g);
+        else redraw();
+      }}
+    />
+  );
+}
+
 // The big image: the WebGL mosaic, a stage image, or the brush layer. A faint
 // Eixample grid sits behind it; dropping a file shows the panot.
 export default function Viewer({ engine, view, brush }) {
@@ -84,6 +131,7 @@ export default function Viewer({ engine, view, brush }) {
   const [compare, setCompare] = useState(false);
   const [dropping, setDropping] = useState(false);
   const showBrush = view === 'brush' && !compare;
+  const showDraw = view === 'draw' && !compare;
   const useGl = view === 'final' && engine.gpu && !compare;
 
   useEffect(() => {
@@ -92,7 +140,7 @@ export default function Viewer({ engine, view, brush }) {
     return () => engine.glCanvas.remove();
   }, [useGl, engine.glCanvas]);
 
-  useEffect(() => { engine.setWanted(view === 'brush' ? 'original' : view); }, [view, engine.setWanted]);
+  useEffect(() => { engine.setWanted(view === 'brush' || view === 'draw' ? 'original' : view); }, [view, engine.setWanted]);
 
   useEffect(() => {
     const el = box.current;
@@ -103,7 +151,7 @@ export default function Viewer({ engine, view, brush }) {
   }, [engine.setViewport]);
 
   const image = compare ? engine.images.original : engine.images[view];
-  const ready = useGl ? engine.mosaicReady : showBrush ? !!engine.images.original : !!image;
+  const ready = useGl ? engine.mosaicReady : showBrush || showDraw ? !!engine.images.original : !!image;
   const onDrop = (e) => {
     e.preventDefault();
     setDropping(false);
@@ -129,6 +177,7 @@ export default function Viewer({ engine, view, brush }) {
       </svg>
       <div className="viewer-box" ref={box}>
         {showBrush ? <BrushLayer engine={engine} brush={brush} />
+          : showDraw ? <DrawLayer engine={engine} />
           : useGl ? <div className="viewer-host" ref={host} />
           : image && <ImageCanvas image={image} className="viewer-canvas" />}
         {!ready && <p className="viewer-empty">{engine.hasImage ? 'Calculando…' : 'Todavía no hay foto.'}</p>}

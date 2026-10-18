@@ -5,7 +5,7 @@ import { signedArea, simplifyClosed } from './polygon.js';
 // the longest loop, drop collinear vertices and simplify with Douglas-Peucker.
 // Simplifying each region on its own leaves hairline gaps between neighbours;
 // the grout covers them.
-export function labelsToPolygons(labels, w, h, eps = 1, minPixels = 4) {
+export function labelsToPolygons(labels, w, h, eps = 1, minPixels = 4, only = null) {
   let n = 0;
   for (let i = 0; i < labels.length; i++) if (labels[i] + 1 > n) n = labels[i] + 1;
   const x0 = new Int32Array(n).fill(w), y0 = new Int32Array(n).fill(h);
@@ -25,7 +25,7 @@ export function labelsToPolygons(labels, w, h, eps = 1, minPixels = 4) {
 
   const out = [];
   for (let l = 0; l < n; l++) {
-    if (count[l] < minPixels) continue;
+    if (count[l] < minPixels || (only && !only.has(l))) continue;
     const ring = traceLabel(labels, w, h, l, x0[l], y0[l], x1[l], y1[l]);
     if (!ring || ring.length < 3) continue;
     const poly = simplifyClosed(dropCollinear(ring), eps);

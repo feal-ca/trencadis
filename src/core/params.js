@@ -94,6 +94,15 @@ export const GROUPS = [
         help: 'Una grieta no nace tan cerca de otra (en tamaños de trozo). Más alto: menos trozos finos.' },
       { key: 'crackFollow', label: 'Seguir los bordes', min: 0, max: 1, step: 0.01, def: 0.4, stage: 'tessellation', show: algo('cracks'),
         help: 'Más alto: las grietas se doblan para seguir los contornos de la foto.' },
+      // Rows along guide lines, over any method
+      { key: 'autoGuides', label: 'Contornos con hilera', min: 0, max: 1, step: 0.01, def: 0, stage: 'tessellation',
+        help: 'Pone hileras de piezas a lo largo de los contornos fuertes de la foto. 0: ninguno; más alto: también contornos más débiles y cortos.' },
+      { key: 'rowWidth', label: 'Ancho de las piezas de hilera', min: 3, max: 30, step: 0.5, def: 9, unit: ' px', stage: 'tessellation',
+        help: 'Más alto: hileras más gruesas.' },
+      { key: 'rowLength', label: 'Largo de las piezas de hilera', min: 1, max: 4, step: 0.1, def: 1.8, unit: '×', stage: 'tessellation',
+        help: 'Largo en múltiplos del ancho. 1: piezas cuadradas; más alto: rectángulos alargados.' },
+      { key: 'rowCount', label: 'Filas por hilera', min: 1, max: 4, step: 1, def: 2, stage: 'tessellation',
+        help: 'Con 2, el contorno queda justo en la junta entre las dos filas y cada fila toma el color de su lado.' },
       // Shared by raster-based methods
       { key: 'minWidth', label: 'Grosor mínimo', min: 0, max: 0.8, step: 0.01, def: 0.3, stage: 'tessellation', show: algo('voronoi-aniso', 'slic', 'cracks'),
         help: 'Los trozos más estrechos que esto (en tamaños de trozo) se unen a su vecino. 0: se dejan todos.' },
@@ -132,6 +141,15 @@ export const GROUPS = [
         help: 'Más bajo: pocos colores, aspecto más gráfico.' },
       { key: 'paletteMix', label: 'Fuerza de la paleta', min: 0, max: 1, step: 0.01, def: 1, stage: 'color', show: (p) => p.palette !== 'none',
         help: '1: solo colores de la paleta; más bajo: mezcla con el color original.' },
+      {
+        key: 'rowColor', label: 'Color de las hileras', type: 'select', def: 'photo', stage: 'color',
+        options: [
+          { value: 'photo', label: 'El de la foto' },
+          { value: 'dark', label: 'Más oscuro' },
+          { value: 'light', label: 'Más claro' },
+        ],
+        help: 'Más oscuro: las hileras dibujan el contorno como una línea, como en los bancos del Park Güell.',
+      },
       { key: 'colorJitter', label: 'Variación entre trozos', min: 0, max: 0.15, step: 0.002, def: 0.025, stage: 'color',
         help: 'Más alto: trozos vecinos con tonos algo distintos, como azulejos de lotes diferentes.' },
     ],

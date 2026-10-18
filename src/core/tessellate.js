@@ -1,4 +1,5 @@
 import { Delaunay } from 'd3-delaunay';
+import { drawnGuides, extractGuides, overlayRows } from './andamento.js';
 import { growCracks } from './cracks.js';
 import { fracture } from './fracture.js';
 import { labelsToPolygons } from './polygonize.js';
@@ -10,7 +11,17 @@ import { mergeSlivers } from './slivers.js';
 //   shards     [{ poly, depth? }] in working-image pixels
 //   structure  what to show in the "structure" stage:
 //              { kind: 'seeds', seeds } | { kind: 'cracks', mask } | { kind: 'depth' }
-export function tessellate(img, lab, an, p, rng) {
+//
+// Rows along guide lines (automatic contours plus `guides`, the hand-drawn
+// ones in normalised coordinates) are laid over whichever background.
+export function tessellate(img, lab, an, p, rng, guides = null) {
+  const base = tessellateBase(img, lab, an, p, rng);
+  const lines = [...extractGuides(img, an, p), ...drawnGuides(guides, an.w, an.h)];
+  if (!lines.length) return base;
+  return { shards: overlayRows(base.shards, lines, an.w, an.h, p), structure: { kind: 'guides', guides: lines } };
+}
+
+function tessellateBase(img, lab, an, p, rng) {
   const { w, h } = an;
   const iso = (s) => labelIsotropic(s, w, h);
   switch (p.algorithm) {

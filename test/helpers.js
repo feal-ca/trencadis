@@ -35,3 +35,13 @@ export function textureAndEdge(w = 240, h = 160) {
   }
   return { w, h, rgb };
 }
+
+// A dark disc on a light background: one strong closed contour.
+export function discImage(w = 240, h = 200, r = 60) {
+  const rgb = new Float32Array(w * h * 3);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const v = Math.hypot(x + 0.5 - w / 2, y + 0.5 - h / 2) < r ? 0.15 : 0.85;
+    rgb.fill(v, (y * w + x) * 3, (y * w + x) * 3 + 3);
+  }
+  return { w, h, rgb };
+}

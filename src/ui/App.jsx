@@ -16,7 +16,8 @@ export default function App() {
     if (!engine.hasImage) engine.loadSample(SAMPLES[0].src);
   }, []);
 
-  const view = brush ? 'brush' : peek?.view ?? 'final';
+  // `brush` is the active tool: the detail brush or guide drawing.
+  const view = brush ? brush.kind : peek?.view ?? 'final';
   const peekStep = peek && STEPS.find((s) => s.id === peek.step);
 
   return (

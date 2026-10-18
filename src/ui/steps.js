@@ -62,8 +62,8 @@ export const STEPS = [
       { key: 'tessellation', label: 'Contornos' },
       { key: 'structure', label: 'Estructura' },
     ],
-    simple: [{ kind: 'algorithm' }, { macro: 'fidelity' }, { kind: 'reseed' }],
-    advanced: ['seed', 'tileSize', 'spacing', 'lloydIters', 'lloydWeighted', 'anisotropy', 'kappa', 'temperature', 'candidates', 'edgeAlign', 'cutJitter', 'angleNoise', 'sliver', 'hybridSpacing', 'hybridCuts', 'hybridCutProb', 'compactness', 'slicIters', 'crackDensity', 'crackGap', 'crackActive', 'crackAngleNoise', 'crackCurl', 'crackFollow', 'minWidth', 'simplify'],
+    simple: [{ kind: 'algorithm' }, { macro: 'fidelity' }, { kind: 'reseed' }, { kind: 'rows' }],
+    advanced: ['rowWidth', 'rowLength', 'rowCount', 'rowColor', 'seed', 'tileSize', 'spacing', 'lloydIters', 'lloydWeighted', 'anisotropy', 'kappa', 'temperature', 'candidates', 'edgeAlign', 'cutJitter', 'angleNoise', 'sliver', 'hybridSpacing', 'hybridCuts', 'hybridCutProb', 'compactness', 'slicIters', 'crackDensity', 'crackGap', 'crackActive', 'crackAngleNoise', 'crackCurl', 'crackFollow', 'minWidth', 'simplify'],
   },
   {
     id: 'color',

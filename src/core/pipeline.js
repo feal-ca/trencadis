@@ -8,7 +8,7 @@ import { tessellate } from './tessellate.js';
 
 // Lengths measured in working pixels; a preview run halves them so the
 // half-size result looks like the full one.
-const LENGTHS = ['sMin', 'sMax', 'grout', 'bevel'];
+const LENGTHS = ['sMin', 'sMax', 'grout', 'bevel', 'rowWidth'];
 
 // 2x box downsample, used for the preview image.
 export function halve(img) {
@@ -38,13 +38,13 @@ export function halve(img) {
 // own cache, so dragging a slider stays responsive. { cpuRender: false }
 // stops after the colour stage, for when the GPU draws the mosaic.
 export function createPipeline() {
-  let full = null, half = null, imgVersion = 0, mask = null, maskVersion = 0;
+  let full = null, half = null, imgVersion = 0, mask = null, maskVersion = 0, guides = null, guidesVersion = 0;
   const caches = { full: {}, preview: {} };
 
   const stageKey = (stage, p) => {
     const upto = STAGE_ORDER.slice(0, STAGE_ORDER.indexOf(stage) + 1);
     const vals = upto.flatMap((s) => keysForStage(s).map((k) => p[k]));
-    return JSON.stringify([imgVersion, maskVersion, vals]);
+    return JSON.stringify([imgVersion, maskVersion, stage === 'analysis' ? 0 : guidesVersion, vals]);
   };
 
   return {
@@ -59,6 +59,11 @@ export function createPipeline() {
     setMask(next) {
       mask = next;
       maskVersion++;
+    },
+    // Hand-drawn guide lines, polylines in normalised coordinates.
+    setGuides(next) {
+      guides = next;
+      guidesVersion++;
     },
     async run(p, onStage, isStale = () => false, yieldFn = async () => {}, onStart = () => {}, opts = {}) {
       if (!full) return null;
@@ -90,7 +95,7 @@ export function createPipeline() {
       };
       try {
         const an = await step('analysis', () => analyze(img, p, mask));
-        const tess = await step('tessellation', () => tessellate(img, lab, an, p, mulberry32(p.seed)));
+        const tess = await step('tessellation', () => tessellate(img, lab, an, p, mulberry32(p.seed), guides));
         const col = await step('color', () => {
           const flat = shardColors(tess.shards, img, p);
           const pal = applyPalette(flat, tess.shards, p, mulberry32(p.seed + 101));

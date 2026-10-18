@@ -61,7 +61,21 @@ export function structureImage(img, tess) {
       structure.mask[i] ? [0.086, 0.133, 0.231] : [0.93 - (0.93 - base[i * 4] / 255) * 0.35, 0.94 - (0.94 - base[i * 4 + 1] / 255) * 0.35, 0.925 - (0.925 - base[i * 4 + 2] / 255) * 0.35]);
   }
   const { cv, ctx } = faded(img, 0.65);
-  if (structure.kind === 'seeds') {
+  if (structure.kind === 'guides') {
+    for (const s of shards) {
+      if (!s.row) continue;
+      ctx.fillStyle = 'rgba(29, 76, 154, 0.35)';
+      path(ctx, s.poly);
+      ctx.fill();
+    }
+    ctx.strokeStyle = '#1d4c9a';
+    ctx.lineWidth = 2;
+    for (const g of structure.guides) {
+      ctx.beginPath();
+      g.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.stroke();
+    }
+  } else if (structure.kind === 'seeds') {
     ctx.fillStyle = '#1d4c9a';
     for (const [x, y] of structure.seeds) {
       ctx.beginPath();

@@ -87,13 +87,16 @@ export function enforceConnectivity(labels, w, h) {
     if (b === undefined || compSize[b] < n) bestComp.set(l, id);
   });
   const out = new Int32Array(N);
+  for (let i = 0; i < N; i++) out[i] = comp[i] >= 0 && bestComp.get(labels[i]) === comp[i] ? labels[i] : -1;
+  return fillUnlabeled(out, w, h);
+}
+
+// Grow the labelled pixels into the -1 ones (multi-source BFS), in place.
+export function fillUnlabeled(out, w, h) {
+  const N = w * h;
   const queue = new Int32Array(N);
   let qh = 0, qt = 0;
-  for (let i = 0; i < N; i++) {
-    const keep = comp[i] >= 0 && bestComp.get(labels[i]) === comp[i];
-    out[i] = keep ? labels[i] : -1;
-    if (keep) queue[qt++] = i;
-  }
+  for (let i = 0; i < N; i++) if (out[i] >= 0) queue[qt++] = i;
   while (qh < qt) {
     const i = queue[qh++];
     const x = i % w, y = (i / w) | 0;

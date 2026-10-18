@@ -215,6 +215,16 @@ export function useEngine() {
     commitMask();
   }, [commitMask]);
 
+  // Hand-drawn guide lines, polylines in normalised image coordinates.
+  const [guides, setGuides] = useState([]);
+  const commitGuides = useCallback((list) => {
+    setGuides(list);
+    if (!worker.current) return;
+    worker.current.postMessage({ type: 'guides', guides: list });
+    sent.current = paramsRef.current;
+    post(paramsRef.current, false);
+  }, [post]);
+
   const loadBlob = useCallback(async (blob) => {
     try {
       const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
@@ -222,6 +232,8 @@ export function useEngine() {
       setInfo(null);
       setMosaicReady(false);
       resetMask(bmp);
+      setGuides([]);
+      worker.current?.postMessage({ type: 'guides', guides: [] });
       setBitmap(bmp);
     } catch {
       setError('No se ha podido leer esa imagen. Prueba con un JPG o un PNG.');
@@ -273,5 +285,6 @@ export function useEngine() {
     }),
     beginDrag, endDrag, loadBlob, loadSample, setViewport, setWanted, download,
     mask, maskVersion, paint, commitMask, clearMask,
+    guides, addGuide: (g) => commitGuides([...guides, g]), clearGuides: () => commitGuides([]),
   };
 }

@@ -8,7 +8,7 @@ let latest = 0;
 // re-sent so the main thread never keeps half-size geometry or images.
 let lastPreview = null;
 
-const STRUCTURE_LABEL = { seeds: 'Semillas', cracks: 'Grietas', depth: 'Profundidad de corte' };
+const STRUCTURE_LABEL = { seeds: 'Semillas', cracks: 'Grietas', depth: 'Profundidad de corte', guides: 'Líneas guía' };
 
 // Stage images, built lazily so a preview run only draws what is on screen.
 function visualsFor(stage, value, p, img) {
@@ -46,6 +46,10 @@ self.onmessage = async (e) => {
   }
   if (msg.type === 'mask') {
     pipe.setMask(msg.mask);
+    return;
+  }
+  if (msg.type === 'guides') {
+    pipe.setGuides(msg.guides);
     return;
   }
   if (msg.type !== 'run') return;

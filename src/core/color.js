@@ -26,6 +26,9 @@ export function shardColors(shards, img, p) {
     let [hu, s, l] = rgbToHsl(c[0], c[1], c[2]);
     s = Math.min(1, s * p.saturation);
     l = Math.min(1, Math.max(0, l + p.lightness));
+    // Row pieces can be darker or lighter so the line reads as an outline.
+    if (shards[k].row && p.rowColor === 'dark') l *= 0.35;
+    else if (shards[k].row && p.rowColor === 'light') l += (1 - l) * 0.6;
     const r = hslToRgb(hu, s, l);
     out[k * 3] = r[0]; out[k * 3 + 1] = r[1]; out[k * 3 + 2] = r[2];
   });

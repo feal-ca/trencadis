@@ -59,12 +59,33 @@ function BrushTools({ engine, brush, setBrush }) {
   );
 }
 
+function RowTools({ engine, tool, setTool }) {
+  const drawing = tool?.kind === 'draw';
+  return (
+    <div className="field rows-block">
+      <span className="field-row"><span>Hileras</span></span>
+      <span className="help">Piezas rectangulares en fila a lo largo de una línea, como la espiral negra de los bancos de Gaudí. Ayudan a que se lean contornos, barandillas o letras.</span>
+      <Param k="autoGuides" engine={engine} help={false} />
+      <div className="brush-row">
+        <button type="button" className={`btn chamfer-s${drawing ? ' btn-dark' : ''}`} aria-pressed={drawing} onClick={() => setTool(drawing ? null : { kind: 'draw' })}>
+          {drawing ? 'Terminar' : 'Dibujar línea'}
+        </button>
+        <button type="button" className="link" onClick={engine.clearGuides} disabled={!engine.guides.length}>
+          Borrar líneas{engine.guides.length ? ` (${engine.guides.length})` : ''}
+        </button>
+      </div>
+      {drawing && <span className="help">Dibuja sobre la foto; cada trazo es una línea. Al soltar se recalcula.</span>}
+    </div>
+  );
+}
+
 function Controls({ step, engine, brush, setBrush }) {
   return step.simple.map((c, i) => {
     if (c.macro) return <Macro key={i} id={c.macro} engine={engine} />;
     if (c.param) return <Param key={i} k={c.param} engine={engine} />;
     if (c.kind === 'algorithm') return <AlgorithmPicker key={i} engine={engine} />;
-    if (c.kind === 'brush') return <BrushTools key={i} engine={engine} brush={brush} setBrush={setBrush} />;
+    if (c.kind === 'brush') return <BrushTools key={i} engine={engine} brush={brush?.kind === 'brush' ? brush : null} setBrush={(b) => setBrush(b && { ...b, kind: 'brush' })} />;
+    if (c.kind === 'rows') return <RowTools key={i} engine={engine} tool={brush} setTool={setBrush} />;
     if (c.kind === 'reseed') {
       return (
         <button key={i} type="button" className="btn chamfer-s reseed" onClick={() => engine.setParam('seed', (engine.params.seed % 999) + 1)}>

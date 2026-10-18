@@ -175,3 +175,4 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
   .viewer { min-height: 62vh; }
   .side { overflow: visible; }
 }
+.rows-block { border-top: 1px solid var(--line); padding-top: 12px; gap: 8px; }

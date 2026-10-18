@@ -23,8 +23,11 @@ export function regionWidths(labels, w, h) {
 }
 
 // Regions narrower than minWidth × s(x) join the neighbour they share the
-// longest border with. Returns a new label map.
-export function mergeSlivers(labels, w, h, size, minWidth) {
+// longest border with. Labels in opts.protect never merge or absorb others;
+// with opts.only, only those labels are candidates.
+// Returns a new label map.
+export function mergeSlivers(labels, w, h, size, minWidth, opts = {}) {
+  const protect = opts.protect ?? new Set();
   if (minWidth <= 0) return labels;
   const widths = regionWidths(labels, w, h);
   const sizeSum = new Map(), count = new Map();
@@ -35,13 +38,16 @@ export function mergeSlivers(labels, w, h, size, minWidth) {
     count.set(l, (count.get(l) ?? 0) + 1);
   }
   const thin = new Set();
-  for (const [l, width] of widths) if (width < minWidth * (sizeSum.get(l) / count.get(l))) thin.add(l);
+  for (const [l, width] of widths) {
+    if (protect.has(l) || (opts.only && !opts.only.has(l))) continue;
+    if (width < minWidth * (sizeSum.get(l) / count.get(l))) thin.add(l);
+  }
   if (!thin.size) return labels;
 
   // Shared border length between each thin region and its neighbours.
   const shared = new Map();
   const touch = (a, b) => {
-    if (a === b || a < 0 || b < 0 || !thin.has(a)) return;
+    if (a === b || a < 0 || b < 0 || !thin.has(a) || protect.has(b)) return;
     const m = shared.get(a) ?? new Map();
     m.set(b, (m.get(b) ?? 0) + 1);
     shared.set(a, m);
@@ -67,4 +73,30 @@ export function mergeSlivers(labels, w, h, size, minWidth) {
   const out = new Int32Array(labels.length);
   for (let i = 0; i < labels.length; i++) out[i] = labels[i] < 0 ? -1 : find(labels[i]);
   return out;
+}
+
+// Give every 4-connected part of a label its own label. Returns the new map
+// and origin[newLabel] = old label. -1 stays -1.
+export function splitComponents(labels, w, h) {
+  const N = w * h;
+  const out = new Int32Array(N).fill(-1);
+  const origin = [];
+  const stack = new Int32Array(N);
+  for (let s = 0; s < N; s++) {
+    if (out[s] >= 0 || labels[s] < 0) continue;
+    const l = labels[s], id = origin.length;
+    origin.push(l);
+    let top = 0;
+    stack[top++] = s;
+    out[s] = id;
+    while (top) {
+      const i = stack[--top];
+      const x = i % w, y = (i / w) | 0;
+      if (x > 0 && out[i - 1] < 0 && labels[i - 1] === l) { out[i - 1] = id; stack[top++] = i - 1; }
+      if (x < w - 1 && out[i + 1] < 0 && labels[i + 1] === l) { out[i + 1] = id; stack[top++] = i + 1; }
+      if (y > 0 && out[i - w] < 0 && labels[i - w] === l) { out[i - w] = id; stack[top++] = i - w; }
+      if (y < h - 1 && out[i + w] < 0 && labels[i + w] === l) { out[i + w] = id; stack[top++] = i + w; }
+    }
+  }
+  return { labels: out, origin: Int32Array.from(origin) };
 }
