@@ -49,13 +49,20 @@ self.onmessage = async (e) => {
       (stage, value, recomputed) => {
         if (stage === 'tessellation') pipe.lastTess = value;
         if (!recomputed) return;
-        const images = visualsFor(stage, value, p, pipe.imageFor(msg.preview));
-        self.postMessage({ type: 'stage', id, stage, images, preview: !!msg.preview }, images.map((v) => v.image.data.buffer));
+        const img = pipe.imageFor(msg.preview);
+        const images = visualsFor(stage, value, p, img);
+        const extra = {};
+        // The GPU renderer needs the shards (once per tessellation) and the colours.
+        if (stage === 'tessellation') Object.assign(extra, { shards: value.shards.map((s) => s.poly), w: img.w, h: img.h });
+        if (stage === 'color') extra.colors = Float32Array.from(value.colors);
+        const transfer = images.map((v) => v.image.data.buffer);
+        if (extra.colors) transfer.push(extra.colors.buffer);
+        self.postMessage({ type: 'stage', id, stage, images, preview: !!msg.preview, ...extra }, transfer);
       },
       () => latest !== id,
       () => new Promise((r) => setTimeout(r, 0)),
       (stage) => self.postMessage({ type: 'progress', id, stage }),
-      { preview: !!msg.preview },
+      { preview: !!msg.preview, cpuRender: !!msg.cpuRender },
     );
     if (res) self.postMessage({ type: 'done', id, ...res });
   } catch (err) {

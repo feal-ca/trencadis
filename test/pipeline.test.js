@@ -60,3 +60,14 @@ describe('preview', () => {
     expect(b).toEqual([]);
   });
 });
+
+describe('cpu render switch', () => {
+  it('cpuRender false skips render stage', async () => {
+    const pipe = createPipeline();
+    pipe.setImage(syntheticImage());
+    const seen = [];
+    const res = await pipe.run({ ...DEFAULTS, outLong: 200 }, (n) => seen.push(n), undefined, undefined, undefined, { cpuRender: false });
+    expect(seen).toEqual(['analysis', 'tessellation', 'color']);
+    expect(res.shards).toBeGreaterThan(0);
+  });
+});

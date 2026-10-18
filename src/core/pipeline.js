@@ -35,7 +35,8 @@ export function halve(img) {
 // `onStage(name, result)` fires after each stage; `isStale()` lets the caller
 // abandon a run when newer parameters arrive (checked between stages).
 // With { preview: true } it runs on a half-size copy of the image, with its
-// own cache, so dragging a slider stays responsive.
+// own cache, so dragging a slider stays responsive. { cpuRender: false }
+// stops after the colour stage, for when the GPU draws the mosaic.
 export function createPipeline() {
   let full = null, half = null, imgVersion = 0;
   const caches = { full: {}, preview: {} };
@@ -86,7 +87,7 @@ export function createPipeline() {
           const pal = applyPalette(flat, tess.shards, p, mulberry32(p.seed + 101));
           return { flat, ...pal };
         });
-        await step('render', () => renderMosaic(tess.shards, col.colors, img.w, img.h, p));
+        if (opts.cpuRender ?? true) await step('render', () => renderMosaic(tess.shards, col.colors, img.w, img.h, p));
         return { timings, shards: tess.shards.length };
       } catch (e) {
         if (e instanceof StaleRun) return null;
