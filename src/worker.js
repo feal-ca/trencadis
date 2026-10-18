@@ -7,8 +7,7 @@ let latest = 0;
 
 const STRUCTURE_LABEL = { seeds: 'Semillas', cracks: 'Grietas', depth: 'Profundidad de corte' };
 
-function visualsFor(stage, value, p) {
-  const img = pipe.image;
+function visualsFor(stage, value, p, img) {
   switch (stage) {
     case 'analysis':
       return [
@@ -50,12 +49,13 @@ self.onmessage = async (e) => {
       (stage, value, recomputed) => {
         if (stage === 'tessellation') pipe.lastTess = value;
         if (!recomputed) return;
-        const images = visualsFor(stage, value, p);
-        self.postMessage({ type: 'stage', id, stage, images }, images.map((v) => v.image.data.buffer));
+        const images = visualsFor(stage, value, p, pipe.imageFor(msg.preview));
+        self.postMessage({ type: 'stage', id, stage, images, preview: !!msg.preview }, images.map((v) => v.image.data.buffer));
       },
       () => latest !== id,
       () => new Promise((r) => setTimeout(r, 0)),
       (stage) => self.postMessage({ type: 'progress', id, stage }),
+      { preview: !!msg.preview },
     );
     if (res) self.postMessage({ type: 'done', id, ...res });
   } catch (err) {

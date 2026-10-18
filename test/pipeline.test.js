@@ -35,3 +35,28 @@ describe('pipeline', () => {
     expect(fresh).toEqual(['render']);
   });
 });
+
+describe('preview', () => {
+  it('preview run uses half-size image', async () => {
+    const pipe = createPipeline();
+    pipe.setImage(syntheticImage(240, 161));
+    const stages = {};
+    await pipe.run({ ...DEFAULTS, outLong: 200, supersample: 1 }, (n, v) => { stages[n] = v; }, undefined, undefined, undefined, { preview: true });
+    expect(stages.analysis.w).toBe(120);
+    expect(stages.analysis.h).toBe(81);
+  });
+
+  it('preview and full results are cached separately', async () => {
+    const pipe = createPipeline();
+    pipe.setImage(syntheticImage());
+    const p = { ...DEFAULTS, outLong: 200, supersample: 1 };
+    const fresh = () => { const list = []; return [list, (n, _v, re) => re && list.push(n)]; };
+    await pipe.run(p, () => {}, undefined, undefined, undefined, { preview: true });
+    const [a, onA] = fresh();
+    await pipe.run(p, onA);
+    expect(a).toContain('analysis');
+    const [b, onB] = fresh();
+    await pipe.run(p, onB);
+    expect(b).toEqual([]);
+  });
+});
