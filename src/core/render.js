@@ -54,7 +54,8 @@ export function renderMosaic(shards, colors, w, h, p) {
 
   const labels = new Int32Array(W * H).fill(-1);
   // Largest first, so a region enclosed by another (a crack loop) paints on top.
-  const order = shards.map((s, id) => [area(s.poly), id]).sort((a, b) => b[0] - a[0]);
+  // Rows last, so they stay on top whatever their size.
+  const order = shards.map((s, id) => [area(s.poly), id, s.row ? 1 : 0]).sort((a, b) => a[2] - b[2] || b[0] - a[0]);
   const rand = placementRandoms(shards.length, p.seed);
   for (const [, id] of order) {
     const poly = shards[id].row ? shards[id].poly : placePolygon(shards[id].poly, rand[id], p.place ?? 0);

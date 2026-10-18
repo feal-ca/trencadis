@@ -255,7 +255,10 @@ export function rowLabels(guides, w, h, p, size) {
         for (let x = x0; x <= x1; x++) {
           const px = x + 0.5 - ax, py = y + 0.5 - ay;
           let t = (px * dx + py * dy) / len2;
-          // No caps at the ends of the guide; interior joints clamp to the vertex.
+          // Square ends: nothing before the start or past the end of the guide.
+          // Interior joints clamp to the vertex.
+          const along = arc[i] + t * len;
+          if (along < 0 || along > total) continue;
           if ((t < 0 && i === 0) || (t > 1 && i === g.length - 2)) continue;
           t = Math.min(1, Math.max(0, t));
           const a = width[i] + (width[i + 1] - width[i]) * t;
@@ -293,6 +296,8 @@ export function overlayRows(baseShards, guides, w, h, p, an) {
   const order = baseShards.map((s, id) => [area(s.poly), id]).sort((a, b) => b[0] - a[0]);
   for (const [, id] of order) rasterize(baseShards[id].poly, w, h, (x, y) => { labels[y * w + x] = id; });
   const ROW = baseShards.length;
+  // Which base piece each pixel belonged to before the rows went on top.
+  const baseOf = Int32Array.from(labels);
   for (let i = 0; i < w * h; i++) if (rows.labels[i] >= 0) labels[i] = ROW + rows.labels[i];
 
   const { labels: parts, origin } = splitComponents(labels, w, h);
@@ -321,10 +326,10 @@ export function overlayRows(baseShards, guides, w, h, p, an) {
   // row or to a neighbour) or gained some (absorbed a fragment).
   const changed = new Set(splitIds);
   for (let i = 0; i < w * h; i++) {
-    const now = origin[merged[i]], was = labels[i];
+    const now = origin[merged[i]], was = baseOf[i];
     if (now === was) continue;
     if (now < ROW) changed.add(now);
-    if (was >= 0 && was < ROW) changed.add(was);
+    if (was >= 0) changed.add(was);
   }
   const intact = baseShards.filter((_, id) => !changed.has(id)).map(({ poly }) => ({ poly, row: false }));
   const redo = new Set();
@@ -451,7 +456,14 @@ export function combineGuides(drawn, auto, w, h, p, size) {
       }
     });
     if (run) runs.push(run);
-    const accepted = runs.filter((r) => r.length > 1 && chainLength(r) >= 4 * half(...r[Math.floor(r.length / 2)]));
+    // A guide nothing cut is kept whole, however short next to its rows.
+    // Pieces left over from a cut need room for at least one row piece.
+    const uncut = runs.length === 1 && runs[0].length >= g.length;
+    const pieceLength = (r) => {
+      const [x, y] = r[Math.floor(r.length / 2)];
+      return p.rowLength * p.rowScale * sizeAt(x, y);
+    };
+    const accepted = runs.filter((r) => r.length > 1 && (uncut || chainLength(r) >= pieceLength(r)));
     for (const r of accepted) { lines.push(r); stamp(r); }
   }
 

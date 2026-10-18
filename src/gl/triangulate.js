@@ -3,10 +3,10 @@ import { area, centroid } from '../core/polygon.js';
 import { placementRandoms } from '../core/placement.js';
 
 // Flat triangle list for all shards, largest first so a region enclosed by
-// another paints on top. Each vertex carries its shard index, the shard
+// another paints on top, and row pieces after everything else. Each vertex carries its shard index, the shard
 // centroid and its placement randoms (see core/placement.js).
 export function triangulate(shards, seed = 1) {
-  const order = shards.map((s, id) => [area(s.poly), id]).sort((a, b) => b[0] - a[0]);
+  const order = shards.map((s, id) => [area(s.poly), id, s.row ? 1 : 0]).sort((a, b) => a[2] - b[2] || b[0] - a[0]);
   const rand = placementRandoms(shards.length, seed);
   const pos = [], ids = [], centers = [], place = [];
   for (const [, id] of order) {

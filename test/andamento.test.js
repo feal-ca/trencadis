@@ -3,7 +3,7 @@ import { analyze } from '../src/core/analysis.js';
 import { extractGuides, overlayRows } from '../src/core/andamento.js';
 import { toLab } from '../src/core/image.js';
 import { DEFAULTS } from '../src/core/params.js';
-import { area, bbox, centroid, rasterize } from '../src/core/polygon.js';
+import { area, bbox, centroid, pointInPolygon, rasterize } from '../src/core/polygon.js';
 import { mulberry32 } from '../src/core/rng.js';
 import { splitComponents } from '../src/core/slivers.js';
 import { tessellate } from '../src/core/tessellate.js';
@@ -91,6 +91,24 @@ describe('rows', () => {
   });
 });
 
+describe('big rows stay on top', () => {
+  it('no background piece covers a row piece, even when rows are larger than the background', () => {
+    const img = syntheticImage(400, 300);
+    for (const rowScale of [0.45, 1.5]) {
+      const p = { ...DEFAULTS, rowScale, rowLength: 3.5, rowCount: 2 };
+      const an = analyze(img, p);
+      const base = tessellate(img, toLab(img), an, p, mulberry32(2)).shards;
+      const out = overlayRows(base, [[[40, 80], [360, 140]]], img.w, img.h, p, an);
+      const rows = out.filter((s) => s.row), rest = out.filter((s) => !s.row);
+      expect(rows.length).toBeGreaterThan(0);
+      for (const r of rows) {
+        const [cx, cy] = centroid(r.poly);
+        expect(rest.some((s) => pointInPolygon(s.poly, cx, cy))).toBe(false);
+      }
+    }
+  });
+});
+
 describe('row pieces follow the piece size', () => {
   it('pieces are narrow where s(x) is small and wide where it is large', () => {
     const w = 400, h = 200;
@@ -140,6 +158,14 @@ describe('combining guides', () => {
   const p = { ...DEFAULTS, rowScale: 0.5, rowCount: 2 };
   const len = (gs) => gs.reduce((s, g) => s + pathLength(g), 0);
   const nearest = (pt, g) => Math.min(...g.map((q) => Math.hypot(q[0] - pt[0], q[1] - pt[1])));
+
+  it('keeps a lone automatic guide however wide its rows are', () => {
+    const lone = [[50, 100], [150, 100]];
+    for (const rowScale of [0.45, 1.5]) {
+      const out = combineGuides([], [lone], w, h, { ...p, rowScale, rowLength: 4 }, size);
+      expect(out.length).toBe(1);
+    }
+  });
 
   it('keeps one of two nearly overlapping automatic guides', () => {
     const a = [[20, 100], [280, 100]], b = [[20, 104], [280, 104]];
@@ -248,8 +274,9 @@ describe('row pieces stay orderly', () => {
   it('row pieces get no hand-placement jitter', () => {
     const poly = [[0, 0], [10, 0], [10, 5], [0, 5]];
     const { place } = triangulate([{ poly, row: true }, { poly: poly.map(([x, y]) => [x + 20, y]) }], 3);
-    // First shard (row) vertices have zero randoms; the other does not.
-    const rowPlace = place.slice(0, 18), other = place.slice(18);
+    // Rows are drawn last: the last shard's vertices are the row's and have
+    // zero randoms; the other shard's do not.
+    const rowPlace = place.slice(18), other = place.slice(0, 18);
     expect(rowPlace.every((v) => v === 0)).toBe(true);
     expect(other.some((v) => v !== 0)).toBe(true);
   });
