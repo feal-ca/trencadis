@@ -190,7 +190,8 @@ export function useEngine() {
       for (let x = Math.max(0, Math.floor(cx - r)); x <= Math.min(m.w - 1, Math.ceil(cx + r)); x++) {
         const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / r;
         if (d >= 1) continue;
-        const k = 0.35 * (1 - d * d);
+        // Gaussian falloff: strong in the middle, nothing at the rim.
+        const k = 0.3 * Math.exp(-4 * d * d) * (1 - d);
         const i = y * m.w + x;
         m.data[i] += (target - m.data[i]) * k;
       }

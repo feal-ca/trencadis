@@ -55,27 +55,41 @@ function analyzeLuminance(L, w, h, p, mask) {
     coherence[i] = tr > 1e-12 ? (Math.sqrt(a * a + 4 * sxy[i] * sxy[i]) / tr) * strength[i] : 0;
   }
 
-  // Ignore texture: detail without a direction (glints, grass) counts less.
-  // Orientation consistency is measured on a tensor blurred 2.5x wider: in a
-  // texture the random directions cancel out, along a real edge they add up.
+  // Ignore texture: glints on water, leaves and grass are made of blobs,
+  // outlines are not. The determinant of the Hessian is large where the
+  // image curves both ways (a blob) and near zero along an edge; dividing by
+  // the squared gradient makes it scale-free. Measured on Barcas: texture
+  // 0.15-0.24, boats and horizon below 0.07.
   if (p.ignoreTexture > 0) {
-    const big = p.tensorSigma * 2.5;
-    const bxx = blur(jxx, w, h, big), bxy = blur(jxy, w, h, big), byy = blur(jyy, w, h, big);
-    const weight = new Float32Array(w * h);
-    for (let i = 0; i < w * h; i++) {
-      const a = bxx[i] - byy[i], tr = bxx[i] + byy[i];
-      const c = tr > 1e-12 ? Math.sqrt(a * a + 4 * bxy[i] * bxy[i]) / tr : 0;
-      weight[i] = smoothstep(0.1, 0.45, c);
+    const sg = 0.75 * p.detailSigma;
+    const g = blur(L, w, h, sg);
+    const doh = new Float32Array(w * h), grad = new Float32Array(w * h);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        const lxx = g[i - 1] - 2 * g[i] + g[i + 1], lyy = g[i - w] - 2 * g[i] + g[i + w];
+        const lxy = (g[i - w - 1] + g[i + w + 1] - g[i - w + 1] - g[i + w - 1]) / 4;
+        doh[i] = Math.max(0, lxx * lyy - lxy * lxy) * sg ** 4;
+        const gx = (g[i + 1] - g[i - 1]) / 2, gy = (g[i + w] - g[i - w]) / 2;
+        grad[i] = (gx * gx + gy * gy) * sg * sg;
+      }
     }
-    const smooth = blur(weight, w, h, Math.max(2, 2 * p.detailSmooth));
+    const r = Math.max(2, 1.6 * p.detailSmooth);
+    const B = blur(doh, w, h, r), G = blur(grad, w, h, r);
+    const weight = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) weight[i] = 1 - smoothstep(0.07, 0.17, B[i] / (G[i] + 1e-9));
+    const smooth = blur(weight, w, h, r);
     for (let i = 0; i < w * h; i++) detail[i] *= 1 - p.ignoreTexture + p.ignoreTexture * smooth[i];
   }
 
   if (mask) {
+    // The brush is blurred over ~2% of the long side so painted areas fade
+    // into the rest instead of ending at a visible line.
+    const soft = blur(mask.data, mask.w, mask.h, 0.02 * Math.max(mask.w, mask.h) * 2);
     for (let y = 0; y < h; y++) {
       const my = Math.min(mask.h - 1, (((y + 0.5) / h) * mask.h) | 0);
       for (let x = 0; x < w; x++) {
-        const m = mask.data[my * mask.w + Math.min(mask.w - 1, (((x + 0.5) / w) * mask.w) | 0)];
+        const m = soft[my * mask.w + Math.min(mask.w - 1, (((x + 0.5) / w) * mask.w) | 0)];
         const i = y * w + x;
         if (m < 0) detail[i] *= 1 + m;
         else if (m > 0) detail[i] += (1 - detail[i]) * m;

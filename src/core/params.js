@@ -28,7 +28,7 @@ export const GROUPS = [
       { key: 'gamma', label: 'Sensibilidad al detalle', min: 0.15, max: 3, step: 0.05, def: 0.7, stage: 'analysis',
         help: 'Más bajo: casi cualquier detalle encoge los trozos; más alto: solo los bordes fuertes.' },
       { key: 'ignoreTexture', label: 'Ignorar texturas', min: 0, max: 1, step: 0.01, def: 0, stage: 'analysis',
-        help: 'Más alto: el detalle sin dirección (reflejos en el agua, césped, hojas) cuenta menos y se cubre con trozos grandes.' },
+        help: 'Más alto: el detalle hecho de puntos (brillos en el agua, hojas, césped) cuenta menos y se cubre con trozos grandes; los contornos se mantienen.' },
       { key: 'detailSigma', label: 'Escala del detalle', min: 0.5, max: 8, step: 0.1, def: 2, unit: ' px', stage: 'analysis',
         help: 'Qué se considera detalle. Más alto: formas más grandes; más bajo: textura fina y ruido.' },
       { key: 'detailSmooth', label: 'Suavizado del mapa', min: 0.5, max: 20, step: 0.5, def: 5, unit: ' px', stage: 'analysis',

@@ -45,7 +45,7 @@ export const STEPS = [
     id: 'detalle',
     title: 'Detalle',
     explanation: 'Se mide cuánto detalle hay en cada zona: bordes, texturas, cambios bruscos. Con eso se decide el tamaño de los trozos, pequeños donde hay detalle y grandes en las zonas lisas. También se calcula hacia dónde van los bordes, para que los cortes puedan seguirlos. Con el pincel puedes quitar detalle de zonas que no te interesan o añadirlo donde quieras más trozos.',
-    formula: 'D(x) = |L − desenfoque(L, σ)|, suavizado y normalizado a [0, 1]\nignorar texturas: D × (1 − k + k · coherencia)\npincel: D × (1 + m) si m < 0;  D + (1 − D) · m si m > 0\ns(x) = s_max − (s_max − s_min) · D(x)^γ',
+    formula: 'D(x) = |L − desenfoque(L, σ)|, suavizado y normalizado a [0, 1]\nignorar texturas: D × (1 − k + k · (1 − manchas)),  manchas = det(Hessiano) / |∇L|²\npincel: D × (1 + m) si m < 0;  D + (1 − D) · m si m > 0\ns(x) = s_max − (s_max − s_min) · D(x)^γ',
     views: [
       { key: 'size', label: 'Tamaño de trozo' },
       { key: 'detail', label: 'Detalle' },
