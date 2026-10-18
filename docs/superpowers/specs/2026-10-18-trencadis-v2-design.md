@@ -121,3 +121,14 @@ Sustituye al flujo de dos modos.
 - **Grietas sin astillas.** Una grieta no nace a menos de «separación mínima» × s(x) de otra. Tras grietas, SLIC y teselas alargadas, las regiones cuyo grosor (2 × radio inscrito) es menor que «grosor mínimo» × s(x) se funden con el vecino con el que comparten más borde.
 - **Ignorar texturas.** Slider de análisis: rebaja el detalle donde la coherencia del tensor es baja (detalle sin dirección, como reflejos o césped).
 - **Pincel de detalle.** En la sección Detalle: quitar o añadir detalle pintando sobre la foto, con tamaño de pincel y «Borrar pincel». La máscara se guarda a 256 px de lado largo, independiente de la resolución de trabajo, y entra en el análisis.
+
+## Revisión v5: hileras siguiendo líneas (2026-10-18)
+
+Opción A de la comparación: una o varias hileras de piezas rectangulares colocadas a lo largo de una línea guía, sobre el mosaico de fondo del método elegido. Los trozos del fondo se recortan contra las hileras y llegan hasta ellas, sin huecos.
+
+- **Guías automáticas:** contornos fuertes de la foto (bordes con supresión de no máximos e histéresis, enlazados en cadenas y suavizados), con un slider «Contornos con hilera» de 0 (ninguno, por defecto) a 1 (muchos).
+- **Guías dibujadas:** herramienta «Dibujar línea» en el paso Trozos, a mano alzada sobre la foto, con «Borrar líneas». Se guardan en coordenadas normalizadas.
+- **Hileras:** centradas en la guía, 1 a 4 filas, ancho de pieza en px de trabajo, largo como múltiplo del ancho con un poco de azar, y filas vecinas desplazadas media pieza. La pieza de cada píxel sale de (guía, fila, posición a lo largo de la guía).
+- **Fondo:** el mosaico de fondo se rasteriza, la banda de las hileras lo sobrescribe, los fragmentos sueltos se separan en regiones propias y las astillas del fondo se funden con vecinos del fondo.
+- **Color de las hileras:** de la foto, más oscuro o más claro.
+- **Ver este paso (Trozos):** la vista de estructura muestra las guías.
