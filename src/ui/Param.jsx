@@ -27,7 +27,6 @@ function Range({ id, value, onChange, engine }) {
       max={1000}
       value={Math.round(value * 1000)}
       onPointerDown={engine.beginDrag}
-      onPointerUp={engine.endDrag}
       onPointerCancel={engine.endDrag}
       onChange={(e) => onChange(e.target.value / 1000)}
     />

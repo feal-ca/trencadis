@@ -4,6 +4,9 @@ import * as vis from './core/vis.js';
 
 const pipe = createPipeline();
 let latest = 0;
+// Whether the last run was a preview. When the mode flips, cached stages are
+// re-sent so the main thread never keeps half-size geometry or images.
+let lastPreview = null;
 
 const STRUCTURE_LABEL = { seeds: 'Semillas', cracks: 'Grietas', depth: 'Profundidad de corte' };
 
@@ -44,13 +47,15 @@ self.onmessage = async (e) => {
   if (msg.type !== 'run') return;
   const id = (latest = msg.id);
   const visualMs = {};
+  const modeChanged = lastPreview !== !!msg.preview;
+  lastPreview = !!msg.preview;
   const p = msg.params;
   try {
     const res = await pipe.run(
       p,
       (stage, value, recomputed) => {
         if (stage === 'tessellation') pipe.lastTess = value;
-        if (!recomputed) return;
+        if (!recomputed && !modeChanged) return;
         const img = pipe.imageFor(msg.preview);
         const tv = performance.now();
         const wanted = msg.preview && msg.views ? new Set(msg.views) : null;

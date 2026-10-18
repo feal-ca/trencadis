@@ -98,6 +98,7 @@ export function useEngine() {
         if (renderer.ok && data.shards) {
           renderer.setShards(data.shards.map((poly) => ({ poly })), data.w, data.h);
           geomScale.current = data.preview ? 0.5 : 1;
+          if (DEBUG) window.__geomScale = geomScale.current;
         }
         if (renderer.ok && data.colors) {
           renderer.setColors(data.colors, paramsRef.current.seed);
@@ -155,12 +156,17 @@ export function useEngine() {
     return () => clearTimeout(t);
   }, [params, bitmap, renderer, post, requestRender]);
 
-  const beginDrag = useCallback(() => { dragging.current = true; }, []);
   const endDrag = useCallback(() => {
+    if (!dragging.current) return;
     dragging.current = false;
     // Replace the half-size preview with the full result.
     if (lastWasPreview.current && bitmap) { sent.current = paramsRef.current; post(paramsRef.current, false); }
   }, [bitmap, post]);
+  // The pointer can be released outside the slider, so listen on the window.
+  const beginDrag = useCallback(() => {
+    dragging.current = true;
+    window.addEventListener('pointerup', endDrag, { once: true });
+  }, [endDrag]);
 
   const loadBlob = useCallback(async (blob) => {
     try {
