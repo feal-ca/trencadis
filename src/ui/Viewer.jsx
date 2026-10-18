@@ -76,11 +76,22 @@ function BrushLayer({ engine, brush }) {
   );
 }
 
-// The photo with the guide lines; a stroke adds a new line.
-function DrawLayer({ engine }) {
+// The photo with the guide lines. "free" mode: a stroke adds a line.
+// "points" mode: each click adds a vertex; double-click or Enter finishes,
+// Backspace removes the last vertex, Escape cancels.
+function DrawLayer({ engine, tool }) {
   const ref = useRef(null);
   const stroke = useRef(null);
+  const hover = useRef(null);
   const original = engine.images.original;
+  const mode = tool?.mode ?? 'free';
+  const finish = () => {
+    const g = stroke.current;
+    stroke.current = null;
+    hover.current = null;
+    if (g && g.length >= 2) engine.addGuide({ points: g, mode, snap: tool?.snap ?? true });
+    else redraw();
+  };
   const redraw = () => {
     const cv = ref.current;
     if (!cv || !original) return;
@@ -97,35 +108,57 @@ function DrawLayer({ engine }) {
       g.forEach(([u, v], i) => (i ? ctx.lineTo(u * cv.width, v * cv.height) : ctx.moveTo(u * cv.width, v * cv.height)));
       ctx.stroke();
     };
-    // Lines found in the photo, in blue; the ones drawn by hand, in black.
+    const used = engine.lines.lines;
+    // Lines found in the photo, in blue.
     ctx.lineWidth = Math.max(2, cv.width / 260);
     ctx.strokeStyle = '#2856a5';
-    engine.lines.lines.slice(engine.lines.drawn).forEach(draw);
+    used.slice(engine.lines.drawn).forEach(draw);
+    // Your strokes as drawn, faint; the lines actually used (snapped, joined), in black.
+    ctx.strokeStyle = 'rgba(37, 34, 30, 0.3)';
+    engine.guides.forEach((g) => draw(g.points ?? g));
     ctx.lineWidth = Math.max(3, cv.width / 160);
     ctx.strokeStyle = '#25221e';
-    [...engine.guides, ...(stroke.current ? [stroke.current] : [])].forEach(draw);
+    used.slice(0, engine.lines.drawn).forEach(draw);
+    if (stroke.current) {
+      draw(hover.current ? [...stroke.current, hover.current] : stroke.current);
+      ctx.fillStyle = '#25221e';
+      for (const [u, v] of mode === 'points' ? stroke.current : []) {
+        ctx.beginPath();
+        ctx.arc(u * cv.width, v * cv.height, ctx.lineWidth * 1.2, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+    }
   };
   useEffect(redraw, [original, engine.guides, engine.lines]);
+  useEffect(() => {
+    if (mode !== 'points') return;
+    const onKey = (e) => {
+      if (!stroke.current) return;
+      if (e.key === 'Enter') finish();
+      else if (e.key === 'Escape') { stroke.current = null; hover.current = null; redraw(); }
+      else if (e.key === 'Backspace') { stroke.current.pop(); if (!stroke.current.length) stroke.current = null; redraw(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   const toUV = (e) => {
     const cv = ref.current, r = cv.getBoundingClientRect();
     const s = Math.min(r.width / cv.width, r.height / cv.height);
     const ox = (r.width - cv.width * s) / 2, oy = (r.height - cv.height * s) / 2;
     return [Math.min(1, Math.max(0, (e.clientX - r.left - ox) / (cv.width * s))), Math.min(1, Math.max(0, (e.clientY - r.top - oy) / (cv.height * s)))];
   };
-  return (
-    <canvas
-      ref={ref}
-      className="viewer-canvas brush-canvas"
-      onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); stroke.current = [toUV(e)]; redraw(); }}
-      onPointerMove={(e) => { if (stroke.current) { stroke.current.push(toUV(e)); redraw(); } }}
-      onPointerUp={() => {
-        const g = stroke.current;
-        stroke.current = null;
-        if (g && g.length > 2) engine.addGuide(g);
-        else redraw();
-      }}
-    />
-  );
+  const handlers = mode === 'points'
+    ? {
+      onPointerDown: (e) => { (stroke.current ??= []).push(toUV(e)); redraw(); },
+      onPointerMove: (e) => { if (stroke.current) { hover.current = toUV(e); redraw(); } },
+      onDoubleClick: () => { if (stroke.current) { stroke.current.pop(); finish(); } },
+    }
+    : {
+      onPointerDown: (e) => { e.currentTarget.setPointerCapture(e.pointerId); stroke.current = [toUV(e)]; redraw(); },
+      onPointerMove: (e) => { if (stroke.current) { stroke.current.push(toUV(e)); redraw(); } },
+      onPointerUp: () => { if (stroke.current && stroke.current.length > 2) finish(); else { stroke.current = null; redraw(); } },
+    };
+  return <canvas ref={ref} className="viewer-canvas brush-canvas" {...handlers} />;
 }
 
 // The big image: the WebGL mosaic, a stage image, or the brush layer. A faint
@@ -182,7 +215,7 @@ export default function Viewer({ engine, view, brush }) {
       </svg>
       <div className="viewer-box" ref={box}>
         {showBrush ? <BrushLayer engine={engine} brush={brush} />
-          : showDraw ? <DrawLayer engine={engine} />
+          : showDraw ? <DrawLayer engine={engine} tool={brush} />
           : useGl ? <div className="viewer-host" ref={host} />
           : image && <ImageCanvas image={image} className="viewer-canvas" />}
         {!ready && <p className="viewer-empty">{engine.hasImage ? 'Calculando…' : 'Todavía no hay foto.'}</p>}

@@ -57,7 +57,7 @@ export function renderMosaic(shards, colors, w, h, p) {
   const order = shards.map((s, id) => [area(s.poly), id]).sort((a, b) => b[0] - a[0]);
   const rand = placementRandoms(shards.length, p.seed);
   for (const [, id] of order) {
-    const poly = placePolygon(shards[id].poly, rand[id], p.place ?? 0);
+    const poly = shards[id].row ? shards[id].poly : placePolygon(shards[id].poly, rand[id], p.place ?? 0);
     rasterize(poly, W, H, (x, y) => { labels[y * W + x] = id; }, k);
   }
 
@@ -72,20 +72,24 @@ export function renderMosaic(shards, colors, w, h, p) {
   }
   const dist = distanceTransform(f, W, H);
 
-  const g = (p.grout * k) / 2;
+  const gBase = (p.grout * k) / 2;
   const bw = Math.max(1e-3, p.bevel * k);
   const mortar = hexToRgb(p.groutColor);
   const az = (p.lightAz * Math.PI) / 180, el = (p.lightEl * Math.PI) / 180;
   const L = [Math.cos(el) * Math.cos(az), -Math.cos(el) * Math.sin(az), Math.sin(el)];
   const Hv = norm([L[0], L[1], L[2] + 1]);
   const rng = mulberry32(p.seed * 7919 + 13);
-  const tilt = shards.map(() => [rng.normal() * p.tilt, rng.normal() * p.tilt]);
+  const tilt = shards.map((s) => {
+    const k = s.row ? 0.5 * p.tilt : p.tilt;
+    return [rng.normal() * k, rng.normal() * k];
+  });
   const noiseCell = Math.max(1, Math.round(ss * 1.5));
 
   const hi = new Float32Array(W * H * 3);
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const i = y * W + x, l = labels[i], d = dist[i];
+      const g = l >= 0 && shards[l].row ? gBase * (p.rowGrout ?? 1) : gBase;
       const grain = hash2((x / noiseCell) | 0, (y / noiseCell) | 0, p.seed) - 0.5;
       if (l < 0 || d <= g) {
         const shade = (1 - p.groutShadow * (g > 0 ? Math.min(1, d / g) : 0) * 0.6) * (1 + grain * 0.12);

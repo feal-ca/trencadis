@@ -128,7 +128,7 @@ export function useEngine() {
         });
         setLabels((prev) => ({ ...prev, ...Object.fromEntries(data.images.map((v) => [v.key, v.label])) }));
         if (renderer.ok && data.shards) {
-          renderer.setShards(data.shards.map((poly) => ({ poly })), data.w, data.h, paramsRef.current.seed);
+          renderer.setShards(data.shards.map((poly, i) => ({ poly, row: data.rows?.[i] })), data.w, data.h, paramsRef.current.seed);
         }
         if (renderer.ok && data.colors) {
           renderer.setColors(data.colors, paramsRef.current.seed);

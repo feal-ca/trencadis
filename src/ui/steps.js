@@ -1,7 +1,7 @@
 // The guided flow. Each step names the stage images it can show, the controls
 // of simple mode and the parameters of advanced mode. Copy is plain on purpose.
 
-export const ROW_PARAMS = ['rowScale', 'rowLength', 'rowCount', 'rowColor'];
+export const ROW_PARAMS = ['rowScale', 'rowLength', 'rowCount', 'rowColor', 'rowContrast', 'rowGrout'];
 
 export const MACRO_INFO = {
   size: { label: 'Tamaño de los trozos', help: 'Más alto: trozos grandes; más bajo: trozos pequeños.' },

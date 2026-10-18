@@ -217,3 +217,7 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
 .macro.is-manual > .field-row label { color: var(--soft); }
 .macro-params { display: grid; gap: 12px; margin-top: 6px; padding-left: 12px; border-left: 2px solid var(--line); }
 .rows-title { font-weight: 650; }
+.draw-options { display: grid; gap: 8px; padding: 10px; background: var(--wall); border-radius: 8px; }
+.draw-options .seg { justify-self: start; }
+.draw-options .seg button.on { background: var(--ink); color: var(--wall); box-shadow: none; }
+.draw-options .field-check { font-weight: 500; }

@@ -150,6 +150,8 @@ export const GROUPS = [
         ],
         help: 'Más oscuro: las hileras dibujan el contorno como una línea, como en los bancos del Park Güell.',
       },
+      { key: 'rowContrast', label: 'Intensidad del color de las hileras', min: 0, max: 1, step: 0.01, def: 0.6, stage: 'color', show: (p) => p.rowColor !== 'photo',
+        help: 'Cuánto más oscuras o más claras que la foto salen las hileras. Más alto: se distinguen más del fondo.' },
       { key: 'colorJitter', label: 'Variación entre trozos', min: 0, max: 0.15, step: 0.002, def: 0.025, stage: 'color',
         help: 'Más alto: trozos vecinos con tonos algo distintos, como azulejos de lotes diferentes.' },
     ],
@@ -159,6 +161,8 @@ export const GROUPS = [
     params: [
       { key: 'grout', label: 'Ancho de la junta', min: 0, max: 6, step: 0.1, def: 1.3, unit: ' px', stage: 'render',
         help: 'Más alto: más mortero entre trozos; 0: sin junta.' },
+      { key: 'rowGrout', label: 'Junta de las hileras', min: 1, max: 3, step: 0.05, def: 1.6, unit: '×', stage: 'render',
+        help: 'Junta más ancha alrededor de las piezas de hilera, para que la fila se lea como una banda aunque las piezas sean grandes.' },
       { key: 'groutColor', label: 'Color del mortero', type: 'color', def: '#d9d5cb', stage: 'render' },
       { key: 'groutShadow', label: 'Sombra en la junta', min: 0, max: 1, step: 0.01, def: 0.45, stage: 'render',
         help: 'Más alto: la junta parece más hundida.' },

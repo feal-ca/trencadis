@@ -53,7 +53,7 @@ export function createRenderer(canvas, { onLost } = {}) {
   const maxSize = Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE), gl.getParameter(gl.MAX_RENDERBUFFER_SIZE));
   const emptyVao = gl.createVertexArray();
 
-  let vao = null, vertexCount = 0, work = [1, 1];
+  let vao = null, vertexCount = 0, work = [1, 1], rowFlags = [];
   let colorTex = null, tiltTex = null;
   let targets = null, fieldDirty = true, placed = null;
 
@@ -115,6 +115,7 @@ export function createRenderer(canvas, { onLost } = {}) {
     maxSize,
     setShards(shards, w, h, seed = 1) {
       const { positions, ids, centers, place } = triangulate(shards, seed);
+      rowFlags = shards.map((s) => !!s.row);
       if (vao) gl.deleteVertexArray(vao);
       vao = gl.createVertexArray();
       gl.bindVertexArray(vao);
@@ -139,8 +140,11 @@ export function createRenderer(canvas, { onLost } = {}) {
       const rng = mulberry32(seed * 7919 + 13);
       for (let i = 0; i < n; i++) {
         col.set([colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2], 1], i * 4);
-        tilt[i * 4] = rng.normal();
-        tilt[i * 4 + 1] = rng.normal();
+        // Row pieces tilt half as much, so a row reads as one even band.
+        const k = rowFlags[i] ? 0.5 : 1;
+        tilt[i * 4] = rng.normal() * k;
+        tilt[i * 4 + 1] = rng.normal() * k;
+        tilt[i * 4 + 2] = rowFlags[i] ? 1 : 0;
       }
       for (const t of [colorTex, tiltTex]) if (t) gl.deleteTexture(t);
       colorTex = texture(gl, gl.RGBA32F, gl.RGBA, gl.FLOAT, DATA_WIDTH, rows, col);
@@ -181,6 +185,7 @@ export function createRenderer(canvas, { onLost } = {}) {
       gl.uniform1f(loc.uShininess, p.shininess);
       gl.uniform1f(loc.uGlaze, p.glazeNoise);
       gl.uniform1f(loc.uSeed, p.seed);
+      gl.uniform1f(loc.uRowGrout, p.rowGrout ?? 1);
       gl.uniform3fv(loc.uMortar, hexToRgb(p.groutColor));
       gl.uniform3f(loc.uLight, Math.cos(el) * Math.cos(az), -Math.cos(el) * Math.sin(az), Math.sin(el));
       gl.drawArrays(gl.TRIANGLES, 0, 3);

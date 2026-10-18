@@ -99,6 +99,7 @@ uniform float uTiltAmount, uAmbient, uSpecular, uShininess, uGlaze;
 uniform vec3 uMortar;
 uniform vec3 uLight;
 uniform float uSeed;
+uniform float uRowGrout;   // grout width factor around row pieces
 out vec4 o;
 ${DECODE}
 float hash(vec2 p) {
@@ -112,7 +113,10 @@ void main() {
   vec2 seed = texelFetch(uSeeds, q, 0).xy;
   vec2 p = gl_FragCoord.xy;
   float d = seed.x < 0.0 ? 0.0 : length(p - seed);
-  float g = uGrout * uScale * 0.5;
+  // Row pieces carry a flag in the tilt texture; their grout is wider so a
+  // row still reads as a band when its pieces are as big as the rest.
+  float isRow = id > 0 ? texelFetch(uTilt, ivec2((id - 1) % 1024, (id - 1) / 1024), 0).z : 0.0;
+  float g = uGrout * uScale * 0.5 * mix(1.0, uRowGrout, isRow);
   float grain = hash(floor(p / max(1.0, 1.5 * uScale / 2.0))) - 0.5;
 
   float shadeM = 1.0 - uGroutShadow * (g > 0.0 ? clamp(d / g, 0.0, 1.0) : 0.0) * 0.6;

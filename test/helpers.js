@@ -45,3 +45,4 @@ export function discImage(w = 240, h = 200, r = 60) {
   }
   return { w, h, rgb };
 }
+

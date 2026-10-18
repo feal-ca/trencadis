@@ -13,7 +13,8 @@ export function triangulate(shards, seed = 1) {
     const poly = shards[id].poly;
     const flat = poly.flat();
     const [cx, cy] = centroid(poly);
-    const r = rand[id];
+    // Row pieces stay in line: no hand-placement jitter for them.
+    const r = shards[id].row ? { a: 0, dx: 0, dy: 0 } : rand[id];
     for (const v of earcut(flat)) {
       pos.push(flat[v * 2], flat[v * 2 + 1]);
       ids.push(id);

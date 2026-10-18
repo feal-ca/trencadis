@@ -11,16 +11,31 @@ import { mergeSlivers, splitComponents } from './slivers.js';
 
 // --- automatic guides ----------------------------------------------------
 
-// Strong, long contours of the photo: gradient magnitude, non-maximum
-// suppression, hysteresis, then 8-connected chains, smoothed and resampled.
-// `autoGuides` in [0, 1]: 0 finds nothing, 1 many short contours.
-export function extractGuides(img, an, p) {
-  const amount = p.autoGuides ?? 0;
-  if (amount <= 0) return [];
+// Gradient of the photo, with its magnitude scaled so 1 is a strong edge
+// (the 99.5th percentile). Shared by the automatic guides and the snapping
+// of drawn ones.
+export function edgeMap(img, p) {
   const { w, h } = img;
   const { gx, gy } = sobel(blur(luminance(img), w, h, Math.max(1, p.detailSigma)), w, h);
   const mag = new Float32Array(w * h);
   for (let i = 0; i < w * h; i++) mag[i] = Math.hypot(gx[i], gy[i]);
+  const sample = new Float32Array(Math.ceil(mag.length / 7));
+  for (let i = 0, k = 0; i < mag.length; i += 7) sample[k++] = mag[i];
+  const strong = sample.sort()[Math.floor(0.995 * (sample.length - 1))] || 0;
+  const norm = new Float32Array(w * h);
+  if (strong > 0) for (let i = 0; i < w * h; i++) norm[i] = mag[i] / strong;
+  return { w, h, gx, gy, mag: norm, strong };
+}
+
+// Strong contours of the photo: gradient magnitude, non-maximum
+// suppression, hysteresis, then 8-connected chains, joined across small
+// gaps, smoothed and resampled. `autoGuides` in [0, 1]: 0 finds nothing,
+// 1 many and shorter contours.
+export function extractGuides(img, an, p, edges = edgeMap(img, p)) {
+  const amount = p.autoGuides ?? 0;
+  if (amount <= 0 || !(edges.strong > 0)) return [];
+  const { w, h } = img;
+  const { gx, gy, mag } = edges;
 
   const thin = new Float32Array(w * h);
   for (let y = 1; y < h - 1; y++) {
@@ -35,13 +50,9 @@ export function extractGuides(img, an, p) {
     }
   }
 
-  // Thresholds relative to the strongest edges of the image, so smooth
-  // gradients and noise never qualify however many ridges they produce.
-  const sample = new Float32Array(Math.ceil(mag.length / 7));
-  for (let i = 0, k = 0; i < mag.length; i += 7) sample[k++] = mag[i];
-  const strong = sample.sort()[Math.floor(0.995 * (sample.length - 1))];
-  if (!(strong > 0)) return [];
-  const hi = strong * (0.7 - 0.45 * amount);
+  // Thresholds relative to the strongest edges of the image (mag is scaled
+  // so they are 1), so smooth gradients and noise never qualify.
+  const hi = 0.55 - 0.4 * amount;
   const lo = hi * 0.5;
   const edge = new Uint8Array(w * h);
   const stack = [];
@@ -58,9 +69,9 @@ export function extractGuides(img, an, p) {
   }
 
   // Longest first, up to a total length of a few times the image perimeter.
-  const minLen = p.sMax * (5 - 3.5 * amount);
-  const budget = (1 + 3 * amount) * (w + h);
-  const chains = traceChains(edge, w, h)
+  const minLen = p.sMax * (2.5 - 2 * amount);
+  const budget = (1 + 5 * amount) * (w + h);
+  const chains = bridgeGaps(traceChains(edge, w, h).filter((c) => c.length > 2), Math.max(8, p.sMin))
     .map(smoothChain)
     .map((c) => [c, chainLength(c)])
     .filter(([c, len]) => c.length > 1 && len >= minLen)
@@ -110,6 +121,44 @@ function traceChains(edge, w, h) {
   // Open chains first (start at endpoints), then whatever is left (loops).
   for (let i = 0; i < w * h; i++) if (edge[i] && !seen[i] && degree(i) === 1) chains.push(walk(i));
   for (let i = 0; i < w * h; i++) if (edge[i] && !seen[i]) chains.push(walk(i));
+  return chains;
+}
+
+// Join chains whose ends are close and point the same way, so a contour
+// broken by a small gap becomes one guide.
+export function bridgeGaps(chains, gap) {
+  const dir = (c, atEnd) => {
+    const k = Math.min(6, c.length - 1);
+    const [a, b] = atEnd ? [c[c.length - 1 - k], c[c.length - 1]] : [c[k], c[0]];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+  };
+  const cosMax = Math.cos((35 * Math.PI) / 180);
+  let merged = true;
+  while (merged) {
+    merged = false;
+    outer: for (let i = 0; i < chains.length; i++) {
+      for (let j = 0; j < chains.length; j++) {
+        if (i === j) continue;
+        // The end of i against the start of j, or against its end (reversed).
+        for (const flip of [false, true]) {
+          const b = flip ? chains[j].slice().reverse() : chains[j];
+          const e = chains[i][chains[i].length - 1], s0 = b[0];
+          const d = Math.hypot(s0[0] - e[0], s0[1] - e[1]);
+          if (d > gap) continue;
+          const [ux, uy] = dir(chains[i], true);
+          const [vx, vy] = dir(b, false);
+          // b's start direction points backwards out of b, so it must oppose u.
+          if (-(ux * vx + uy * vy) < cosMax) continue;
+          if (d > 1 && ((s0[0] - e[0]) * ux + (s0[1] - e[1]) * uy) / d < 0.5) continue;
+          chains[i] = chains[i].concat(b);
+          chains.splice(j, 1);
+          merged = true;
+          break outer;
+        }
+      }
+    }
+  }
   return chains;
 }
 
@@ -285,13 +334,55 @@ export function overlayRows(baseShards, guides, w, h, p, an) {
 }
 
 
-// Hand-drawn guides arrive in normalised coordinates; scale, smooth and
-// resample them like the automatic ones.
-export function drawnGuides(list, w, h) {
-  return (list ?? [])
-    .map((g) => g.map(([u, v]) => [u * w, v * h]))
-    .filter((g) => g.length > 1)
-    .map((g) => smoothChain(resample(g, 1.5)));
+// Hand-drawn guides arrive in normalised coordinates, either as a list of
+// points (freehand) or { points, mode, snap }. Freehand strokes are
+// smoothed to take the shake out; "points" lines keep their straight
+// segments. With snap, every point moves to the strongest edge within a few
+// pixels across the line, so passing near a contour is enough.
+export function drawnGuides(list, w, h, edges = null, p = {}) {
+  return (list ?? []).map((entry) => {
+    const g = Array.isArray(entry) ? { points: entry, mode: 'free', snap: false } : entry;
+    let line = g.points.map(([u, v]) => [u * w, v * h]);
+    if (line.length < 2) return null;
+    line = g.mode === 'points' ? resample(line, 3) : smoothChain(resample(line, 1.5));
+    if (g.snap && edges) {
+      line = snapToEdges(line, edges, Math.max(6, 0.8 * (p.sMin ?? 7)));
+      if (g.mode !== 'points') line = smoothChain(line);
+    }
+    return line;
+  }).filter(Boolean);
+}
+
+function snapToEdges(line, edges, R) {
+  const { w, h, mag } = edges;
+  const at = (x, y) => {
+    const xi = Math.min(w - 2, Math.max(0, Math.floor(x - 0.5))), yi = Math.min(h - 2, Math.max(0, Math.floor(y - 0.5)));
+    const tx = Math.min(1, Math.max(0, x - 0.5 - xi)), ty = Math.min(1, Math.max(0, y - 0.5 - yi));
+    const i = yi * w + xi;
+    return (mag[i] * (1 - tx) + mag[i + 1] * tx) * (1 - ty) + (mag[i + w] * (1 - tx) + mag[i + w + 1] * tx) * ty;
+  };
+  const normals = line.map((_, i) => {
+    const a = line[Math.max(0, i - 2)], b = line[Math.min(line.length - 1, i + 2)];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [-(b[1] - a[1]) / l, (b[0] - a[0]) / l];
+  });
+  // Best shift across the line at every point (nearer edges win ties), then
+  // smoothed along it so neighbouring points don't jump to different edges.
+  const shift = line.map(([x, y], i) => {
+    const [nx, ny] = normals[i];
+    let best = 0, score = -Infinity;
+    for (let t = -R; t <= R; t += 0.5) {
+      const m = at(x + nx * t, y + ny * t) - 0.01 * Math.abs(t);
+      if (m > score) { score = m; best = t; }
+    }
+    return score > 0.2 ? best : 0;
+  });
+  return line.map(([x, y], i) => {
+    let s = 0, c = 0;
+    for (let k = Math.max(0, i - 3); k <= Math.min(line.length - 1, i + 3); k++) { s += shift[k]; c++; }
+    const t = s / c;
+    return [x + normals[i][0] * t, y + normals[i][1] * t];
+  });
 }
 
 // Put drawn and automatic guides together so their rows don't pile up:

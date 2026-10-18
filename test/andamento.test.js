@@ -164,3 +164,80 @@ describe('combining guides', () => {
     expect(nearest(end, auto.length ? out[1] ?? auto : auto)).toBeLessThan(25);
   });
 });
+
+import { bridgeGaps, drawnGuides, edgeMap } from '../src/core/andamento.js';
+import { triangulate } from '../src/gl/triangulate.js';
+import { shardColors } from '../src/core/color.js';
+
+describe('drawing help', () => {
+  const img = discImage(400, 300, 100);
+  const edges = edgeMap(img, DEFAULTS);
+  // A freehand circle 5 px outside the disc's outline, in normalised coordinates.
+  const circle = Array.from({ length: 90 }, (_, i) => {
+    const t = (i / 89) * 2 * Math.PI;
+    return [(200 + 105 * Math.cos(t)) / 400, (150 + 105 * Math.sin(t)) / 300];
+  });
+  const radiusError = (g) => g.reduce((s, [x, y]) => s + Math.abs(Math.hypot(x - 200, y - 150) - 100), 0) / g.length;
+
+  it('snaps a stroke drawn near a contour onto it', () => {
+    const [free] = drawnGuides([{ points: circle, mode: 'free', snap: false }], 400, 300, edges, DEFAULTS);
+    const [snapped] = drawnGuides([{ points: circle, mode: 'free', snap: true }], 400, 300, edges, DEFAULTS);
+    expect(radiusError(free)).toBeGreaterThan(3.5);
+    expect(radiusError(snapped)).toBeLessThan(1.5);
+  });
+
+  it('point-by-point lines stay straight', () => {
+    const [g] = drawnGuides([{ points: [[0.1, 0.5], [0.5, 0.2], [0.9, 0.5]], mode: 'points', snap: false }], 400, 300, edges, DEFAULTS);
+    // Every point lies on one of the two segments.
+    const onSeg = ([x, y]) => (x <= 200 ? Math.abs(y - (150 - (x - 40) * 0.5625)) : Math.abs(y - (60 + (x - 200) * 0.5625)));
+    for (const q of g) expect(onSeg(q)).toBeLessThan(0.5);
+  });
+
+  it('smooths the shake out of a freehand stroke', () => {
+    const shaky = Array.from({ length: 120 }, (_, i) => [(40 + i * 2.6) / 400, (60 + (i % 2 ? 3 : -3)) / 300]);
+    const [g] = drawnGuides([{ points: shaky, mode: 'free', snap: false }], 400, 300, edges, DEFAULTS);
+    const sd = Math.sqrt(g.reduce((s, [, y]) => s + (y - 60) ** 2, 0) / g.length);
+    expect(sd).toBeLessThan(1);
+  });
+});
+
+describe('automatic guides', () => {
+  const line = (x0, x1, y) => Array.from({ length: x1 - x0 + 1 }, (_, i) => [x0 + i, y]);
+
+  it('joins two pieces of one contour separated by a small gap', () => {
+    const out = bridgeGaps([line(10, 150, 100), line(157, 300, 100)], 8);
+    expect(out.length).toBe(1);
+    expect(pathLength(out[0])).toBeGreaterThan(285);
+  });
+
+  it('joins them whichever way each piece was traced', () => {
+    const out = bridgeGaps([line(10, 150, 100), line(157, 300, 100).reverse()], 8);
+    expect(out.length).toBe(1);
+  });
+
+  it('does not join a piece that turns away', () => {
+    const down = Array.from({ length: 100 }, (_, i) => [156, 104 + i]);
+    expect(bridgeGaps([line(10, 150, 100), down], 8).length).toBe(2);
+  });
+});
+
+describe('row pieces stay orderly', () => {
+  it('row pieces get no hand-placement jitter', () => {
+    const poly = [[0, 0], [10, 0], [10, 5], [0, 5]];
+    const { place } = triangulate([{ poly, row: true }, { poly: poly.map(([x, y]) => [x + 20, y]) }], 3);
+    // First shard (row) vertices have zero randoms; the other does not.
+    const rowPlace = place.slice(0, 18), other = place.slice(18);
+    expect(rowPlace.every((v) => v === 0)).toBe(true);
+    expect(other.some((v) => v !== 0)).toBe(true);
+  });
+
+  it('row colour strength sets how much darker the rows are', () => {
+    const img = flatImage(40, 40);
+    const shards = [{ poly: [[0, 0], [40, 0], [40, 20], [0, 20]], row: true }, { poly: [[0, 20], [40, 20], [40, 40], [0, 40]] }];
+    const lum = (c) => c[0] + c[1] + c[2];
+    const at = (strength) => shardColors(shards, img, { ...DEFAULTS, rowColor: 'dark', rowContrast: strength });
+    const weak = at(0.3), strong = at(1);
+    expect(lum(strong.slice(0, 3))).toBeLessThan(lum(weak.slice(0, 3)));
+    expect(lum(weak.slice(0, 3))).toBeLessThan(lum(weak.slice(3, 6)));
+  });
+});
