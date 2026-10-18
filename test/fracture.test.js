@@ -57,3 +57,30 @@ describe('fracture base tiles', () => {
     expect(longestSeam(run(3.5), 480, 360)).toBeLessThan(200);
   });
 });
+
+import { discImage, syntheticImage } from './helpers.js';
+
+// Minimum width of a convex polygon: over its edges, the smallest of the
+// largest distances from that edge to the other vertices.
+function minWidth(P) {
+  let best = Infinity;
+  for (let i = 0; i < P.length; i++) {
+    const [ax, ay] = P[i], [bx, by] = P[(i + 1) % P.length];
+    const L = Math.hypot(bx - ax, by - ay);
+    if (L < 1e-9) continue;
+    let far = 0;
+    for (const [x, y] of P) far = Math.max(far, Math.abs((x - ax) * (by - ay) - (y - ay) * (bx - ax)) / L);
+    best = Math.min(best, far);
+  }
+  return best;
+}
+
+describe('following edges without slivers', () => {
+  for (const [name, img] of [['scene', syntheticImage(500, 400)], ['disc', discImage(500, 400, 150)]]) {
+    it(`edgeAlign 1 with the sliver penalty leaves no pieces under 3 px wide (${name})`, () => {
+      const p = { ...DEFAULTS, algorithm: 'fracture', edgeAlign: 1, sliver: 3, temperature: 0.038 };
+      const shards = tessellate(img, toLab(img), analyze(img, p), p, mulberry32(7)).shards;
+      expect(shards.filter((s) => minWidth(s.poly) < 3).length).toBe(0);
+    });
+  }
+});

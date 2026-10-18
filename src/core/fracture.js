@@ -79,11 +79,22 @@ function sse(idx, lab) {
   return q - (s0 * s0 + s1 * s1 + s2 * s2) / n;
 }
 
-function sliverPenalty(P, parentArea) {
+// `thick` is how far the child reaches from the cut line, `target` the piece
+// size wanted here: a child thinner than half a piece is a sliver however
+// regular its outline looks.
+function sliverPenalty(P, parentArea, thick, target) {
   const e = elongation(P);
   const ang = minAngle(P);
   const frac = area(P) / parentArea;
-  return Math.max(0, e - 1.8) * 0.5 + Math.max(0, 0.4 - ang) * 2.5 + Math.max(0, 0.12 - frac) * 6;
+  const thin = Math.max(0, 1 - thick / (0.5 * target));
+  return Math.max(0, e - 1.8) * 0.5 + Math.max(0, 0.4 - ang) * 2.5 + Math.max(0, 0.12 - frac) * 6 + 3 * thin * thin;
+}
+
+// Largest distance from the line through (px, py) with normal n to P.
+function reach(P, px, py, nx, ny) {
+  let m = 0;
+  for (const [x, y] of P) m = Math.max(m, Math.abs((x - px) * nx + (y - py) * ny));
+  return m;
 }
 
 function chooseCut(P, A, samples, lab, an, p, rng) {
@@ -108,15 +119,19 @@ function chooseCut(P, A, samples, lab, an, p, rng) {
 
   const parentVar = sse(samples, lab) / samples.length;
   const noise = (p.angleNoise * Math.PI) / 180;
+  const target = targetSize(samples, an);
   const cands = [];
   const N = Math.max(1, Math.round(p.candidates));
+  // At least a third of the candidates cut across the piece's long axis, so
+  // a piece never has only edge-parallel cuts (all slivers) to choose from.
+  const across = Math.ceil(N / 3);
   for (let c = 0; c < N; c++) {
     const u = (rng() * 2 - 1) * p.cutJitter * 2, v = (rng() * 2 - 1) * p.cutJitter * 2;
     const px = cx + u * sdL * eL[0] + v * sdS * eS[0];
     const py = cy + u * sdL * eL[1] + v * sdS * eS[1];
     let dir;
     const coh = sample(coherence, an.w, an.h, px, py);
-    if (rng() < p.edgeAlign * Math.min(1, coh * 2)) dir = sample(theta, an.w, an.h, px, py);
+    if (c >= across && rng() < p.edgeAlign * Math.min(1, coh * 2)) dir = sample(theta, an.w, an.h, px, py);
     else dir = longAxis + Math.PI / 2;
     dir += (rng() * 2 - 1) * noise;
     const nx = -Math.sin(dir), ny = Math.cos(dir);
@@ -124,6 +139,9 @@ function chooseCut(P, A, samples, lab, an, p, rng) {
     if (children[0].length < 3 || children[1].length < 3) continue;
     const a0 = area(children[0]), a1 = area(children[1]);
     if (a0 < 1 || a1 < 1) continue;
+    const t0 = reach(children[0], px, py, nx, ny), t1 = reach(children[1], px, py, nx, ny);
+    // Never cut off a strip thinner than a fifth of a piece.
+    if (Math.min(t0, t1) < 0.2 * target) continue;
     const parts = [[], []];
     for (const i of samples) {
       const d = ((i % w) + 0.5 - px) * nx + (Math.floor(i / w) + 0.5 - py) * ny;
@@ -132,7 +150,7 @@ function chooseCut(P, A, samples, lab, an, p, rng) {
     if (!parts[0].length || !parts[1].length) continue;
     const v0 = sse(parts[0], lab) / parts[0].length, v1 = sse(parts[1], lab) / parts[1].length;
     const fit = (v0 * a0 + v1 * a1) / (parentVar * A + 1e-6);
-    const cost = fit + p.sliver * (sliverPenalty(children[0], A) + sliverPenalty(children[1], A));
+    const cost = fit + p.sliver * (sliverPenalty(children[0], A, t0, target) + sliverPenalty(children[1], A, t1, target));
     cands.push({ cost, children, parts });
   }
   if (!cands.length) return null;
