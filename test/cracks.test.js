@@ -27,17 +27,27 @@ describe('slivers', () => {
 });
 
 describe('crack spacing', () => {
-  it('a minimum gap leaves fewer thin pieces', () => {
+  it('minimum gap plus sliver merging leaves almost no thin pieces', () => {
     const img = syntheticImage(320, 220);
     const p = { ...DEFAULTS, algorithm: 'cracks' };
     const an = analyze(img, p);
-    const thin = (gap) => {
+    const thin = (gap, minWidth) => {
       const { labels } = growCracks(an, { ...p, crackGap: gap }, mulberry32(5));
-      const widths = regionWidths(labels, img.w, img.h);
+      const merged = mergeSlivers(labels, img.w, img.h, an.size, minWidth);
       let n = 0;
-      for (const [, width] of widths) if (width < 3) n++;
+      for (const [, width] of regionWidths(merged, img.w, img.h)) if (width < 3) n++;
       return n;
     };
-    expect(thin(0.4)).toBeLessThan(thin(0) * 0.6);
+    expect(thin(0.35, 0.3)).toBeLessThan(thin(0, 0) * 0.2);
+  });
+});
+
+describe('crack count', () => {
+  it('the minimum gap does not stop crack growth early', () => {
+    const img = syntheticImage(400, 300);
+    const p = { ...DEFAULTS, algorithm: 'cracks', minWidth: 0 };
+    const an = analyze(img, p);
+    const regions = (gap) => new Set(growCracks(an, { ...p, crackGap: gap }, mulberry32(9)).labels).size;
+    expect(regions(0.35)).toBeGreaterThan(regions(0) * 0.6);
   });
 });

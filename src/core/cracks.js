@@ -28,8 +28,12 @@ export function growCracks(an, p, rng) {
 
   let nextId = 1, born = 0;
   const active = [];
+  // A birth can fail because the point is on a crack, is rejected by the
+  // density test or is too close to another crack. Only several failed births
+  // in a row mean the image is full.
+  let failures = 0;
   const birth = () => {
-    for (let t = 0; t < 200; t++) {
+    for (let t = 0; t < 2000; t++) {
       const x = 1 + rng() * (w - 2), y = 1 + rng() * (h - 2);
       const i = (y | 0) * w + (x | 0);
       if (owner[i] >= 0) continue;
@@ -42,9 +46,10 @@ export function growCracks(an, p, rng) {
       owner[i] = id;
       for (const dir of [0, Math.PI]) active.push({ x, y, a: a + dir, id, px: x | 0, py: y | 0, steps: 0 });
       born++;
+      failures = 0;
       return;
     }
-    born = target; // the image is saturated with cracks
+    if (++failures >= 5) born = target; // the image is full of cracks
   };
 
   const STEP = 0.4;
