@@ -8,13 +8,15 @@ Trencadís convierte una foto en un mosaico de azulejo roto, como los bancos del
 
 La app abre con un cuadro de ejemplo ya convertido. Sube tu foto con «Subir foto» o arrastrándola sobre la imagen.
 
-A la derecha están los cuatro pasos, en orden: 1 Detalle, 2 Trozos, 3 Colores y 4 Acabado. Cada uno tiene sus controles principales, «Más ajustes» con el resto de parámetros (cada uno con una línea que dice qué pasa al subirlo o bajarlo), «¿Qué hace?» con la explicación y la fórmula, y «Ver este paso», que cambia la imagen grande por el resultado parcial de ese paso.
+A la derecha están los cuatro pasos, en orden: 1 Detalle, 2 Trozos, 3 Colores y 4 Acabado. Cada uno tiene sus controles principales, «Más ajustes» con el resto, «¿Qué hace?» con la explicación y la fórmula, y «Ver este paso», que cambia la imagen grande por el resultado parcial de ese paso. El icono ⓘ junto a cada control explica qué hace.
+
+Algunos controles principales mueven varios parámetros a la vez («Tamaño de los trozos», «Parecido a la foto», «Brillo del esmalte»). «Ajustar a mano» los desactiva y muestra esos parámetros por separado; «Volver al control simple» deshace el cambio.
 
 Si una zona tiene mucho detalle que no te interesa (reflejos de sol en el agua, césped, hojas), hay dos herramientas en Detalle. «Ignorar texturas» rebaja de forma automática el detalle hecho de puntos, y deja los contornos. El pincel de detalle permite pintar sobre la foto para quitar detalle o para añadirlo donde quieras trozos más pequeños.
 
 En Trozos también hay **hileras**: piezas rectangulares en fila a lo largo de una línea, como la espiral negra de los bancos de Gaudí. Las líneas salen solas de los contornos fuertes de la foto («Contornos con hilera») o las dibujas tú con «Dibujar línea». Sirven para que se lean contornos, barandillas o letras sin subir el detalle de toda la imagen. Los trozos del fondo se recortan hasta tocarlas.
 
-El acabado (junta, colocación, bisel, luz, brillo) se dibuja en la tarjeta gráfica y responde al momento. Mientras arrastras un control de detalle o de trozos se calcula una vista previa a media resolución, y al soltarlo, el resultado completo. El PNG se descarga al tamaño elegido en Acabado.
+El acabado (junta, colocación, bisel, luz, brillo) se dibuja en la tarjeta gráfica y responde al momento. Los cambios de detalle, trozos o color se recalculan en segundo plano en menos de un segundo y medio; mientras tanto la imagen se atenúa y aparece un pequeño indicador. El PNG se descarga al tamaño elegido en Acabado.
 
 ## Cómo funciona
 
@@ -26,7 +28,7 @@ El acabado (junta, colocación, bisel, luz, brillo) se dibuja en la tarjeta grá
    - Teselas alargadas: Voronoi con una métrica estirada a lo largo de los bordes, como en Hausner (2001).
    - Teselas partidas: teselas redondeadas grandes que reciben unos pocos cortes rectos.
    - Manchas de color: superpíxeles SLIC con la separación tomada de s(x) y bordes simplificados con Douglas-Peucker.
-   - Hileras, sobre cualquiera de los anteriores: las guías automáticas salen de un detector de bordes (supresión de no máximos e histéresis, con umbrales relativos a los bordes más fuertes) cuyas cadenas se suavizan y se quedan las más largas. Para cada píxel cerca de una guía se mide la distancia con signo y la posición a lo largo de ella; de ahí salen la fila y la pieza, con filas vecinas desplazadas media pieza. El fondo se rasteriza, las hileras lo sobrescriben, cada fragmento suelto pasa a ser un trozo y los muy estrechos se unen a su vecino del fondo. Los trozos que ninguna hilera toca conservan su polígono original.
+   - Hileras, sobre cualquiera de los anteriores: las guías automáticas salen de un detector de bordes (supresión de no máximos e histéresis, con umbrales relativos a los bordes más fuertes) cuyas cadenas se suavizan y se quedan las más largas. El ancho de las piezas es una fracción del tamaño de trozo de cada zona, suavizada a lo largo de la guía. Para cada píxel cerca de una guía se mide la distancia con signo y la posición a lo largo de ella; de ahí salen la fila y la pieza, con filas vecinas desplazadas media pieza. El fondo se rasteriza, las hileras lo sobrescriben, cada fragmento suelto pasa a ser un trozo y los muy estrechos se unen a su vecino del fondo. Los trozos que ninguna hilera toca conservan su polígono original.
 3. **Color.** Un color por trozo (media, más vivo, el más frecuente, mediana o el del centro), con paleta opcional (k-means de la foto o un juego fijo de azulejos de taller) y una pequeña variación al azar.
 4. **Acabado.** En WebGL2: los trozos se triangulan con earcut y se dibujan con su índice, cada uno algo girado, desplazado y encogido según «Colocación a mano»; un jump flood da a cada píxel la distancia al borde más cercano; el último pase pinta la junta, el bisel, la inclinación de cada trozo y un brillo Blinn-Phong. Si el navegador no tiene WebGL2, el mismo acabado se calcula en la CPU.
 

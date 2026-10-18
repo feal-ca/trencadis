@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyMacro, applyStyle, MACROS, readMacro, readStyle, STYLES } from '../src/core/macros.js';
+import { applyMacro, applyStyle, macroKeys, MACROS, readMacro, readStyle, STYLES } from '../src/core/macros.js';
 import { DEFAULTS } from '../src/core/params.js';
 
 const close = (a, b) => expect(a).toBeCloseTo(b, 4);
@@ -11,12 +11,18 @@ describe('macros', () => {
     close(p.sMax, 36);
   });
 
-  it('fidelity 1 on fracture gives T 0.01, edgeAlign 0.8, angleNoise 10, gamma 0.5', () => {
-    const p = applyMacro({ ...DEFAULTS, algorithm: 'fracture' }, 'fidelity', 1);
+  it('fidelity 1 on fracture gives T 0.01, edgeAlign 0.8, angleNoise 10 and leaves gamma alone', () => {
+    const p = applyMacro({ ...DEFAULTS, algorithm: 'fracture', gamma: 0.9 }, 'fidelity', 1);
     close(p.temperature, 0.01);
     close(p.edgeAlign, 0.8);
     close(p.angleNoise, 10);
-    close(p.gamma, 0.5);
+    close(p.gamma, 0.9);
+  });
+
+  it('macroKeys lists what a macro moves for the current algorithm', () => {
+    expect(macroKeys('size', DEFAULTS)).toEqual(['sMin', 'sMax']);
+    expect(macroKeys('fidelity', { ...DEFAULTS, algorithm: 'slic' })).toEqual(['compactness']);
+    expect(macroKeys('fidelity', { ...DEFAULTS, algorithm: 'voronoi' })).toEqual([]);
   });
 
   it('fidelity on slic sets compactness 40 − 34f', () => {
@@ -32,7 +38,7 @@ describe('macros', () => {
   });
 
   for (const id of MACROS) {
-    for (const algorithm of ['fracture', 'hybrid', 'voronoi', 'voronoi-aniso', 'slic', 'cracks']) {
+    for (const algorithm of ['fracture', 'hybrid', 'voronoi-aniso', 'slic', 'cracks']) {
       it(`readMacro round-trips applyMacro for ${id} on ${algorithm}`, () => {
         const p = applyMacro({ ...DEFAULTS, algorithm }, id, 0.3);
         close(readMacro(p, id), 0.3);

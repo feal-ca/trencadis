@@ -1,6 +1,8 @@
 // The guided flow. Each step names the stage images it can show, the controls
 // of simple mode and the parameters of advanced mode. Copy is plain on purpose.
 
+export const ROW_PARAMS = ['rowScale', 'rowLength', 'rowCount', 'rowColor'];
+
 export const MACRO_INFO = {
   size: { label: 'Tamaño de los trozos', help: 'Más alto: trozos grandes; más bajo: trozos pequeños.' },
   fidelity: { label: 'Parecido a la foto', help: 'Más alto: los cortes siguen los contornos de la foto; más bajo: formas más libres.' },
@@ -52,7 +54,7 @@ export const STEPS = [
       { key: 'orientation', label: 'Dirección de los bordes' },
     ],
     simple: [{ macro: 'size' }, { param: 'ignoreTexture' }, { kind: 'brush' }],
-    advanced: ['sMin', 'sMax', 'gamma', 'detailSigma', 'detailSmooth', 'tensorSigma', 'workLong'],
+    advanced: ['gamma', 'detailSigma', 'detailSmooth', 'tensorSigma', 'workLong'],
     summary: (p) => `Trozos de ${Math.round(p.sMin)} a ${Math.round(p.sMax)} px`,
   },
   {
@@ -63,7 +65,7 @@ export const STEPS = [
       { key: 'structure', label: 'Estructura' },
     ],
     simple: [{ kind: 'algorithm' }, { macro: 'fidelity' }, { kind: 'reseed' }, { kind: 'rows' }],
-    advanced: ['rowWidth', 'rowLength', 'rowCount', 'rowColor', 'seed', 'tileSize', 'spacing', 'lloydIters', 'lloydWeighted', 'anisotropy', 'kappa', 'temperature', 'candidates', 'edgeAlign', 'cutJitter', 'angleNoise', 'sliver', 'hybridSpacing', 'hybridCuts', 'hybridCutProb', 'compactness', 'slicIters', 'crackDensity', 'crackGap', 'crackActive', 'crackAngleNoise', 'crackCurl', 'crackFollow', 'minWidth', 'simplify'],
+    advanced: ['tileSize', 'spacing', 'lloydIters', 'lloydWeighted', 'anisotropy', 'kappa', 'temperature', 'candidates', 'edgeAlign', 'cutJitter', 'angleNoise', 'sliver', 'hybridSpacing', 'hybridCuts', 'hybridCutProb', 'compactness', 'slicIters', 'crackDensity', 'crackGap', 'crackActive', 'crackAngleNoise', 'crackCurl', 'crackFollow', 'minWidth', 'simplify'],
   },
   {
     id: 'color',
@@ -84,7 +86,7 @@ export const STEPS = [
     formula: 'junta: píxeles a menos de ancho / 2 del borde\ncolocación: giro ≤ 6°, desplazamiento ≤ 1,2 px, encogido ≤ 6 %\nluz = (ambiente + difusa) · color + brillo · (n · h)^dureza   (Blinn-Phong)',
     views: [],
     simple: [{ param: 'grout' }, { param: 'place' }, { macro: 'gloss' }, { param: 'lightAz' }],
-    advanced: ['groutColor', 'groutShadow', 'bevel', 'bevelStrength', 'tilt', 'lightEl', 'ambient', 'specular', 'shininess', 'glazeNoise', 'outLong', 'supersample'],
+    advanced: ['groutColor', 'groutShadow', 'bevel', 'bevelStrength', 'lightEl', 'ambient', 'glazeNoise', 'outLong', 'supersample'],
     summary: (p) => `Junta de ${String(p.grout).replace('.', ',')} px`,
   },
 ];

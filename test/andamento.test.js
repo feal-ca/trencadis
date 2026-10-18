@@ -40,10 +40,13 @@ describe('rows', () => {
   const img = flatImage(300, 200);
   const base = (p) => tessellate(img, toLab(img), analyze(img, p), p, mulberry32(2)).shards;
   const line = [[20, 100], [280, 100]];
+  // On a flat image s(x) = sMax everywhere, so rowScale = 8 / sMax gives 8 px pieces.
+  const eight = 8 / DEFAULTS.sMax;
+  const rowsOver = (p, guides) => overlayRows(base(p), guides, img.w, img.h, p, analyze(img, p));
 
   it('a single centred row of pieces follows the line', () => {
-    const p = { ...DEFAULTS, rowWidth: 8, rowLength: 2, rowCount: 1 };
-    const shards = overlayRows(base(p), [line], img.w, img.h, p, mulberry32(1));
+    const p = { ...DEFAULTS, rowScale: eight, rowLength: 2, rowCount: 1 };
+    const shards = rowsOver(p, [line]);
     const rows = shards.filter((s) => s.row);
     expect(rows.length).toBeGreaterThan(11);
     expect(rows.length).toBeLessThan(22);
@@ -57,9 +60,10 @@ describe('rows', () => {
 
   it('no gaps on a detailed image either', () => {
     const img2 = syntheticImage(400, 300);
-    const p = { ...DEFAULTS, sMin: 4, sMax: 20, rowWidth: 8, rowCount: 2 };
-    const b2 = tessellate(img2, toLab(img2), analyze(img2, p), p, mulberry32(2)).shards;
-    const shards = overlayRows(b2, [[[20, 150], [200, 60], [380, 150]]], img2.w, img2.h, p);
+    const p = { ...DEFAULTS, sMin: 4, sMax: 20, rowCount: 2 };
+    const an2 = analyze(img2, p);
+    const b2 = tessellate(img2, toLab(img2), an2, p, mulberry32(2)).shards;
+    const shards = overlayRows(b2, [[[20, 150], [200, 60], [380, 150]]], img2.w, img2.h, p, an2);
     // Rasterise everything and count pixels nobody covers.
     const cover = new Uint8Array(img2.w * img2.h);
     for (const s of shards) rasterize(s.poly, img2.w, img2.h, (x, y) => { cover[y * img2.w + x] = 1; });
@@ -68,8 +72,8 @@ describe('rows', () => {
   });
 
   it('background pieces reach the rows: no gaps', () => {
-    const p = { ...DEFAULTS, rowWidth: 8, rowLength: 2, rowCount: 2 };
-    const shards = overlayRows(base(p), [line], img.w, img.h, p, mulberry32(1));
+    const p = { ...DEFAULTS, rowScale: eight, rowLength: 2, rowCount: 2 };
+    const shards = rowsOver(p, [line]);
     const covered = shards.reduce((s, sh) => s + area(sh.poly), 0) / (img.w * img.h);
     expect(covered).toBeGreaterThan(0.97);
     // Original polygons next to re-traced ones overlap by a fraction of a
@@ -78,8 +82,8 @@ describe('rows', () => {
   });
 
   it('rowCount 3 spans three widths around the line', () => {
-    const p = { ...DEFAULTS, rowWidth: 8, rowLength: 2, rowCount: 3 };
-    const rows = overlayRows(base(p), [line], img.w, img.h, p, mulberry32(1)).filter((s) => s.row);
+    const p = { ...DEFAULTS, rowScale: eight, rowLength: 2, rowCount: 3 };
+    const rows = rowsOver(p, [line]).filter((s) => s.row);
     const ys = rows.flatMap((s) => s.poly.map((q) => q[1]));
     expect(Math.min(...ys)).toBeGreaterThan(100 - 14);
     expect(Math.max(...ys)).toBeLessThan(100 + 14);
@@ -87,13 +91,31 @@ describe('rows', () => {
   });
 });
 
+describe('row pieces follow the piece size', () => {
+  it('pieces are narrow where s(x) is small and wide where it is large', () => {
+    const w = 400, h = 200;
+    const img = flatImage(w, h);
+    const p = { ...DEFAULTS, rowScale: 0.5, rowLength: 2, rowCount: 1 };
+    const an = analyze(img, p);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) an.size[y * w + x] = x < w / 2 ? 10 : 40;
+    const base = tessellate(img, toLab(img), an, p, mulberry32(2)).shards;
+    const rows = overlayRows(base, [[[10, 100], [390, 100]]], w, h, p, an).filter((s) => s.row);
+    const height = (s) => { const [, y0, , y1] = bbox(s.poly); return y1 - y0; };
+    const mean = (list) => list.reduce((a, s) => a + height(s), 0) / list.length;
+    const left = rows.filter((s) => centroid(s.poly)[0] < 120), right = rows.filter((s) => centroid(s.poly)[0] > 280);
+    expect(mean(left)).toBeLessThan(8);
+    expect(mean(right)).toBeGreaterThan(15);
+  });
+});
+
 describe('rows leave the rest alone', () => {
   it('background pieces away from the rows are kept as they were', () => {
     const img = syntheticImage(400, 300);
     const p = { ...DEFAULTS, sMin: 4, sMax: 20 };
-    const base = tessellate(img, toLab(img), analyze(img, p), p, mulberry32(2)).shards;
+    const an = analyze(img, p);
+    const base = tessellate(img, toLab(img), an, p, mulberry32(2)).shards;
     const line = [[20, 20], [380, 20]];
-    const out = overlayRows(base, [line], img.w, img.h, p);
+    const out = overlayRows(base, [line], img.w, img.h, p, an);
     const far = (s) => centroid(s.poly)[1] > 60;
     const before = base.filter(far).length, after = out.filter((s) => !s.row && far(s)).length;
     expect(after).toBeGreaterThan(before * 0.95);

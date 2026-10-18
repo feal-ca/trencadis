@@ -1,4 +1,5 @@
-import { applyMacro, readMacro } from '../core/macros.js';
+import { useId } from 'react';
+import { macroKeys } from '../core/macros.js';
 import { PARAM } from '../core/params.js';
 import { MACRO_INFO } from './steps.js';
 
@@ -16,79 +17,98 @@ function format(q, v) {
 
 const word = (t) => (t < 0.2 ? 'muy bajo' : t < 0.4 ? 'bajo' : t < 0.6 ? 'medio' : t < 0.8 ? 'alto' : 'muy alto');
 
-// A range input that tells the engine when a drag starts and ends, so the
-// worker can compute a half-size preview while the thumb moves.
-function Range({ id, value, onChange, engine }) {
+// An ⓘ next to a control's name; the explanation opens on hover, focus or tap.
+export function InfoTip({ text, label }) {
+  const id = useId();
+  if (!text) return null;
   return (
-    <input
-      id={id}
-      type="range"
-      min={0}
-      max={1000}
-      value={Math.round(value * 1000)}
-      onPointerDown={engine.beginDrag}
-      onPointerCancel={engine.endDrag}
-      onChange={(e) => onChange(e.target.value / 1000)}
-    />
+    <span className="tip">
+      <button type="button" className="tip-btn" aria-label={`Qué hace «${label}»`} aria-describedby={id}>i</button>
+      <span role="tooltip" id={id} className="tip-text">{text}</span>
+    </span>
   );
 }
 
-export function Param({ k, engine, help = true }) {
+function Range({ id, value, onChange, disabled }) {
+  return (
+    <input id={id} type="range" min={0} max={1000} value={Math.round(value * 1000)} disabled={disabled}
+      onChange={(e) => onChange(e.target.value / 1000)} />
+  );
+}
+
+function Label({ htmlFor, label, help, children }) {
+  return (
+    <div className="field-row">
+      <label htmlFor={htmlFor}>{label}</label>
+      <InfoTip text={help} label={label} />
+      <span className="field-value">{children}</span>
+    </div>
+  );
+}
+
+export function Param({ k, engine }) {
   const q = PARAM[k];
   const value = engine.params[k];
   const set = (v) => engine.setParam(k, v);
   const id = `p-${k}`;
-  const helpLine = help && q.help ? <span className="help">{q.help}</span> : null;
   if (q.type === 'select') {
     return (
       <div className="field">
-        <label className="field-row" htmlFor={id}><span>{q.label}</span></label>
+        <Label htmlFor={id} label={q.label} help={q.help} />
         <select id={id} value={value} onChange={(e) => set(e.target.value)}>
           {q.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        {helpLine}
       </div>
     );
   }
   if (q.type === 'checkbox') {
     return (
-      <div className="field">
-        <label className="field-check" htmlFor={id}>
-          <input id={id} type="checkbox" checked={value} onChange={(e) => set(e.target.checked)} />
-          <span>{q.label}</span>
-        </label>
-        {helpLine}
+      <div className="field field-inline">
+        <input id={id} type="checkbox" checked={value} onChange={(e) => set(e.target.checked)} />
+        <Label htmlFor={id} label={q.label} help={q.help} />
       </div>
     );
   }
   if (q.type === 'color') {
     return (
       <div className="field">
-        <label className="field-row" htmlFor={id}>
-          <span>{q.label}</span>
+        <Label htmlFor={id} label={q.label} help={q.help}>
           <input id={id} type="color" value={value} onChange={(e) => set(e.target.value)} />
-        </label>
+        </Label>
       </div>
     );
   }
   return (
     <div className="field">
-      <label className="field-row" htmlFor={id}><span>{q.label}</span><output>{format(q, value)}</output></label>
-      <Range id={id} value={toPos(q, value)} onChange={(t) => set(fromPos(q, t))} engine={engine} />
-      {helpLine}
+      <Label htmlFor={id} label={q.label} help={q.help}><output htmlFor={id}>{format(q, value)}</output></Label>
+      <Range id={id} value={toPos(q, value)} onChange={(t) => set(fromPos(q, t))} />
     </div>
   );
 }
 
-export function Macro({ id, engine, help = true }) {
-  const t = readMacro(engine.params, id);
+// A simple control that moves several parameters at once. "Ajustar a mano"
+// turns it off and shows those parameters instead, so the two never fight.
+export function Macro({ id, engine }) {
   const info = MACRO_INFO[id];
+  const keys = macroKeys(id, engine.params);
+  if (!keys.length) return null;
+  const manual = !!engine.macros.manual[id];
+  const value = engine.macros.values[id];
   const fid = `m-${id}`;
   return (
-    <div className="field">
-      <label className="field-row" htmlFor={fid}><span>{info.label}</span><output>{t === null ? 'personalizado' : word(t)}</output></label>
-      <Range id={fid} value={t ?? 0.5} onChange={(v) => engine.setParams((p) => applyMacro(p, id, v))} engine={engine} />
-      {help && <span className="help">{info.help}</span>}
+    <div className={`field macro${manual ? ' is-manual' : ''}`}>
+      <Label htmlFor={fid} label={info.label} help={info.help}>
+        <output htmlFor={fid}>{manual ? 'a mano' : word(value)}</output>
+      </Label>
+      <Range id={fid} value={value} disabled={manual} onChange={(v) => engine.setMacro(id, v)} />
+      <button type="button" className="link macro-switch" onClick={() => engine.setManual(id, !manual)}>
+        {manual ? 'Volver al control simple' : 'Ajustar a mano'}
+      </button>
+      {manual && (
+        <div className="macro-params">
+          {keys.map((k) => <Param key={k} k={k} engine={engine} />)}
+        </div>
+      )}
     </div>
   );
 }

@@ -41,25 +41,25 @@ export const GROUPS = [
     id: 'tessellation',
     params: [
       { key: 'algorithm', label: 'Método', type: 'select', options: ALGORITHMS, def: 'fracture', stage: 'tessellation' },
-      { key: 'seed', label: 'Semilla', min: 1, max: 999, step: 1, def: 7, stage: 'tessellation',
+      { key: 'seed', hidden: true, label: 'Semilla', min: 1, max: 999, step: 1, def: 7, stage: 'tessellation',
         help: 'Cambia el azar: misma configuración, otra versión del mosaico.' },
       // Seeds
-      { key: 'spacing', label: 'Separación de semillas', min: 0.4, max: 2.5, step: 0.05, def: 1, stage: 'tessellation', show: algo('voronoi', 'voronoi-aniso', 'hybrid', 'slic'),
+      { key: 'spacing', hidden: true, label: 'Separación de semillas', min: 0.4, max: 2.5, step: 0.05, def: 1, stage: 'tessellation', show: algo('voronoi', 'voronoi-aniso', 'hybrid', 'slic'),
         help: 'Más alto: menos teselas y más grandes; más bajo: más teselas.' },
       { key: 'lloydIters', label: 'Regularidad', min: 0, max: 20, step: 1, def: 3, stage: 'tessellation', show: algo('voronoi', 'voronoi-aniso', 'hybrid'),
         help: 'Iteraciones de Lloyd. Más alto: teselas parecidas entre sí, tipo panal; 0: formas al azar.' },
-      { key: 'lloydWeighted', label: 'Regularidad según el detalle', type: 'checkbox', def: true, stage: 'tessellation', show: algo('voronoi', 'voronoi-aniso', 'hybrid'),
+      { key: 'lloydWeighted', hidden: true, label: 'Regularidad según el detalle', type: 'checkbox', def: true, stage: 'tessellation', show: algo('voronoi', 'voronoi-aniso', 'hybrid'),
         help: 'Mantiene teselas pequeñas en las zonas con detalle al regularizar.' },
       { key: 'anisotropy', label: 'Alargamiento', min: 0, max: 8, step: 0.1, def: 2.5, stage: 'tessellation', show: algo('voronoi-aniso'),
         help: 'Más alto: teselas estiradas a lo largo de los bordes; 0: redondas.' },
       // Fracture
       { key: 'tileSize', label: 'Tamaño de los azulejos base', min: 0, max: 8, step: 0.1, def: 3.5, stage: 'tessellation', show: algo('fracture'),
         help: 'Antes de romper, la imagen se divide en azulejos de este tamaño (en trozos). Más bajo: costuras más cortas; 0: se rompe la imagen entera.' },
-      { key: 'kappa', label: 'Área por trozo', min: 0.3, max: 3, step: 0.05, def: 1, stage: 'tessellation', show: algo('fracture'),
+      { key: 'kappa', hidden: true, label: 'Área por trozo', min: 0.3, max: 3, step: 0.05, def: 1, stage: 'tessellation', show: algo('fracture'),
         help: 'Cuándo se deja de cortar. Más alto: trozos más grandes que el tamaño pedido.' },
       { key: 'temperature', label: 'Temperatura', min: 0.001, max: 3, step: 0.001, def: 0.08, log: true, stage: 'tessellation', show: algo('fracture', 'hybrid'),
         help: 'Más bajo: siempre el corte que mejor separa colores; más alto: cortes al azar.' },
-      { key: 'candidates', label: 'Cortes probados', min: 1, max: 48, step: 1, def: 14, stage: 'tessellation', show: algo('fracture', 'hybrid'),
+      { key: 'candidates', hidden: true, label: 'Cortes probados', min: 1, max: 48, step: 1, def: 14, stage: 'tessellation', show: algo('fracture', 'hybrid'),
         help: 'Rectas que se prueban en cada corte. Más alto: más fiel y más lento.' },
       { key: 'edgeAlign', label: 'Seguir los bordes', min: 0, max: 1, step: 0.01, def: 0.5, stage: 'tessellation', show: algo('fracture', 'hybrid'),
         help: 'Más alto: más cortes paralelos a los bordes de la foto; más bajo: cortes por el lado corto del trozo.' },
@@ -79,12 +79,12 @@ export const GROUPS = [
       // SLIC
       { key: 'compactness', label: 'Compacidad', min: 1, max: 60, step: 0.5, def: 12, stage: 'tessellation', show: algo('slic'),
         help: 'Más bajo: las manchas se pegan a los bordes de la foto; más alto: manchas redondas y regulares.' },
-      { key: 'slicIters', label: 'Iteraciones', min: 1, max: 20, step: 1, def: 8, stage: 'tessellation', show: algo('slic'),
+      { key: 'slicIters', hidden: true, label: 'Iteraciones', min: 1, max: 20, step: 1, def: 8, stage: 'tessellation', show: algo('slic'),
         help: 'Más alto: manchas mejor ajustadas y cálculo más lento.' },
       // Cracks
-      { key: 'crackDensity', label: 'Densidad de grietas', min: 0.2, max: 3, step: 0.05, def: 1.1, stage: 'tessellation', show: algo('cracks'),
+      { key: 'crackDensity', hidden: true, label: 'Densidad de grietas', min: 0.2, max: 3, step: 0.05, def: 1.1, stage: 'tessellation', show: algo('cracks'),
         help: 'Más alto: más grietas y trozos más pequeños.' },
-      { key: 'crackActive', label: 'Grietas a la vez', min: 1, max: 64, step: 1, def: 10, stage: 'tessellation', show: algo('cracks'),
+      { key: 'crackActive', hidden: true, label: 'Grietas a la vez', min: 1, max: 64, step: 1, def: 10, stage: 'tessellation', show: algo('cracks'),
         help: 'Cuántas crecen simultáneamente. Más alto: grietas más cortas y repartidas.' },
       { key: 'crackAngleNoise', label: 'Ruido de ángulo', min: 0, max: 45, step: 1, def: 8, unit: '°', stage: 'tessellation', show: algo('cracks'),
         help: 'Más alto: direcciones de grieta más variadas.' },
@@ -97,8 +97,8 @@ export const GROUPS = [
       // Rows along guide lines, over any method
       { key: 'autoGuides', label: 'Contornos con hilera', min: 0, max: 1, step: 0.01, def: 0, stage: 'tessellation',
         help: 'Pone hileras de piezas a lo largo de los contornos fuertes de la foto. 0: ninguno; más alto: también contornos más débiles y cortos.' },
-      { key: 'rowWidth', label: 'Ancho de las piezas de hilera', min: 3, max: 30, step: 0.5, def: 9, unit: ' px', stage: 'tessellation',
-        help: 'Más alto: hileras más gruesas.' },
+      { key: 'rowScale', label: 'Ancho de las piezas de hilera', min: 0.15, max: 1.5, step: 0.01, def: 0.45, unit: '×', stage: 'tessellation',
+        help: 'En proporción al tamaño de trozo de cada zona: las hileras crecen y menguan con los trozos que las rodean.' },
       { key: 'rowLength', label: 'Largo de las piezas de hilera', min: 1, max: 4, step: 0.1, def: 1.8, unit: '×', stage: 'tessellation',
         help: 'Largo en múltiplos del ancho. 1: piezas cuadradas; más alto: rectángulos alargados.' },
       { key: 'rowCount', label: 'Filas por hilera', min: 1, max: 4, step: 1, def: 2, stage: 'tessellation',
@@ -193,7 +193,9 @@ export const GROUPS = [
 export const ALL_PARAMS = GROUPS.flatMap((g) => g.params);
 export const PARAM = Object.fromEntries(ALL_PARAMS.map((q) => [q.key, q]));
 export const DEFAULTS = Object.fromEntries(ALL_PARAMS.map((q) => [q.key, q.def]));
-export const isVisible = (q, p) => (q.show ?? any)(p);
+// Hidden parameters keep their default: they duplicate another control
+// ("Tamaño de los trozos", "Otra versión") or have no clear visible effect.
+export const isVisible = (q, p) => !q.hidden && (q.show ?? any)(p);
 
 export const STAGE_ORDER = ['analysis', 'tessellation', 'color', 'render'];
 export const keysForStage = (stage) => ALL_PARAMS.filter((q) => q.stage === stage).map((q) => q.key);

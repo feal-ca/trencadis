@@ -117,8 +117,10 @@ a { color: inherit; }
 .fields { display: grid; gap: 14px; }
 .formula-pre { margin: 10px 0 0; white-space: pre-wrap; font: 0.82rem/1.5 ui-monospace, 'SF Mono', Menlo, monospace; }
 .field { display: grid; gap: 4px; }
-.field-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 550; font-size: 0.92rem; }
-.field-row output { color: var(--soft); font-weight: 400; }
+.field-row { display: flex; align-items: center; gap: 6px; font-weight: 550; font-size: 0.92rem; }
+.field-value { margin-left: auto; color: var(--soft); font-weight: 400; }
+.field-inline { display: flex; align-items: center; gap: 8px; }
+.field-inline .field-row { flex: 1; }
 .field-check { display: flex; gap: 8px; align-items: center; font-weight: 550; font-size: 0.92rem; }
 .field select { padding: 7px 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--panel); }
 .field input[type='color'] { width: 44px; height: 28px; border: 1px solid var(--line-strong); border-radius: 6px; padding: 0; background: none; }
@@ -138,7 +140,12 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
 
 /* Steps panel: four numbered sections, one open at a time. */
 .side { overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
-.section { background: var(--panel); flex-shrink: 0; }
+.section { position: relative; isolation: isolate; flex-shrink: 0; }
+/* The chamfered background lives on a pseudo-element so tooltips can overflow. */
+.section::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; background: var(--panel);
+  clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px), 0 10px);
+}
 .section-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 10px 10px; }
 .section-title { flex: 1; display: flex; align-items: center; gap: 12px; border: 0; background: none; padding: 2px; cursor: pointer; text-align: left; min-width: 0; }
 .section-title b { display: block; font-size: 1.02rem; font-weight: 650; }
@@ -176,3 +183,37 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
   .side { overflow: visible; }
 }
 .rows-block { border-top: 1px solid var(--line); padding-top: 12px; gap: 8px; }
+
+/* Working indicator: the image dims a little and a shard turns in the corner. */
+.viewer-box .viewer-canvas, .viewer-host { transition: opacity 0.2s, filter 0.2s; }
+.viewer.is-busy .viewer-box .viewer-canvas, .viewer.is-busy .viewer-host { opacity: 0.7; filter: grayscale(0.35); }
+.busy-mark {
+  position: absolute; top: 22px; right: 22px; width: 16px; height: 16px; background: var(--ochre);
+  clip-path: polygon(0 10%, 70% 0, 100% 65%, 30% 100%); animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .busy-mark { animation: none; } }
+
+/* Info tooltips */
+.field { position: relative; }
+/* The tooltip spans the whole control, so it never leaves the panel. */
+.tip { display: inline-flex; }
+.tip-btn {
+  width: 17px; height: 17px; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%;
+  background: none; color: var(--soft); font: italic 600 11px/1 Georgia, serif; cursor: help;
+}
+.tip-btn:hover, .tip-btn:focus-visible { color: var(--ink); border-color: var(--ink); }
+.tip-text {
+  position: absolute; z-index: 20; top: 26px; left: -6px; right: -6px;
+  padding: 8px 10px; background: var(--ink); color: var(--wall); border-radius: 6px;
+  font-size: 0.8rem; font-weight: 400; line-height: 1.4; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  opacity: 0; visibility: hidden; transition: opacity 0.12s;
+}
+.tip:hover .tip-text, .tip:focus-within .tip-text { opacity: 1; visibility: visible; }
+
+/* Simple controls with a hand mode */
+.macro-switch { justify-self: start; font-size: 0.8rem; }
+.macro.is-manual input[type='range']:disabled { opacity: 0.35; }
+.macro.is-manual > .field-row label { color: var(--soft); }
+.macro-params { display: grid; gap: 12px; margin-top: 6px; padding-left: 12px; border-left: 2px solid var(--line); }
+.rows-title { font-weight: 650; }

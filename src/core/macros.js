@@ -17,11 +17,14 @@ const FIDELITY_BY_ALGORITHM = {
 // The first term of each macro is the one readMacro inverts.
 const TERMS = {
   size: () => [lin('sMin', 4, 7.5), lin('sMax', 16, 50)],
-  fidelity: (p) => [lin('gamma', 1.6, -1.1), ...(FIDELITY_BY_ALGORITHM[p.algorithm] ?? [])],
+  fidelity: (p) => FIDELITY_BY_ALGORITHM[p.algorithm] ?? [],
   gloss: () => [lin('specular', 0, 1.2), lin('tilt', 0.02, 0.28), exp10('shininess', 1.2, 1)],
 };
 
 export const MACROS = Object.keys(TERMS);
+
+// The parameters a macro sets for the current algorithm.
+export const macroKeys = (id, params) => TERMS[id](params).map((t) => t.key);
 
 export const MACRO_DEFAULTS = { size: 0.4, fidelity: 0.75, gloss: 0.45 };
 
@@ -32,7 +35,9 @@ export function applyMacro(params, id, value) {
 }
 
 export function readMacro(params, id) {
-  const [first, ...rest] = TERMS[id](params);
+  const terms = TERMS[id](params);
+  if (!terms.length) return null;
+  const [first, ...rest] = terms;
   const t = first.inv(params[first.key]);
   if (!Number.isFinite(t) || t < -1e-6 || t > 1 + 1e-6) return null;
   for (const term of rest) {

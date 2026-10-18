@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { macroKeys } from '../core/macros.js';
 import { ALGORITHMS, isVisible, PARAM } from '../core/params.js';
-import { Macro, Param } from './Param.jsx';
-import { ALGORITHM_INFO, STEPS } from './steps.js';
+import { InfoTip, Macro, Param } from './Param.jsx';
+import { ALGORITHM_INFO, ROW_PARAMS, STEPS } from './steps.js';
 
 function AlgorithmPicker({ engine }) {
   const [open, setOpen] = useState(false);
@@ -38,7 +39,10 @@ function BrushTools({ engine, brush, setBrush }) {
   );
   return (
     <div className="field">
-      <span className="field-row"><span>Pincel de detalle</span></span>
+      <div className="field-row">
+        <span>Pincel de detalle</span>
+        <InfoTip label="Pincel de detalle" text="Pinta sobre la foto para quitar detalle de zonas que no te interesan (se cubren con trozos grandes) o para añadirlo donde quieras trozos pequeños. Al soltar se recalcula." />
+      </div>
       <div className="brush-row">
         <div className="seg" role="group" aria-label="Pincel">
           {tool('remove', 'Quitar detalle')}
@@ -52,9 +56,6 @@ function BrushTools({ engine, brush, setBrush }) {
           <input type="range" min={10} max={200} value={Math.round(brush.size * 1000)} onChange={(e) => setBrush({ ...brush, size: e.target.value / 1000 })} />
         </label>
       )}
-      <span className="help">
-        {brush ? 'Pinta sobre la foto. Al soltar se recalcula el detalle.' : 'Para zonas con mucho detalle que no te interesa, o para pedir más trozos en una zona.'}
-      </span>
     </div>
   );
 }
@@ -63,9 +64,11 @@ function RowTools({ engine, tool, setTool }) {
   const drawing = tool?.kind === 'draw';
   return (
     <div className="field rows-block">
-      <span className="field-row"><span>Hileras</span></span>
-      <span className="help">Piezas rectangulares en fila a lo largo de una línea, como la espiral negra de los bancos de Gaudí. Ayudan a que se lean contornos, barandillas o letras.</span>
-      <Param k="autoGuides" engine={engine} help={false} />
+      <div className="field-row">
+        <span className="rows-title">Hileras</span>
+        <InfoTip label="Hileras" text="Piezas rectangulares en fila a lo largo de una línea, como la espiral negra de los bancos de Gaudí. Ayudan a que se lean contornos, barandillas o letras sin subir el detalle de toda la imagen." />
+      </div>
+      <Param k="autoGuides" engine={engine} />
       <div className="brush-row">
         <button type="button" className={`btn chamfer-s${drawing ? ' btn-dark' : ''}`} aria-pressed={drawing} onClick={() => setTool(drawing ? null : { kind: 'draw' })}>
           {drawing ? 'Terminar' : 'Dibujar línea'}
@@ -74,7 +77,13 @@ function RowTools({ engine, tool, setTool }) {
           Borrar líneas{engine.guides.length ? ` (${engine.guides.length})` : ''}
         </button>
       </div>
-      {drawing && <span className="help">Dibuja sobre la foto; cada trazo es una línea. Al soltar se recalcula.</span>}
+      {drawing && <span className="help">Dibuja sobre la foto; cada trazo es una línea.</span>}
+      <details className="more">
+        <summary>Ajustes de las hileras</summary>
+        <div className="fields">
+          {ROW_PARAMS.map((k) => <Param key={k} k={k} engine={engine} />)}
+        </div>
+      </details>
     </div>
   );
 }
@@ -102,10 +111,13 @@ function Section({ step, index, engine, open, onOpen, peek, onPeek, brush, setBr
   const text = step.id === 'trozos' ? ALGORITHM_INFO[algo].explanation : step.explanation;
   const formula = step.id === 'trozos' ? ALGORITHM_INFO[algo].formula : step.formula;
   const summary = step.id === 'trozos' ? ALGORITHMS.find((a) => a.value === algo).label : step.summary?.(engine.params);
-  const advanced = step.advanced.filter((k) => isVisible(PARAM[k], engine.params));
+  // Parameters a simple control on screen already moves only appear through
+  // its "Ajustar a mano"; the CPU antialiasing only matters without a GPU.
+  const covered = new Set(step.simple.filter((c) => c.macro).flatMap((c) => macroKeys(c.macro, engine.params)));
+  const advanced = step.advanced.filter((k) => isVisible(PARAM[k], engine.params) && !covered.has(k) && !(k === 'supersample' && engine.gpu));
   const canPeek = step.views.length > 0;
   return (
-    <section className={`section chamfer${open ? ' open' : ''}`}>
+    <section className={`section${open ? ' open' : ''}`}>
       <div className="section-head">
         <button type="button" className="section-title" aria-expanded={open} onClick={onOpen}>
           <span className="section-num">{index + 1}</span>

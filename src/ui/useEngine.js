@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { applyMacroDefaults } from '../core/macros.js';
+import { applyMacro, applyMacroDefaults, MACRO_DEFAULTS, MACROS } from '../core/macros.js';
 import { DEFAULTS, keysForStage } from '../core/params.js';
 import { createRenderer } from '../gl/renderer.js';
 
 const STORE = 'trencadis.params.v2';
+const MACRO_STORE = 'trencadis.macros.v1';
 // With ?debug in the URL, run timings are collected in window.__runs.
 const DEBUG = typeof location !== 'undefined' && location.search.includes('debug');
 const RENDER_KEYS = new Set(keysForStage('render'));
-// Render keys that are lengths in working pixels (halved for preview geometry).
-const LENGTH_KEYS = ['grout', 'bevel'];
 
 export const SAMPLES = [
   { src: './samples/vermeer.jpg', label: 'Vermeer' },
@@ -35,6 +34,15 @@ function canvasReadable() {
   }
 }
 
+// Simple controls: their values, and which ones are set by hand instead.
+function loadMacros() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MACRO_STORE) || 'null');
+    if (saved) return { values: { ...MACRO_DEFAULTS, ...saved.values }, manual: saved.manual ?? {} };
+  } catch { /* storage unavailable */ }
+  return { values: { ...MACRO_DEFAULTS }, manual: {} };
+}
+
 function loadParams() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE) || 'null');
@@ -57,7 +65,15 @@ function changeKind(a, b) {
 
 // Owns the worker, the WebGL renderer and the current parameters.
 export function useEngine() {
-  const [params, setParams] = useState(loadParams);
+  const [macros, setMacros] = useState(loadMacros);
+  // Simple controls not in hand mode decide their parameters from the start.
+  const [params, setParams] = useState(() => MACROS.reduce(
+    (p, id) => (macros.manual[id] ? p : applyMacro(p, id, macros.values[id])), loadParams()));
+  const macrosRef = useRef(macros);
+  macrosRef.current = macros;
+  useEffect(() => {
+    try { localStorage.setItem(MACRO_STORE, JSON.stringify(macros)); } catch { /* ignore */ }
+  }, [macros]);
   const [images, setImages] = useState({});
   const [labels, setLabels] = useState({});
   const [busy, setBusy] = useState(null);
@@ -71,9 +87,6 @@ export function useEngine() {
   const sentAt = useRef(0);
   const wanted = useRef(['final']);
   const sent = useRef(null);
-  const dragging = useRef(false);
-  const lastWasPreview = useRef(false);
-  const geomScale = useRef(1);
   const view = useRef([800, 600]);
   const frame = useRef(0);
   const paramsRef = useRef(params);
@@ -89,12 +102,6 @@ export function useEngine() {
   }, [glCanvas]);
   const gpu = renderer.ok;
 
-  const scaled = (p) => {
-    const q = { ...p };
-    for (const k of LENGTH_KEYS) q[k] *= geomScale.current;
-    return q;
-  };
-
   const requestRender = useCallback(() => {
     if (!renderer.ok || frame.current) return;
     frame.current = requestAnimationFrame(() => {
@@ -103,7 +110,7 @@ export function useEngine() {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       const [W, H] = renderer.sizeFor(1000);
       const s = Math.min((cw * dpr) / W, (ch * dpr) / H, 2400 / Math.max(W, H));
-      renderer.render(scaled(paramsRef.current), Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)));
+      renderer.render(paramsRef.current, Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)));
     });
   }, [renderer]);
 
@@ -113,12 +120,15 @@ export function useEngine() {
       if (data.id !== runId.current) return;
       if (data.type === 'progress') setBusy(data.stage);
       else if (data.type === 'stage') {
-        setImages((prev) => ({ ...prev, ...Object.fromEntries(data.images.map((v) => [v.key, v.image])) }));
+        setImages((prev) => {
+          const next = { ...prev, ...Object.fromEntries(data.images.map((v) => [v.key, v.image])) };
+          // Views of this stage that were not redrawn are out of date now.
+          for (const k of data.stale ?? []) delete next[k];
+          return next;
+        });
         setLabels((prev) => ({ ...prev, ...Object.fromEntries(data.images.map((v) => [v.key, v.label])) }));
         if (renderer.ok && data.shards) {
           renderer.setShards(data.shards.map((poly) => ({ poly })), data.w, data.h, paramsRef.current.seed);
-          geomScale.current = data.preview ? 0.5 : 1;
-          if (DEBUG) window.__geomScale = geomScale.current;
         }
         if (renderer.ok && data.colors) {
           renderer.setColors(data.colors, paramsRef.current.seed);
@@ -127,9 +137,9 @@ export function useEngine() {
         }
         if (data.stage === 'render') setMosaicReady(true);
       } else if (data.type === 'done') {
-        if (DEBUG) (window.__runs ??= []).push({ preview: data.preview, ms: performance.now() - sentAt.current, timings: data.timings, visual: data.visualMs });
+        if (DEBUG) (window.__runs ??= []).push({ ms: performance.now() - sentAt.current, timings: data.timings });
         setBusy(null);
-        if (!data.preview) setInfo({ shards: data.shards });
+        setInfo({ shards: data.shards });
       } else if (data.type === 'error') {
         setBusy(null);
         setError(data.message);
@@ -169,12 +179,12 @@ export function useEngine() {
     sent.current = null;
   }, [bitmap, params.workLong, readable]);
 
-  const post = useCallback((p, preview) => {
+  const post = useCallback((p) => {
     const id = ++runId.current;
     setError(null);
-    lastWasPreview.current = preview;
+    setBusy('analysis');
     sentAt.current = performance.now();
-    worker.current.postMessage({ type: 'run', id, params: p, preview, views: wanted.current, cpuRender: !renderer.ok });
+    worker.current.postMessage({ type: 'run', id, params: p, views: wanted.current, cpuRender: !renderer.ok });
   }, [renderer]);
 
   useEffect(() => {
@@ -187,22 +197,9 @@ export function useEngine() {
       requestRender();
       return;
     }
-    const preview = dragging.current;
-    const t = setTimeout(() => { sent.current = params; post(params, preview); }, preview ? 30 : 40);
+    const t = setTimeout(() => { sent.current = params; post(params); }, 40);
     return () => clearTimeout(t);
   }, [params, bitmap, readable, renderer, post, requestRender]);
-
-  const endDrag = useCallback(() => {
-    if (!dragging.current) return;
-    dragging.current = false;
-    // Replace the half-size preview with the full result.
-    if (lastWasPreview.current && bitmap) { sent.current = paramsRef.current; post(paramsRef.current, false); }
-  }, [bitmap, post]);
-  // The pointer can be released outside the slider, so listen on the window.
-  const beginDrag = useCallback(() => {
-    dragging.current = true;
-    window.addEventListener('pointerup', endDrag, { once: true });
-  }, [endDrag]);
 
   // Detail brush: values in [-1, 1] on a grid with a 256 px long side, so it
   // survives changes of working resolution.
@@ -239,7 +236,7 @@ export function useEngine() {
     if (!m || !worker.current) return;
     worker.current.postMessage({ type: 'mask', mask: m.empty ? null : { w: m.w, h: m.h, data: Float32Array.from(m.data) } });
     sent.current = paramsRef.current;
-    post(paramsRef.current, false);
+    post(paramsRef.current);
   }, [post]);
   const clearMask = useCallback(() => {
     const m = mask.current;
@@ -257,7 +254,7 @@ export function useEngine() {
     if (!worker.current) return;
     worker.current.postMessage({ type: 'guides', guides: list });
     sent.current = paramsRef.current;
-    post(paramsRef.current, false);
+    post(paramsRef.current);
   }, [post]);
 
   const loadBlob = useCallback(async (blob) => {
@@ -280,8 +277,12 @@ export function useEngine() {
     await loadBlob(await res.blob());
   }, [loadBlob]);
 
-  // The stage image on screen; previews only draw this one.
-  const setWanted = useCallback((key) => { wanted.current = [key]; }, []);
+  // The stage image on screen. The worker only draws this one after a run;
+  // asking for it here draws it from the last result if it is missing.
+  const setWanted = useCallback((key) => {
+    wanted.current = key === 'original' ? ['original'] : [key];
+    worker.current?.postMessage({ type: 'views', keys: wanted.current });
+  }, []);
 
   const setViewport = useCallback((w, h) => {
     view.current = [w, h];
@@ -292,7 +293,7 @@ export function useEngine() {
     const p = paramsRef.current;
     let blob;
     if (renderer.ok) {
-      blob = await renderer.toBlob(scaled(p), p.outLong);
+      blob = await renderer.toBlob(p, p.outLong);
       requestRender();
     } else if (images.final) {
       const cv = document.createElement('canvas');
@@ -313,12 +314,25 @@ export function useEngine() {
     params, setParams, images, labels, busy, info, error, gpu, glCanvas, mosaicReady,
     hasImage: !!bitmap, bitmap,
     setParam: (key, value) => setParams((p) => {
-      const next = { ...p, [key]: value };
+      let next = { ...p, [key]: value };
       if (key === 'sMin' && value > next.sMax) next.sMax = value;
       if (key === 'sMax' && value < next.sMin) next.sMin = value;
+      // A new method gets the same "Parecido a la foto" in its own terms.
+      const m = macrosRef.current;
+      if (key === 'algorithm' && !m.manual.fidelity) next = applyMacro(next, 'fidelity', m.values.fidelity);
       return next;
     }),
-    beginDrag, endDrag, loadBlob, loadSample, setViewport, setWanted, download,
+    macros,
+    setMacro: (id, value) => {
+      setMacros((m) => ({ ...m, values: { ...m.values, [id]: value } }));
+      setParams((p) => applyMacro(p, id, value));
+    },
+    // Hand mode shows the underlying parameters; leaving it re-applies the macro.
+    setManual: (id, on) => {
+      setMacros((m) => ({ ...m, manual: { ...m.manual, [id]: on } }));
+      if (!on) setParams((p) => applyMacro(p, id, macrosRef.current.values[id]));
+    },
+    loadBlob, loadSample, setViewport, setWanted, download,
     mask, maskVersion, paint, commitMask, clearMask,
     guides, addGuide: (g) => commitGuides([...guides, g]), clearGuides: () => commitGuides([]),
   };

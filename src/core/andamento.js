@@ -145,24 +145,63 @@ export function resample(c, step) {
 
 // --- rows ----------------------------------------------------------------
 
-// Row piece label for every pixel near a guide, -1 elsewhere. Row k covers
-// signed distances [(k − n/2)·a, (k − n/2 + 1)·a); along the guide, pieces
-// are ~L long with jittered ends, odd rows shifted half a piece.
-export function rowLabels(guides, w, h, p) {
-  const a = p.rowWidth, n = Math.round(p.rowCount), L = p.rowWidth * p.rowLength;
-  const half = (n * a) / 2;
+// Row piece label for every pixel near a guide, -1 elsewhere. The piece
+// width a follows the local piece size, a = rowScale · s(x) sampled along
+// the guide and smoothed; row k covers signed distances
+// [(k − n/2)·a, (k − n/2 + 1)·a). Along the guide pieces are rowLength·a long
+// with jittered ends, and odd rows start half a piece later.
+export function rowLabels(guides, w, h, p, size) {
+  const n = Math.round(p.rowCount);
   const best = new Float32Array(w * h).fill(Infinity);
   const key = new Float64Array(w * h).fill(-1);
-  guides.forEach((g, gi) => {
+  const sizeAt = (x, y) => size[Math.min(h - 1, Math.max(0, y | 0)) * w + Math.min(w - 1, Math.max(0, x | 0))];
+  guides.forEach((line, gi) => {
+    // Vertices every 4 px, so the piece size is sampled all along the guide.
+    const g = resample(line, 4);
     const arc = [0];
     for (let i = 1; i < g.length; i++) arc.push(arc[i - 1] + Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]));
+    // Width per vertex, smoothed over ~±10 vertices so it changes gently.
+    const raw = g.map(([x, y]) => p.rowScale * sizeAt(x, y));
+    const width = raw.map((_, i) => {
+      let sum = 0, c = 0;
+      for (let k = Math.max(0, i - 10); k <= Math.min(raw.length - 1, i + 10); k++) { sum += raw[k]; c++; }
+      return Math.max(2, sum / c);
+    });
+    const widthAt = (s) => {
+      let i = 0;
+      while (i + 1 < arc.length && arc[i + 1] < s) i++;
+      if (i + 1 >= arc.length) return width[arc.length - 1];
+      const t = (s - arc[i]) / Math.max(1e-9, arc[i + 1] - arc[i]);
+      return width[i] + (width[i + 1] - width[i]) * Math.min(1, Math.max(0, t));
+    };
+    // Piece boundaries along the guide for each row, with jittered lengths.
+    const total = arc[arc.length - 1];
+    const ends = [];
+    for (let k = 0; k < n; k++) {
+      const list = [];
+      let s = -((k % 2) * p.rowLength * widthAt(0)) / 2;
+      let j = 0;
+      while (s < total) {
+        list.push(s);
+        s += p.rowLength * widthAt(Math.max(0, s)) * (0.85 + 0.3 * hash2(gi * 131 + k, j++, 7));
+      }
+      list.push(Infinity);
+      ends.push(list);
+    }
+    const pieceAt = (k, s) => {
+      const list = ends[k];
+      let lo = 0, hi = list.length - 1;
+      while (lo + 1 < hi) { const mid = (lo + hi) >> 1; if (list[mid] <= s) lo = mid; else hi = mid; }
+      return lo;
+    };
     for (let i = 0; i + 1 < g.length; i++) {
       const [ax, ay] = g[i], [bx, by] = g[i + 1];
       const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
       if (len2 < 1e-9) continue;
       const len = Math.sqrt(len2);
-      const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - half - 1)), x1 = Math.min(w - 1, Math.ceil(Math.max(ax, bx) + half + 1));
-      const y0 = Math.max(0, Math.floor(Math.min(ay, by) - half - 1)), y1 = Math.min(h - 1, Math.ceil(Math.max(ay, by) + half + 1));
+      const reach = (n * Math.max(width[i], width[i + 1])) / 2 + 1;
+      const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - reach)), x1 = Math.min(w - 1, Math.ceil(Math.max(ax, bx) + reach));
+      const y0 = Math.max(0, Math.floor(Math.min(ay, by) - reach)), y1 = Math.min(h - 1, Math.ceil(Math.max(ay, by) + reach));
       for (let y = y0; y <= y1; y++) {
         for (let x = x0; x <= x1; x++) {
           const px = x + 0.5 - ax, py = y + 0.5 - ay;
@@ -170,21 +209,15 @@ export function rowLabels(guides, w, h, p) {
           // No caps at the ends of the guide; interior joints clamp to the vertex.
           if ((t < 0 && i === 0) || (t > 1 && i === g.length - 2)) continue;
           t = Math.min(1, Math.max(0, t));
-          const d = (px * dy - py * dx) / len; // signed distance to the segment line
-          const ex = px - t * dx, ey = py - t * dy;
-          const dist = Math.hypot(ex, ey);
+          const a = width[i] + (width[i + 1] - width[i]) * t;
+          const half = (n * a) / 2;
+          const dist = Math.hypot(px - t * dx, py - t * dy);
           if (dist > half || dist >= best[y * w + x]) continue;
-          const signed = Math.sign(d || 1) * dist;
-          const k = Math.floor((signed + half) / a);
+          const d = (px * dy - py * dx) / len; // signed distance to the segment line
+          const k = Math.floor((Math.sign(d || 1) * dist + half) / a);
           if (k < 0 || k >= n) continue;
-          const s = arc[i] + t * len + ((k % 2) * L) / 2;
-          // Jittered piece ends: boundary j sits at j·L + ±15 % of L.
-          const edgeAt = (j) => j * L + (hash2(gi * 131 + k, j, 7) - 0.5) * 0.3 * L;
-          let j = Math.floor(s / L);
-          if (s < edgeAt(j)) j--;
-          else if (s >= edgeAt(j + 1)) j++;
           best[y * w + x] = dist;
-          key[y * w + x] = (gi * 8 + k) * 1e6 + (j + 5e5);
+          key[y * w + x] = (gi * 8 + k) * 1e6 + pieceAt(k, arc[i] + t * len);
         }
       }
     }
@@ -203,9 +236,9 @@ export function rowLabels(guides, w, h, p) {
 // Lay the rows over the background shards. The background is rasterised,
 // the rows overwrite it, every leftover fragment becomes its own piece and
 // background slivers merge into background neighbours.
-export function overlayRows(baseShards, guides, w, h, p) {
+export function overlayRows(baseShards, guides, w, h, p, an) {
   if (!guides.length) return baseShards;
-  const rows = rowLabels(guides, w, h, p);
+  const rows = rowLabels(guides, w, h, p, an.size);
   if (!rows.count) return baseShards;
   const labels = new Int32Array(w * h).fill(-1);
   const order = baseShards.map((s, id) => [area(s.poly), id]).sort((a, b) => b[0] - a[0]);
@@ -232,8 +265,7 @@ export function overlayRows(baseShards, guides, w, h, p) {
         || (y + 1 < h && protect.has(parts[i + w])) || (y > 0 && protect.has(parts[i - w]))) touching.add(l);
     }
   }
-  const size = new Float32Array(w * h).fill(p.rowWidth * 3);
-  const merged = mergeSlivers(parts, w, h, size, 0.25, { protect, only: touching });
+  const merged = mergeSlivers(parts, w, h, an.size, 0.25, { protect, only: touching });
 
   // Background pieces whose pixels are exactly what they were keep their
   // original, crisper polygon. A base piece changed if it lost pixels (to a

@@ -161,7 +161,7 @@ export default function Viewer({ engine, view, brush }) {
 
   return (
     <div
-      className="viewer chamfer"
+      className={`viewer chamfer${engine.busy && !showBrush && !showDraw ? ' is-busy' : ''}`}
       onDragOver={(e) => { e.preventDefault(); setDropping(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropping(false); }}
       onDrop={onDrop}
@@ -181,6 +181,7 @@ export default function Viewer({ engine, view, brush }) {
           : useGl ? <div className="viewer-host" ref={host} />
           : image && <ImageCanvas image={image} className="viewer-canvas" />}
         {!ready && <p className="viewer-empty">{engine.hasImage ? 'Calculando…' : 'Todavía no hay foto.'}</p>}
+        {engine.busy && ready && <span className="busy-mark" role="status" aria-label="Calculando" />}
       </div>
       {dropping && (
         <div className="drop">

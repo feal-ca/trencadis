@@ -4,13 +4,17 @@ import * as vis from './core/vis.js';
 
 const pipe = createPipeline();
 let latest = 0;
-// Whether the last run was a preview. When the mode flips, cached stages are
-// re-sent so the main thread never keeps half-size geometry or images.
-let lastPreview = null;
+let lastParams = null;
+// Only the view on screen is drawn after a run; others on request.
+let wanted = new Set(['final']);
+const STAGE_OF_VIEW = {
+  original: 'analysis', detail: 'analysis', size: 'analysis', orientation: 'analysis',
+  structure: 'tessellation', tessellation: 'tessellation', flat: 'color', palette: 'color', final: 'render',
+};
 
 const STRUCTURE_LABEL = { seeds: 'Semillas', cracks: 'Grietas', depth: 'Profundidad de corte', guides: 'Líneas guía' };
 
-// Stage images, built lazily so a preview run only draws what is on screen.
+// Stage images, built lazily so only the views asked for are drawn.
 function visualsFor(stage, value, p, img) {
   switch (stage) {
     case 'analysis':
@@ -52,39 +56,52 @@ self.onmessage = async (e) => {
     pipe.setGuides(msg.guides);
     return;
   }
+  if (msg.type === 'views') {
+    // Draw views that were skipped, from the cached results of the last run.
+    wanted = new Set(msg.keys);
+    if (!lastParams) return;
+    const img = pipe.image;
+    for (const stage of new Set(msg.keys.map((k) => STAGE_OF_VIEW[k]))) {
+      const value = pipe.cached(stage);
+      if (!value) continue;
+      const images = visualsFor(stage, value, lastParams, img)
+        .filter((v) => wanted.has(v.key))
+        .map(({ key, label, make }) => ({ key, label, image: make() }));
+      self.postMessage({ type: 'stage', id: latest, stage, images, viewsOnly: true }, images.map((v) => v.image.data.buffer));
+    }
+    return;
+  }
   if (msg.type !== 'run') return;
   const id = (latest = msg.id);
-  const visualMs = {};
-  const modeChanged = lastPreview !== !!msg.preview;
-  lastPreview = !!msg.preview;
   const p = msg.params;
+  if (msg.views) wanted = new Set(msg.views);
   try {
     const res = await pipe.run(
       p,
       (stage, value, recomputed) => {
         if (stage === 'tessellation') pipe.lastTess = value;
-        if (!recomputed && !modeChanged) return;
-        const img = pipe.imageFor(msg.preview);
-        const tv = performance.now();
-        const wanted = msg.preview && msg.views ? new Set(msg.views) : null;
+        if (!recomputed) return;
+        const img = pipe.image;
         const images = visualsFor(stage, value, p, img)
-          .filter((v) => !wanted || wanted.has(v.key))
+          .filter((v) => wanted.has(v.key) || v.key === 'original')
           .map(({ key, label, make }) => ({ key, label, image: make() }));
-        visualMs[stage] = performance.now() - tv;
         const extra = {};
         // The GPU renderer needs the shards (once per tessellation) and the colours.
         if (stage === 'tessellation') Object.assign(extra, { shards: value.shards.map((s) => s.poly), w: img.w, h: img.h });
         if (stage === 'color') extra.colors = Float32Array.from(value.colors);
         const transfer = images.map((v) => v.image.data.buffer);
         if (extra.colors) transfer.push(extra.colors.buffer);
-        self.postMessage({ type: 'stage', id, stage, images, preview: !!msg.preview, ...extra }, transfer);
+        // `stale` lists this stage's views that were not redrawn.
+        const stale = Object.keys(STAGE_OF_VIEW).filter((k) => STAGE_OF_VIEW[k] === stage && !images.some((v) => v.key === k));
+        self.postMessage({ type: 'stage', id, stage, images, stale, ...extra }, transfer);
       },
       () => latest !== id,
       () => new Promise((r) => setTimeout(r, 0)),
       (stage) => self.postMessage({ type: 'progress', id, stage }),
-      { preview: !!msg.preview, cpuRender: !!msg.cpuRender },
+      { cpuRender: !!msg.cpuRender },
     );
-    if (res) self.postMessage({ type: 'done', id, preview: !!msg.preview, ...res, visualMs });
+    lastParams = p;
+    if (res) self.postMessage({ type: 'done', id, ...res });
   } catch (err) {
     self.postMessage({ type: 'error', id, message: err?.message || String(err) });
   }
