@@ -110,3 +110,14 @@ Cambiar el acabado solo repite la pasada 4. Cambiar colores sube la textura de d
 - Las miniaturas de estilo: imágenes estáticas pregeneradas a partir de Vermeer.
 - Los textos exactos de las explicaciones y las ayudas, respetando el tono descrito.
 - El dibujo exacto del panot y de la cuadrícula del Eixample.
+
+## Revisión v3 (2026-10-18, tras probar la v2)
+
+Sustituye al flujo de dos modos.
+
+- **Una sola vista.** Se abre directamente con el mosaico (Vermeer por defecto). Cabecera: nombre, «Subir foto», cuadros de ejemplo y «Descargar PNG». Panel con cuatro secciones numeradas en acordeón (una abierta a la vez): 1 Detalle, 2 Trozos, 3 Colores, 4 Acabado. Cada sección tiene sus controles simples, «Más ajustes» con los avanzados, «¿Qué hace?» plegable y «Ver este paso», que cambia la imagen grande al resultado parcial del paso. Desaparecen la entrada, «Hazlo ya» / «Paso a paso», el interruptor Simple / Avanzado y los cuatro estilos. El panot pasa al aviso de soltar foto sobre la imagen.
+- **Cortes rectos sin costuras largas.** La fractura parte de una base de azulejos irregulares (Voronoi con separación «tamaño de azulejo base» × s(x), por defecto 3,5) que luego se rompen.
+- **Colocación a mano.** Cada pieza gira (hasta ±6°), se desplaza y encoge un poco según un parámetro de acabado de 0 a 1, en la GPU y con la misma fórmula en el render de CPU.
+- **Grietas sin astillas.** Una grieta no nace a menos de «separación mínima» × s(x) de otra. Tras grietas, SLIC y teselas alargadas, las regiones cuyo grosor (2 × radio inscrito) es menor que «grosor mínimo» × s(x) se funden con el vecino con el que comparten más borde.
+- **Ignorar texturas.** Slider de análisis: rebaja el detalle donde la coherencia del tensor es baja (detalle sin dirección, como reflejos o césped).
+- **Pincel de detalle.** En la sección Detalle: quitar o añadir detalle pintando sobre la foto, con tamaño de pincel y «Borrar pincel». La máscara se guarda a 256 px de lado largo, independiente de la resolución de trabajo, y entra en el análisis.
