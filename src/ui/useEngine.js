@@ -135,6 +135,7 @@ export function useEngine() {
           setMosaicReady(true);
           requestRender();
         }
+        if (data.lines) setLines(data.lines);
         if (data.stage === 'render') setMosaicReady(true);
       } else if (data.type === 'done') {
         if (DEBUG) (window.__runs ??= []).push({ ms: performance.now() - sentAt.current, timings: data.timings });
@@ -249,6 +250,8 @@ export function useEngine() {
 
   // Hand-drawn guide lines, polylines in normalised image coordinates.
   const [guides, setGuides] = useState([]);
+  // Guide lines actually used for rows (drawn ones first), from the worker.
+  const [lines, setLines] = useState({ drawn: 0, lines: [] });
   const commitGuides = useCallback((list) => {
     setGuides(list);
     if (!worker.current) return;
@@ -334,6 +337,6 @@ export function useEngine() {
     },
     loadBlob, loadSample, setViewport, setWanted, download,
     mask, maskVersion, paint, commitMask, clearMask,
-    guides, addGuide: (g) => commitGuides([...guides, g]), clearGuides: () => commitGuides([]),
+    guides, lines, addGuide: (g) => commitGuides([...guides, g]), clearGuides: () => commitGuides([]),
   };
 }

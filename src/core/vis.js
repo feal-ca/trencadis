@@ -69,13 +69,14 @@ export function structureImage(img, tess) {
       path(ctx, s.poly);
       ctx.fill();
     }
-    ctx.strokeStyle = '#1d4c9a';
     ctx.lineWidth = 2;
-    for (const g of structure.guides) {
+    structure.guides.forEach((g, i) => {
+      // Drawn lines in black, lines found in the photo in blue.
+      ctx.strokeStyle = i < (structure.drawn ?? 0) ? '#25221e' : '#1d4c9a';
       ctx.beginPath();
-      g.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      g.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
       ctx.stroke();
-    }
+    });
   } else if (structure.kind === 'seeds') {
     ctx.fillStyle = '#1d4c9a';
     for (const [x, y] of structure.seeds) {

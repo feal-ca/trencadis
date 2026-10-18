@@ -119,7 +119,7 @@ function smoothChain(c) {
   if (c.length < 5) return c;
   const out = c.map((_, i) => {
     let x = 0, y = 0, n = 0;
-    for (let k = Math.max(0, i - 3); k <= Math.min(c.length - 1, i + 3); k++) { x += c[k][0]; y += c[k][1]; n++; }
+    for (let k = Math.max(0, i - 5); k <= Math.min(c.length - 1, i + 5); k++) { x += c[k][0]; y += c[k][1]; n++; }
     return [x / n, y / n];
   });
   return resample(out, 3);
@@ -292,4 +292,71 @@ export function drawnGuides(list, w, h) {
     .map((g) => g.map(([u, v]) => [u * w, v * h]))
     .filter((g) => g.length > 1)
     .map((g) => smoothChain(resample(g, 1.5)));
+}
+
+// Put drawn and automatic guides together so their rows don't pile up:
+// drawn lines go first and are kept whole; automatic ones, longest first,
+// lose the stretches that run inside a band already taken (and are split
+// there, ending just inside it). Then each drawn end close to an automatic
+// line is pulled onto it, so the two join.
+export function combineGuides(drawn, auto, w, h, p, size) {
+  const sizeAt = (x, y) => size[Math.min(h - 1, Math.max(0, y | 0)) * w + Math.min(w - 1, Math.max(0, x | 0))];
+  const half = (x, y) => (Math.round(p.rowCount) * p.rowScale * sizeAt(x, y)) / 2;
+  const taken = new Uint8Array(w * h);
+  const stamp = (g) => {
+    for (const [x, y] of g) {
+      const r = 1.1 * half(x, y) + 1;
+      for (let yy = Math.max(0, Math.floor(y - r)); yy <= Math.min(h - 1, Math.ceil(y + r)); yy++) {
+        for (let xx = Math.max(0, Math.floor(x - r)); xx <= Math.min(w - 1, Math.ceil(x + r)); xx++) {
+          if ((xx + 0.5 - x) ** 2 + (yy + 0.5 - y) ** 2 <= r * r) taken[yy * w + xx] = 1;
+        }
+      }
+    }
+  };
+  const isTaken = ([x, y]) => taken[Math.min(h - 1, Math.max(0, y | 0)) * w + Math.min(w - 1, Math.max(0, x | 0))] === 1;
+
+  const lines = drawn.filter((g) => g.length > 1).map((g) => resample(g, 3));
+  lines.forEach(stamp);
+  const nDrawn = lines.length;
+
+  const autos = auto.map((g) => resample(g, 3)).map((g) => [g, chainLength(g)]).sort((a, b) => b[1] - a[1]);
+  for (const [g] of autos) {
+    const runs = [];
+    let run = null;
+    g.forEach((pt, i) => {
+      if (!isTaken(pt)) {
+        // Start one point back, inside the band it comes from, so it touches.
+        if (!run) run = i > 0 ? [g[i - 1]] : [];
+        run.push(pt);
+      } else if (run) {
+        run.push(pt);
+        runs.push(run);
+        run = null;
+      }
+    });
+    if (run) runs.push(run);
+    const accepted = runs.filter((r) => r.length > 1 && chainLength(r) >= 4 * half(...r[Math.floor(r.length / 2)]));
+    for (const r of accepted) { lines.push(r); stamp(r); }
+  }
+
+  // Pull drawn ends onto a nearby automatic line.
+  for (let i = 0; i < nDrawn; i++) {
+    const g = lines[i];
+    for (const end of [0, g.length - 1]) {
+      const [ex, ey] = g[end];
+      const reachR = 3 * half(ex, ey);
+      let best = null, bd = reachR;
+      for (let j = nDrawn; j < lines.length; j++) {
+        for (const q of lines[j]) {
+          const d = Math.hypot(q[0] - ex, q[1] - ey);
+          if (d < bd) { bd = d; best = q; }
+        }
+      }
+      if (best && bd > 1) {
+        if (end === 0) g.unshift([best[0], best[1]]);
+        else g.push([best[0], best[1]]);
+      }
+    }
+  }
+  return lines;
 }

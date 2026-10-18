@@ -163,7 +163,7 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
 .what[open] summary { margin-bottom: 6px; }
 .more { border-top: 1px solid var(--line); padding-top: 10px; }
 .more[open] summary { margin-bottom: 12px; }
-.brush-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.brush-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .brush-row .seg button.on { background: var(--ink); color: var(--wall); box-shadow: none; }
 .brush-size { font-weight: 400; font-size: 0.85rem; color: var(--soft); }
 .brush-size input { width: 55%; }

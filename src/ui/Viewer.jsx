@@ -92,15 +92,20 @@ function DrawLayer({ engine }) {
     ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = Math.max(3, cv.width / 160);
-    ctx.strokeStyle = '#25221e';
-    for (const g of [...engine.guides, ...(stroke.current ? [stroke.current] : [])]) {
+    const draw = (g) => {
       ctx.beginPath();
       g.forEach(([u, v], i) => (i ? ctx.lineTo(u * cv.width, v * cv.height) : ctx.moveTo(u * cv.width, v * cv.height)));
       ctx.stroke();
-    }
+    };
+    // Lines found in the photo, in blue; the ones drawn by hand, in black.
+    ctx.lineWidth = Math.max(2, cv.width / 260);
+    ctx.strokeStyle = '#2856a5';
+    engine.lines.lines.slice(engine.lines.drawn).forEach(draw);
+    ctx.lineWidth = Math.max(3, cv.width / 160);
+    ctx.strokeStyle = '#25221e';
+    [...engine.guides, ...(stroke.current ? [stroke.current] : [])].forEach(draw);
   };
-  useEffect(redraw, [original, engine.guides]);
+  useEffect(redraw, [original, engine.guides, engine.lines]);
   const toUV = (e) => {
     const cv = ref.current, r = cv.getBoundingClientRect();
     const s = Math.min(r.width / cv.width, r.height / cv.height);

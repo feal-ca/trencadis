@@ -87,7 +87,14 @@ self.onmessage = async (e) => {
           .map(({ key, label, make }) => ({ key, label, image: make() }));
         const extra = {};
         // The GPU renderer needs the shards (once per tessellation) and the colours.
-        if (stage === 'tessellation') Object.assign(extra, { shards: value.shards.map((s) => s.poly), w: img.w, h: img.h });
+        if (stage === 'tessellation') {
+          Object.assign(extra, { shards: value.shards.map((s) => s.poly), w: img.w, h: img.h });
+          // Guide lines in use, normalised, so the drawing tool can show them.
+          const st = value.structure;
+          extra.lines = st.kind === 'guides'
+            ? { drawn: st.drawn, lines: st.guides.map((g) => g.map(([x, y]) => [x / img.w, y / img.h])) }
+            : { drawn: 0, lines: [] };
+        }
         if (stage === 'color') extra.colors = Float32Array.from(value.colors);
         const transfer = images.map((v) => v.image.data.buffer);
         if (extra.colors) transfer.push(extra.colors.buffer);

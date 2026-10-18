@@ -131,3 +131,36 @@ describe('splitComponents', () => {
     expect(new Set(out).size).toBe(3);
   });
 });
+
+import { combineGuides } from '../src/core/andamento.js';
+
+describe('combining guides', () => {
+  const w = 300, h = 200;
+  const size = new Float32Array(w * h).fill(20);
+  const p = { ...DEFAULTS, rowScale: 0.5, rowCount: 2 };
+  const len = (gs) => gs.reduce((s, g) => s + pathLength(g), 0);
+  const nearest = (pt, g) => Math.min(...g.map((q) => Math.hypot(q[0] - pt[0], q[1] - pt[1])));
+
+  it('keeps one of two nearly overlapping automatic guides', () => {
+    const a = [[20, 100], [280, 100]], b = [[20, 104], [280, 104]];
+    const out = combineGuides([], [a, b], w, h, p, size);
+    expect(len(out)).toBeLessThan(260 * 1.3);
+  });
+
+  it('a drawn line cuts the automatic guide it crosses instead of overlapping it', () => {
+    const auto = [[20, 100], [280, 100]], drawn = [[150, 20], [150, 180]];
+    const out = combineGuides([drawn], [auto], w, h, p, size);
+    // Nothing of the automatic guide is left right under the drawn line.
+    const autoParts = out.slice(1);
+    for (const g of autoParts) for (const [x] of g) expect(Math.abs(x - 150)).toBeGreaterThan(8);
+    expect(len(autoParts)).toBeGreaterThan(200);
+  });
+
+  it('snaps a drawn end close to an automatic guide onto it', () => {
+    const auto = [[20, 100], [280, 100]], drawn = [[150, 20], [150, 88]];
+    const out = combineGuides([drawn], [auto], w, h, p, size);
+    const end = out[0][out[0].length - 1];
+    expect(Math.abs(end[1] - 100)).toBeLessThan(1.5);
+    expect(nearest(end, auto.length ? out[1] ?? auto : auto)).toBeLessThan(25);
+  });
+});

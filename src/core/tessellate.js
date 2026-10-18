@@ -1,5 +1,5 @@
 import { Delaunay } from 'd3-delaunay';
-import { drawnGuides, extractGuides, overlayRows } from './andamento.js';
+import { combineGuides, drawnGuides, extractGuides, overlayRows } from './andamento.js';
 import { growCracks } from './cracks.js';
 import { fracture } from './fracture.js';
 import { labelsToPolygons } from './polygonize.js';
@@ -16,9 +16,13 @@ import { mergeSlivers } from './slivers.js';
 // ones in normalised coordinates) are laid over whichever background.
 export function tessellate(img, lab, an, p, rng, guides = null) {
   const base = tessellateBase(img, lab, an, p, rng);
-  const lines = [...extractGuides(img, an, p), ...drawnGuides(guides, an.w, an.h)];
+  const drawn = drawnGuides(guides, an.w, an.h);
+  const lines = combineGuides(drawn, extractGuides(img, an, p), an.w, an.h, p, an.size);
   if (!lines.length) return base;
-  return { shards: overlayRows(base.shards, lines, an.w, an.h, p, an), structure: { kind: 'guides', guides: lines } };
+  return {
+    shards: overlayRows(base.shards, lines, an.w, an.h, p, an),
+    structure: { kind: 'guides', guides: lines, drawn: drawn.length },
+  };
 }
 
 function tessellateBase(img, lab, an, p, rng) {

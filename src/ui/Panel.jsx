@@ -60,7 +60,7 @@ function BrushTools({ engine, brush, setBrush }) {
   );
 }
 
-function RowTools({ engine, tool, setTool }) {
+function RowTools({ engine, tool, setTool, showLines }) {
   const drawing = tool?.kind === 'draw';
   return (
     <div className="field rows-block">
@@ -73,11 +73,12 @@ function RowTools({ engine, tool, setTool }) {
         <button type="button" className={`btn chamfer-s${drawing ? ' btn-dark' : ''}`} aria-pressed={drawing} onClick={() => setTool(drawing ? null : { kind: 'draw' })}>
           {drawing ? 'Terminar' : 'Dibujar línea'}
         </button>
+        <button type="button" className="link" onClick={showLines} disabled={!engine.lines.lines.length}>Ver las líneas</button>
         <button type="button" className="link" onClick={engine.clearGuides} disabled={!engine.guides.length}>
-          Borrar líneas{engine.guides.length ? ` (${engine.guides.length})` : ''}
+          Borrar mis líneas{engine.guides.length ? ` (${engine.guides.length})` : ''}
         </button>
       </div>
-      {drawing && <span className="help">Dibuja sobre la foto; cada trazo es una línea.</span>}
+      {drawing && <span className="help">Dibuja sobre la foto; cada trazo es una línea. En azul, las que salen de los contornos de la foto. Si acabas cerca de una, tu línea se une a ella.</span>}
       <details className="more">
         <summary>Ajustes de las hileras</summary>
         <div className="fields">
@@ -88,13 +89,13 @@ function RowTools({ engine, tool, setTool }) {
   );
 }
 
-function Controls({ step, engine, brush, setBrush }) {
+function Controls({ step, engine, brush, setBrush, showLines }) {
   return step.simple.map((c, i) => {
     if (c.macro) return <Macro key={i} id={c.macro} engine={engine} />;
     if (c.param) return <Param key={i} k={c.param} engine={engine} />;
     if (c.kind === 'algorithm') return <AlgorithmPicker key={i} engine={engine} />;
     if (c.kind === 'brush') return <BrushTools key={i} engine={engine} brush={brush?.kind === 'brush' ? brush : null} setBrush={(b) => setBrush(b && { ...b, kind: 'brush' })} />;
-    if (c.kind === 'rows') return <RowTools key={i} engine={engine} tool={brush} setTool={setBrush} />;
+    if (c.kind === 'rows') return <RowTools key={i} engine={engine} tool={brush} setTool={setBrush} showLines={showLines} />;
     if (c.kind === 'reseed') {
       return (
         <button key={i} type="button" className="btn chamfer-s reseed" onClick={() => engine.setParam('seed', (engine.params.seed % 999) + 1)}>
@@ -106,7 +107,7 @@ function Controls({ step, engine, brush, setBrush }) {
   });
 }
 
-function Section({ step, index, engine, open, onOpen, peek, onPeek, brush, setBrush }) {
+function Section({ step, index, engine, open, onOpen, peek, onPeek, brush, setBrush, showLines }) {
   const algo = engine.params.algorithm;
   const text = step.id === 'trozos' ? ALGORITHM_INFO[algo].explanation : step.explanation;
   const formula = step.id === 'trozos' ? ALGORITHM_INFO[algo].formula : step.formula;
@@ -140,7 +141,7 @@ function Section({ step, index, engine, open, onOpen, peek, onPeek, brush, setBr
             {formula && <pre className="formula-pre">{formula}</pre>}
           </details>
           <div className="fields">
-            <Controls step={step} engine={engine} brush={brush} setBrush={setBrush} />
+            <Controls step={step} engine={engine} brush={brush} setBrush={setBrush} showLines={showLines} />
           </div>
           {advanced.length > 0 && (
             <details className="more">
@@ -171,6 +172,7 @@ export default function Panel({ engine, open, setOpen, peek, setPeek, brush, set
           onPeek={() => setPeek(peek?.step === step.id ? null : { step: step.id, view: step.views[0].key })}
           brush={brush}
           setBrush={(b) => { setBrush(b); if (b) setPeek(null); }}
+          showLines={() => { setBrush(null); setPeek({ step: 'trozos', view: 'structure' }); }}
         />
       ))}
       <button type="button" className="btn btn-dark chamfer-s download" onClick={engine.download} disabled={!engine.mosaicReady}>
