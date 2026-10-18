@@ -34,6 +34,7 @@ export function growCracks(an, p, rng) {
       const i = (y | 0) * w + (x | 0);
       if (owner[i] >= 0) continue;
       if (rng() > (sMin / size[i]) ** 2) continue;
+      if (p.crackGap > 0 && nearCrack(owner, w, h, x, y, p.crackGap * size[i], rng)) continue;
       let a = rng() * Math.PI;
       if (rng() < p.crackFollow * coherence[i]) a = theta[i];
       a += (rng() * 2 - 1) * (p.crackAngleNoise * Math.PI) / 180;
@@ -106,4 +107,20 @@ function floodRegions(mask, w, h) {
     next++;
   }
   return labels;
+}
+
+// Is there a crack within radius r of (x, y)? Checks two rings of samples,
+// which is enough to keep births away from existing cracks.
+function nearCrack(owner, w, h, x, y, r, rng) {
+  const t0 = rng() * Math.PI;
+  for (const rr of [r, r * 0.5]) {
+    const n = Math.max(8, Math.ceil(rr));
+    for (let k = 0; k < n; k++) {
+      const t = t0 + (k / n) * 2 * Math.PI;
+      const qx = Math.round(x + Math.cos(t) * rr), qy = Math.round(y + Math.sin(t) * rr);
+      if (qx < 0 || qy < 0 || qx >= w || qy >= h) continue;
+      if (owner[qy * w + qx] > 0) return true;
+    }
+  }
+  return false;
 }

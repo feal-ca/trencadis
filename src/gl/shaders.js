@@ -8,14 +8,24 @@ void main() {
 }`;
 
 // Pass 1: shard index (+1, so 0 means "no shard") packed into RGB.
+// "Colocación a mano" happens here: each piece turns, moves and shrinks around
+// its centroid by uPlace times its randoms (same formula as core/placement.js).
 export const ID_VS = `#version 300 es
 in vec2 aPos;
 in float aId;
+in vec2 aCenter;
+in vec3 aPlace;
 uniform vec2 uWork;
+uniform float uPlace;
+uniform vec3 uPlaceMax; // angle (rad), offset (px), shrink
 flat out int vId;
 void main() {
   vId = int(aId + 0.5) + 1;
-  gl_Position = vec4(aPos.x / uWork.x * 2.0 - 1.0, 1.0 - aPos.y / uWork.y * 2.0, 0.0, 1.0);
+  float s = 1.0 - uPlaceMax.z * uPlace;
+  float a = aPlace.x * uPlaceMax.x * uPlace;
+  vec2 d = aPos - aCenter;
+  vec2 q = aCenter + aPlace.yz * uPlaceMax.y * uPlace + s * vec2(cos(a) * d.x - sin(a) * d.y, sin(a) * d.x + cos(a) * d.y);
+  gl_Position = vec4(q.x / uWork.x * 2.0 - 1.0, 1.0 - q.y / uWork.y * 2.0, 0.0, 1.0);
 }`;
 
 export const ID_FS = `#version 300 es

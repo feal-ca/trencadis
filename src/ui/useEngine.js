@@ -13,6 +13,7 @@ const LENGTH_KEYS = ['grout', 'bevel'];
 export const SAMPLES = [
   { src: './samples/vermeer.jpg', label: 'Vermeer' },
   { src: './samples/vangogh.jpg', label: 'Van Gogh' },
+  { src: './samples/barcas.jpg', label: 'Barcas' },
 ];
 
 function loadParams() {
@@ -96,7 +97,7 @@ export function useEngine() {
         setImages((prev) => ({ ...prev, ...Object.fromEntries(data.images.map((v) => [v.key, v.image])) }));
         setLabels((prev) => ({ ...prev, ...Object.fromEntries(data.images.map((v) => [v.key, v.label])) }));
         if (renderer.ok && data.shards) {
-          renderer.setShards(data.shards.map((poly) => ({ poly })), data.w, data.h);
+          renderer.setShards(data.shards.map((poly) => ({ poly })), data.w, data.h, paramsRef.current.seed);
           geomScale.current = data.preview ? 0.5 : 1;
           if (DEBUG) window.__geomScale = geomScale.current;
         }
@@ -168,17 +169,63 @@ export function useEngine() {
     window.addEventListener('pointerup', endDrag, { once: true });
   }, [endDrag]);
 
+  // Detail brush: values in [-1, 1] on a grid with a 256 px long side, so it
+  // survives changes of working resolution.
+  const mask = useRef(null);
+  const [maskVersion, setMaskVersion] = useState(0);
+  const resetMask = useCallback((bmp) => {
+    const s = 256 / Math.max(bmp.width, bmp.height);
+    const w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
+    mask.current = { w, h, data: new Float32Array(w * h), empty: true };
+    worker.current?.postMessage({ type: 'mask', mask: null });
+    setMaskVersion((v) => v + 1);
+  }, []);
+  // One soft dab at normalised (u, v); radius as a fraction of the long side.
+  const paint = useCallback((u, v, radius, target) => {
+    const m = mask.current;
+    if (!m) return;
+    const L = Math.max(m.w, m.h), r = radius * L;
+    const cx = u * m.w, cy = v * m.h;
+    for (let y = Math.max(0, Math.floor(cy - r)); y <= Math.min(m.h - 1, Math.ceil(cy + r)); y++) {
+      for (let x = Math.max(0, Math.floor(cx - r)); x <= Math.min(m.w - 1, Math.ceil(cx + r)); x++) {
+        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / r;
+        if (d >= 1) continue;
+        const k = 0.35 * (1 - d * d);
+        const i = y * m.w + x;
+        m.data[i] += (target - m.data[i]) * k;
+      }
+    }
+    m.empty = false;
+    setMaskVersion((x) => x + 1);
+  }, []);
+  const commitMask = useCallback(() => {
+    const m = mask.current;
+    if (!m || !worker.current) return;
+    worker.current.postMessage({ type: 'mask', mask: m.empty ? null : { w: m.w, h: m.h, data: Float32Array.from(m.data) } });
+    sent.current = paramsRef.current;
+    post(paramsRef.current, false);
+  }, [post]);
+  const clearMask = useCallback(() => {
+    const m = mask.current;
+    if (!m) return;
+    m.data.fill(0);
+    m.empty = true;
+    setMaskVersion((x) => x + 1);
+    commitMask();
+  }, [commitMask]);
+
   const loadBlob = useCallback(async (blob) => {
     try {
       const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
       setImages({});
       setInfo(null);
       setMosaicReady(false);
+      resetMask(bmp);
       setBitmap(bmp);
     } catch {
       setError('No se ha podido leer esa imagen. Prueba con un JPG o un PNG.');
     }
-  }, []);
+  }, [resetMask]);
 
   const loadSample = useCallback(async (src) => {
     const res = await fetch(src);
@@ -224,5 +271,6 @@ export function useEngine() {
       return next;
     }),
     beginDrag, endDrag, loadBlob, loadSample, setViewport, setWanted, download,
+    mask, maskVersion, paint, commitMask, clearMask,
   };
 }

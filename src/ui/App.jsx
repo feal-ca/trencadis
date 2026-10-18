@@ -1,71 +1,56 @@
-import { useEffect, useState } from 'react';
-import Home from './Home.jsx';
-import Quick from './Quick.jsx';
+import { useEffect, useRef, useState } from 'react';
+import Panel from './Panel.jsx';
 import { STEPS } from './steps.js';
-import Steps from './Steps.jsx';
 import { SAMPLES, useEngine } from './useEngine.js';
-
-const MODE_STORE = 'trencadis.mode';
-
-function parseRoute(hash) {
-  const parts = hash.replace(/^#\/?/, '').split('/');
-  if (parts[0] === 'rapido') return { page: 'quick' };
-  if (parts[0] === 'pasos') return { page: 'steps', step: STEPS.some((s) => s.id === parts[1]) ? parts[1] : 'foto' };
-  return { page: 'home' };
-}
-
-function loadMode() {
-  try { return localStorage.getItem(MODE_STORE) === 'avanzado' ? 'avanzado' : 'simple'; } catch { return 'simple'; }
-}
+import Viewer from './Viewer.jsx';
 
 export default function App() {
   const engine = useEngine();
-  const [route, setRoute] = useState(() => parseRoute(location.hash));
-  const [mode, setMode] = useState(loadMode);
+  const [open, setOpen] = useState('detalle');
+  // Which step's partial result is on screen instead of the mosaic.
+  const [peek, setPeek] = useState(null);
+  const [brush, setBrush] = useState(null);
+  const input = useRef(null);
 
   useEffect(() => {
-    const on = () => setRoute(parseRoute(location.hash));
-    window.addEventListener('hashchange', on);
-    return () => window.removeEventListener('hashchange', on);
+    if (!engine.hasImage) engine.loadSample(SAMPLES[0].src);
   }, []);
 
-  useEffect(() => {
-    try { localStorage.setItem(MODE_STORE, mode); } catch { /* ignore */ }
-  }, [mode]);
-
-  // Arriving at a working view without a photo: load the first sample.
-  useEffect(() => {
-    if (route.page !== 'home' && !engine.hasImage) engine.loadSample(SAMPLES[0].src);
-  }, [route.page, engine.hasImage]);
+  const view = brush ? 'brush' : peek?.view ?? 'final';
+  const peekStep = peek && STEPS.find((s) => s.id === peek.step);
 
   return (
     <div className="app">
       <div className="strip" aria-hidden="true" />
       <header className="top">
-        <a className="brand" href="#/">Trencadís</a>
-        {route.page === 'steps' && (
-          <nav className="tabs" aria-label="Pasos">
-            {STEPS.map((s, i) => (
-              <a key={s.id} href={`#/pasos/${s.id}`} className={`tab chamfer-s${route.step === s.id ? ' on' : ''}`} aria-current={route.step === s.id ? 'step' : undefined}>
-                {i + 1} {s.title}
-              </a>
-            ))}
-          </nav>
-        )}
-        {route.page === 'quick' && <span className="muted">Hazlo ya</span>}
-        {route.page !== 'home' && (
-          <div className="seg mode" role="group" aria-label="Modo">
-            {['simple', 'avanzado'].map((m) => (
-              <button key={m} type="button" className={mode === m ? 'on' : ''} aria-pressed={mode === m} onClick={() => setMode(m)}>
-                {m === 'simple' ? 'Simple' : 'Avanzado'}
-              </button>
-            ))}
-          </div>
-        )}
+        <span className="brand">Trencadís</span>
+        <button type="button" className="btn btn-dark chamfer-s" onClick={() => input.current.click()}>Subir foto</button>
+        <input ref={input} type="file" accept="image/*" hidden onChange={(e) => e.target.files[0] && engine.loadBlob(e.target.files[0])} />
+        <span className="samples muted">
+          o prueba con{' '}
+          {SAMPLES.map((s, i) => (
+            <span key={s.src}>
+              {i > 0 && ', '}
+              <button type="button" className="link" onClick={() => engine.loadSample(s.src)}>{s.label}</button>
+            </span>
+          ))}
+        </span>
       </header>
-      {route.page === 'home' && <Home engine={engine} />}
-      {route.page === 'quick' && <Quick engine={engine} mode={mode} />}
-      {route.page === 'steps' && <Steps engine={engine} stepId={route.step} mode={mode} />}
+      <main className="work">
+        <div className="work-main">
+          <Viewer engine={engine} view={view} brush={brush} />
+          {peekStep && peekStep.views.length > 1 && (
+            <div className="views" role="tablist" aria-label="Vista">
+              {peekStep.views.map((v) => (
+                <button key={v.key} type="button" role="tab" aria-selected={peek.view === v.key} className={peek.view === v.key ? 'on' : ''} onClick={() => setPeek({ ...peek, view: v.key })}>
+                  {v.key === 'structure' ? engine.labels.structure ?? v.label : v.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <Panel engine={engine} open={open} setOpen={setOpen} peek={peek} setPeek={setPeek} brush={brush} setBrush={setBrush} />
+      </main>
     </div>
   );
 }

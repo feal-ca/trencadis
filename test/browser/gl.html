@@ -26,7 +26,7 @@ await pipe.run(p, (n, v) => { st[n] = v; });
 const r = createRenderer(document.getElementById('c'));
 log('ok ' + r.ok + ' ' + (()=>{const g=document.getElementById('c').getContext('webgl2');const e=g.getExtension('WEBGL_debug_renderer_info');return e?g.getParameter(e.UNMASKED_RENDERER_WEBGL):'?';})());
 let t0 = performance.now();
-r.setShards(st.tessellation.shards, img.w, img.h);
+r.setShards(st.tessellation.shards, img.w, img.h, p.seed);
 r.setColors(st.color.colors, p.seed);
 const [W, H] = r.sizeFor(1200);
 r.render(p, W, H);

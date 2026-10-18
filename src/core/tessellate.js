@@ -4,6 +4,7 @@ import { fracture } from './fracture.js';
 import { labelsToPolygons } from './polygonize.js';
 import { labelAnisotropic, labelIsotropic, lloyd, poissonVariable } from './sampling.js';
 import { slic } from './slic.js';
+import { mergeSlivers } from './slivers.js';
 
 // Every algorithm returns { shards, structure }:
 //   shards     [{ poly, depth? }] in working-image pixels
@@ -20,11 +21,16 @@ export function tessellate(img, lab, an, p, rng) {
     case 'voronoi-aniso': {
       const aniso = (s) => labelAnisotropic(s, an, p.anisotropy);
       const seeds = lloyd(poissonVariable(an, p.spacing, rng), an, p.lloydIters, p.lloydWeighted, aniso);
-      const shards = labelsToPolygons(aniso(seeds), w, h, p.simplify);
+      const shards = labelsToPolygons(mergeSlivers(aniso(seeds), w, h, an.size, p.minWidth), w, h, p.simplify);
       return { shards, structure: { kind: 'seeds', seeds } };
     }
     case 'fracture': {
-      const shards = fracture([[[0, 0], [w, 0], [w, h], [0, h]]], img, lab, an, p, rng);
+      // Break a base of irregular tiles rather than the whole image, so no
+      // cut can run further than one tile.
+      const base = p.tileSize > 0
+        ? voronoiCells(poissonVariable(an, p.tileSize, rng), w, h).map((s) => s.poly)
+        : [[[0, 0], [w, 0], [w, h], [0, h]]];
+      const shards = fracture(base, img, lab, an, p, rng);
       return { shards, structure: { kind: 'depth' } };
     }
     case 'hybrid': {
@@ -41,11 +47,11 @@ export function tessellate(img, lab, an, p, rng) {
     case 'slic': {
       const seeds = poissonVariable(an, p.spacing, rng);
       const labels = slic(seeds, lab, an, p.compactness, p.slicIters);
-      return { shards: labelsToPolygons(labels, w, h, p.simplify), structure: { kind: 'seeds', seeds } };
+      return { shards: labelsToPolygons(mergeSlivers(labels, w, h, an.size, p.minWidth), w, h, p.simplify), structure: { kind: 'seeds', seeds } };
     }
     case 'cracks': {
       const { mask, labels } = growCracks(an, p, rng);
-      return { shards: labelsToPolygons(labels, w, h, p.simplify), structure: { kind: 'cracks', mask } };
+      return { shards: labelsToPolygons(mergeSlivers(labels, w, h, an.size, p.minWidth), w, h, p.simplify), structure: { kind: 'cracks', mask } };
     }
     default:
       throw new Error(`Algoritmo desconocido: ${p.algorithm}`);

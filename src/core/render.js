@@ -1,4 +1,5 @@
 import { hexToRgb } from './color.js';
+import { placePolygon, placementRandoms } from './placement.js';
 import { area, rasterize } from './polygon.js';
 import { hash2, mulberry32 } from './rng.js';
 
@@ -54,7 +55,11 @@ export function renderMosaic(shards, colors, w, h, p) {
   const labels = new Int32Array(W * H).fill(-1);
   // Largest first, so a region enclosed by another (a crack loop) paints on top.
   const order = shards.map((s, id) => [area(s.poly), id]).sort((a, b) => b[0] - a[0]);
-  for (const [, id] of order) rasterize(shards[id].poly, W, H, (x, y) => { labels[y * W + x] = id; }, k);
+  const rand = placementRandoms(shards.length, p.seed);
+  for (const [, id] of order) {
+    const poly = placePolygon(shards[id].poly, rand[id], p.place ?? 0);
+    rasterize(poly, W, H, (x, y) => { labels[y * W + x] = id; }, k);
+  }
 
   const f = new Float32Array(W * H).fill(Infinity);
   for (let y = 0; y < H; y++) {

@@ -8,26 +8,29 @@ import { blur, luminance, normalizePercentile, sobel } from './image.js';
 //
 // The maps are smooth (every blur has sigma >= 1), so large images are
 // analysed at half resolution and interpolated back; p.exactAnalysis skips that.
-export function analyze(img, p) {
+//
+// `mask` is the detail brush, { w, h, data } in [-1, 1] at any resolution:
+// negative removes detail, positive adds it.
+export function analyze(img, p, mask = null) {
   if (!p.exactAnalysis && img.w * img.h > 120000) {
     const half = analyzeLuminance(halveField(luminance(img), img.w, img.h), Math.ceil(img.w / 2), Math.ceil(img.h / 2), {
       ...p, detailSigma: p.detailSigma / 2, detailSmooth: p.detailSmooth / 2, tensorSigma: p.tensorSigma / 2, prefilter: 0.5,
-    });
-    return upsample(half, img.w, img.h);
+    }, mask);
+    return upsample(half, img.w, img.h, p);
   }
-  return analyzeLuminance(luminance(img), img.w, img.h, p);
+  return analyzeLuminance(luminance(img), img.w, img.h, p, mask);
 }
 
-function analyzeLuminance(L, w, h, p) {
+const smoothstep = (a, b, x) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+function analyzeLuminance(L, w, h, p, mask) {
   const low = blur(L, w, h, p.detailSigma);
   const hf = new Float32Array(w * h);
   for (let i = 0; i < w * h; i++) hf[i] = Math.abs(L[i] - low[i]);
   const detail = normalizePercentile(blur(hf, w, h, p.detailSmooth));
-
-  const size = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    size[i] = p.sMax - (p.sMax - p.sMin) * detail[i] ** p.gamma;
-  }
 
   const { gx, gy } = sobel(blur(L, w, h, p.prefilter ?? 1), w, h);
   const jxx = new Float32Array(w * h), jxy = new Float32Array(w * h), jyy = new Float32Array(w * h);
@@ -52,7 +55,43 @@ function analyzeLuminance(L, w, h, p) {
     coherence[i] = tr > 1e-12 ? (Math.sqrt(a * a + 4 * sxy[i] * sxy[i]) / tr) * strength[i] : 0;
   }
 
+  // Ignore texture: detail without a direction (glints, grass) counts less.
+  // Orientation consistency is measured on a tensor blurred 2.5x wider: in a
+  // texture the random directions cancel out, along a real edge they add up.
+  if (p.ignoreTexture > 0) {
+    const big = p.tensorSigma * 2.5;
+    const bxx = blur(jxx, w, h, big), bxy = blur(jxy, w, h, big), byy = blur(jyy, w, h, big);
+    const weight = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      const a = bxx[i] - byy[i], tr = bxx[i] + byy[i];
+      const c = tr > 1e-12 ? Math.sqrt(a * a + 4 * bxy[i] * bxy[i]) / tr : 0;
+      weight[i] = smoothstep(0.1, 0.45, c);
+    }
+    const smooth = blur(weight, w, h, Math.max(2, 2 * p.detailSmooth));
+    for (let i = 0; i < w * h; i++) detail[i] *= 1 - p.ignoreTexture + p.ignoreTexture * smooth[i];
+  }
+
+  if (mask) {
+    for (let y = 0; y < h; y++) {
+      const my = Math.min(mask.h - 1, (((y + 0.5) / h) * mask.h) | 0);
+      for (let x = 0; x < w; x++) {
+        const m = mask.data[my * mask.w + Math.min(mask.w - 1, (((x + 0.5) / w) * mask.w) | 0)];
+        const i = y * w + x;
+        if (m < 0) detail[i] *= 1 + m;
+        else if (m > 0) detail[i] += (1 - detail[i]) * m;
+      }
+    }
+  }
+
+  const size = sizeFromDetail(detail, p);
+
   return { w, h, detail, size, theta, coherence };
+}
+
+function sizeFromDetail(detail, p) {
+  const size = new Float32Array(detail.length);
+  for (let i = 0; i < detail.length; i++) size[i] = p.sMax - (p.sMax - p.sMin) * detail[i] ** p.gamma;
+  return size;
 }
 
 export const sample = (field, w, h, x, y) => {
@@ -75,7 +114,7 @@ function halveField(f, w, h) {
 
 // Bilinear upsampling of the half-size maps. The orientation is interpolated
 // as the doubled-angle vector (cos 2θ, sin 2θ), since θ and θ+π are the same.
-function upsample(an, w, h) {
+function upsample(an, w, h, p) {
   const { w: sw, h: sh } = an;
   const detail = new Float32Array(w * h), size = new Float32Array(w * h);
   const theta = new Float32Array(w * h), coherence = new Float32Array(w * h);
@@ -92,12 +131,12 @@ function upsample(an, w, h) {
       const wa = (1 - tx) * (1 - ty), wb = tx * (1 - ty), wc = (1 - tx) * ty, wd = tx * ty;
       const i = y * w + x;
       detail[i] = an.detail[a] * wa + an.detail[b] * wb + an.detail[c] * wc + an.detail[d] * wd;
-      size[i] = an.size[a] * wa + an.size[b] * wb + an.size[c] * wc + an.size[d] * wd;
       coherence[i] = an.coherence[a] * wa + an.coherence[b] * wb + an.coherence[c] * wc + an.coherence[d] * wd;
       const cc = c2[a] * wa + c2[b] * wb + c2[c] * wc + c2[d] * wd;
       const ss = s2[a] * wa + s2[b] * wb + s2[c] * wc + s2[d] * wd;
       theta[i] = 0.5 * Math.atan2(ss, cc);
     }
   }
+  size.set(sizeFromDetail(detail, p));
   return { w, h, detail, size, theta, coherence };
 }

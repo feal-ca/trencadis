@@ -12,3 +12,26 @@ export function syntheticImage(w = 240, h = 160) {
   }
   return { w, h, rgb };
 }
+
+// A flat grey image: the size field is sMax everywhere.
+export function flatImage(w, h) {
+  const rgb = new Float32Array(w * h * 3).fill(0.5);
+  return { w, h, rgb };
+}
+
+// Left half: bright speckles on dark (texture without direction).
+// Right half: a single vertical edge (structure with a clear direction).
+export function textureAndEdge(w = 240, h = 160) {
+  const rgb = new Float32Array(w * h * 3);
+  let s = 12345;
+  const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let v;
+      if (x < w / 2) v = rnd() < 0.08 ? 1 : 0.15;
+      else v = x < (3 * w) / 4 ? 0.2 : 0.9;
+      rgb.fill(v, (y * w + x) * 3, (y * w + x) * 3 + 3);
+    }
+  }
+  return { w, h, rgb };
+}

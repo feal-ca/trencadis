@@ -42,25 +42,18 @@ export const ALGORITHM_INFO = {
 
 export const STEPS = [
   {
-    id: 'foto',
-    title: 'Foto',
-    explanation: 'La imagen se reduce a la resolución de trabajo. Todo el cálculo se hace a ese tamaño; el mosaico final se dibuja más grande.',
-    views: [{ key: 'original', label: 'Original' }],
-    simple: [{ kind: 'upload' }],
-    advanced: [['workLong']],
-  },
-  {
     id: 'detalle',
     title: 'Detalle',
-    explanation: 'Se mide cuánto detalle hay en cada zona: bordes, texturas, cambios bruscos. Con eso se decide el tamaño de los trozos, pequeños donde hay detalle y grandes en las zonas lisas. También se calcula hacia dónde van los bordes, para que los cortes puedan seguirlos.',
-    formula: 'D(x) = |L − desenfoque(L, σ)|, suavizado y normalizado a [0, 1]\ns(x) = s_max − (s_max − s_min) · D(x)^γ\nθ(x) = dirección del borde según el tensor de estructura',
+    explanation: 'Se mide cuánto detalle hay en cada zona: bordes, texturas, cambios bruscos. Con eso se decide el tamaño de los trozos, pequeños donde hay detalle y grandes en las zonas lisas. También se calcula hacia dónde van los bordes, para que los cortes puedan seguirlos. Con el pincel puedes quitar detalle de zonas que no te interesan o añadirlo donde quieras más trozos.',
+    formula: 'D(x) = |L − desenfoque(L, σ)|, suavizado y normalizado a [0, 1]\nignorar texturas: D × (1 − k + k · coherencia)\npincel: D × (1 + m) si m < 0;  D + (1 − D) · m si m > 0\ns(x) = s_max − (s_max − s_min) · D(x)^γ',
     views: [
-      { key: 'detail', label: 'Detalle' },
       { key: 'size', label: 'Tamaño de trozo' },
+      { key: 'detail', label: 'Detalle' },
       { key: 'orientation', label: 'Dirección de los bordes' },
     ],
-    simple: [{ macro: 'size' }, { param: 'gamma' }],
-    advanced: [['sMin', 'sMax', 'gamma', 'detailSigma', 'detailSmooth', 'tensorSigma']],
+    simple: [{ macro: 'size' }, { param: 'ignoreTexture' }, { kind: 'brush' }],
+    advanced: ['sMin', 'sMax', 'gamma', 'detailSigma', 'detailSmooth', 'tensorSigma', 'workLong'],
+    summary: (p) => `Trozos de ${Math.round(p.sMin)} a ${Math.round(p.sMax)} px`,
   },
   {
     id: 'trozos',
@@ -70,11 +63,11 @@ export const STEPS = [
       { key: 'structure', label: 'Estructura' },
     ],
     simple: [{ kind: 'algorithm' }, { macro: 'fidelity' }, { kind: 'reseed' }],
-    advanced: [['algorithm', 'seed', 'spacing', 'lloydIters', 'lloydWeighted', 'anisotropy', 'kappa', 'temperature', 'candidates', 'edgeAlign', 'cutJitter', 'angleNoise', 'sliver', 'hybridSpacing', 'hybridCuts', 'hybridCutProb', 'compactness', 'slicIters', 'crackDensity', 'crackActive', 'crackAngleNoise', 'crackCurl', 'crackFollow', 'simplify']],
+    advanced: ['seed', 'tileSize', 'spacing', 'lloydIters', 'lloydWeighted', 'anisotropy', 'kappa', 'temperature', 'candidates', 'edgeAlign', 'cutJitter', 'angleNoise', 'sliver', 'hybridSpacing', 'hybridCuts', 'hybridCutProb', 'compactness', 'slicIters', 'crackDensity', 'crackGap', 'crackActive', 'crackAngleNoise', 'crackCurl', 'crackFollow', 'minWidth', 'simplify'],
   },
   {
     id: 'color',
-    title: 'Color',
+    title: 'Colores',
     explanation: 'Cada trozo recibe un solo color, calculado con los píxeles que cubre. Después se puede ajustar a una paleta: los colores más frecuentes de la foto o un juego fijo de azulejos de taller. Una pequeña variación al azar imita que no hay dos azulejos iguales.',
     formula: 'media: c = (1/N) Σ píxeles del trozo\nmás vivo: media del 30 % más saturado\npaleta: color más cercano en Lab, mezclado según la fuerza',
     views: [
@@ -82,21 +75,17 @@ export const STEPS = [
       { key: 'palette', label: 'Con paleta y variación' },
     ],
     simple: [{ param: 'colorMode' }, { param: 'palette' }, { param: 'saturation' }],
-    advanced: [['colorMode', 'saturation', 'lightness', 'palette', 'paletteK', 'paletteMix', 'colorJitter']],
+    advanced: ['lightness', 'paletteK', 'paletteMix', 'colorJitter'],
   },
   {
     id: 'acabado',
     title: 'Acabado',
-    explanation: 'Se dibuja el mosaico: el mortero entre trozos, un bisel en cada borde y una inclinación distinta en cada trozo, para que la luz brille de forma desigual, como en el esmalte de verdad. Todo esto se calcula en la tarjeta gráfica y responde al momento.',
-    formula: 'junta: píxeles a menos de ancho / 2 del borde\nluz = (ambiente + difusa) · color + brillo · (n · h)^dureza   (Blinn-Phong)',
-    views: [{ key: 'final', label: 'Mosaico' }],
-    simple: [{ param: 'grout' }, { macro: 'gloss' }, { param: 'lightAz' }],
-    advanced: [
-      ['grout', 'groutColor', 'groutShadow', 'bevel', 'bevelStrength'],
-      ['tilt', 'lightAz', 'lightEl', 'ambient', 'specular', 'shininess', 'glazeNoise'],
-      ['outLong', 'supersample'],
-    ],
-    advancedTabs: ['Junta', 'Luz y esmalte', 'Descarga'],
+    explanation: 'Se dibuja el mosaico: el mortero entre trozos, un bisel en cada borde y una inclinación distinta en cada trozo, para que la luz brille de forma desigual, como en el esmalte de verdad. La colocación a mano gira y mueve un poco cada pieza, para que los cortes no queden alineados. Todo esto se calcula en la tarjeta gráfica y responde al momento.',
+    formula: 'junta: píxeles a menos de ancho / 2 del borde\ncolocación: giro ≤ 6°, desplazamiento ≤ 1,2 px, encogido ≤ 6 %\nluz = (ambiente + difusa) · color + brillo · (n · h)^dureza   (Blinn-Phong)',
+    views: [],
+    simple: [{ param: 'grout' }, { param: 'place' }, { macro: 'gloss' }, { param: 'lightAz' }],
+    advanced: ['groutColor', 'groutShadow', 'bevel', 'bevelStrength', 'tilt', 'lightEl', 'ambient', 'specular', 'shininess', 'glazeNoise', 'outLong', 'supersample'],
+    summary: (p) => `Junta de ${String(p.grout).replace('.', ',')} px`,
   },
 ];
 

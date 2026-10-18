@@ -1,4 +1,4 @@
-// Regenerates public/styles/*.jpg from the Vermeer sample.
+// Regenerates the method thumbnails in public/styles/ from the Vermeer sample.
 // Usage: CHROMIUM=/path/to/chromium node scripts/thumbs.mjs
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';

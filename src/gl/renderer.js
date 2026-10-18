@@ -1,4 +1,5 @@
 import { hexToRgb } from '../core/color.js';
+import { PLACE } from '../core/placement.js';
 import { mulberry32 } from '../core/rng.js';
 import { FULLSCREEN_VS, ID_FS, ID_VS, JFA_FS, SEED_FS, SHADE_FS } from './shaders.js';
 import { triangulate } from './triangulate.js';
@@ -54,7 +55,7 @@ export function createRenderer(canvas, { onLost } = {}) {
 
   let vao = null, vertexCount = 0, work = [1, 1];
   let colorTex = null, tiltTex = null;
-  let targets = null, fieldDirty = true;
+  let targets = null, fieldDirty = true, placed = null;
 
   const makeTargets = (W, H) => {
     if (targets) for (const t of [targets.id, targets.a, targets.b]) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fb); }
@@ -69,7 +70,7 @@ export function createRenderer(canvas, { onLost } = {}) {
     fieldDirty = true;
   };
 
-  const buildField = () => {
+  const buildField = (place) => {
     const { W, H } = targets;
     gl.viewport(0, 0, W, H);
     gl.bindFramebuffer(gl.FRAMEBUFFER, targets.id.fb);
@@ -78,6 +79,8 @@ export function createRenderer(canvas, { onLost } = {}) {
     if (vao) {
       gl.useProgram(progId.p);
       gl.uniform2f(progId.loc.uWork, work[0], work[1]);
+      gl.uniform1f(progId.loc.uPlace, place);
+      gl.uniform3f(progId.loc.uPlaceMax, (PLACE.angle * Math.PI) / 180, PLACE.offset, PLACE.shrink);
       gl.bindVertexArray(vao);
       gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
     }
@@ -104,17 +107,18 @@ export function createRenderer(canvas, { onLost } = {}) {
     }
     targets.field = src;
     fieldDirty = false;
+    placed = place;
   };
 
   const api = {
     ok: true,
     maxSize,
-    setShards(shards, w, h) {
-      const { positions, ids } = triangulate(shards);
+    setShards(shards, w, h, seed = 1) {
+      const { positions, ids, centers, place } = triangulate(shards, seed);
       if (vao) gl.deleteVertexArray(vao);
       vao = gl.createVertexArray();
       gl.bindVertexArray(vao);
-      for (const [name, data, size] of [['aPos', positions, 2], ['aId', ids, 1]]) {
+      for (const [name, data, size] of [['aPos', positions, 2], ['aId', ids, 1], ['aCenter', centers, 2], ['aPlace', place, 3]]) {
         const buf = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, buf);
         gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
@@ -152,7 +156,8 @@ export function createRenderer(canvas, { onLost } = {}) {
       if (!api.ok || !colorTex) return;
       if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
       if (!targets || targets.W !== W || targets.H !== H) makeTargets(W, H);
-      if (fieldDirty) buildField();
+      // Placement moves the pieces, so it needs a new distance field.
+      if (fieldDirty || placed !== p.place) buildField(p.place);
 
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, W, H);

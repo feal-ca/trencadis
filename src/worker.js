@@ -44,6 +44,10 @@ self.onmessage = async (e) => {
     pipe.setImage(fromImageData(msg.image));
     return;
   }
+  if (msg.type === 'mask') {
+    pipe.setMask(msg.mask);
+    return;
+  }
   if (msg.type !== 'run') return;
   const id = (latest = msg.id);
   const visualMs = {};

@@ -38,13 +38,13 @@ export function halve(img) {
 // own cache, so dragging a slider stays responsive. { cpuRender: false }
 // stops after the colour stage, for when the GPU draws the mosaic.
 export function createPipeline() {
-  let full = null, half = null, imgVersion = 0;
+  let full = null, half = null, imgVersion = 0, mask = null, maskVersion = 0;
   const caches = { full: {}, preview: {} };
 
   const stageKey = (stage, p) => {
     const upto = STAGE_ORDER.slice(0, STAGE_ORDER.indexOf(stage) + 1);
     const vals = upto.flatMap((s) => keysForStage(s).map((k) => p[k]));
-    return JSON.stringify([imgVersion, vals]);
+    return JSON.stringify([imgVersion, maskVersion, vals]);
   };
 
   return {
@@ -55,6 +55,11 @@ export function createPipeline() {
       imgVersion++;
     },
     hasImage: () => !!full,
+    // Detail brush, { w, h, data } in [-1, 1], or null.
+    setMask(next) {
+      mask = next;
+      maskVersion++;
+    },
     async run(p, onStage, isStale = () => false, yieldFn = async () => {}, onStart = () => {}, opts = {}) {
       if (!full) return null;
       const { img, lab } = opts.preview ? half : full;
@@ -84,7 +89,7 @@ export function createPipeline() {
         return cache[stage].value;
       };
       try {
-        const an = await step('analysis', () => analyze(img, p));
+        const an = await step('analysis', () => analyze(img, p, mask));
         const tess = await step('tessellation', () => tessellate(img, lab, an, p, mulberry32(p.seed)));
         const col = await step('color', () => {
           const flat = shardColors(tess.shards, img, p);
