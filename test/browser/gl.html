@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>GL harness</title>
+<body style="margin:0;background:#eee">
+<canvas id="c" style="width:600px"></canvas>
+<pre id="out"></pre>
+<script type="module">
+import { createPipeline } from '/src/core/pipeline.js';
+import { DEFAULTS } from '/src/core/params.js';
+import { fromImageData } from '/src/core/image.js';
+import { createRenderer } from '/src/gl/renderer.js';
+
+const out = document.getElementById('out');
+const log = (s) => { out.textContent += s + '\n'; };
+const algorithm = new URLSearchParams(location.search).get('algo') || 'fracture';
+const bmp = await createImageBitmap(await (await fetch('/samples/vermeer.jpg')).blob());
+const s = 800 / Math.max(bmp.width, bmp.height);
+const cv = new OffscreenCanvas(Math.round(bmp.width * s), Math.round(bmp.height * s));
+cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+const img = fromImageData(cv.getContext('2d').getImageData(0, 0, cv.width, cv.height));
+const pipe = createPipeline();
+pipe.setImage(img);
+const st = {};
+const p = { ...DEFAULTS, algorithm };
+await pipe.run(p, (n, v) => { st[n] = v; });
+const r = createRenderer(document.getElementById('c'));
+log('ok ' + r.ok + ' ' + (()=>{const g=document.getElementById('c').getContext('webgl2');const e=g.getExtension('WEBGL_debug_renderer_info');return e?g.getParameter(e.UNMASKED_RENDERER_WEBGL):'?';})());
+let t0 = performance.now();
+r.setShards(st.tessellation.shards, img.w, img.h);
+r.setColors(st.color.colors, p.seed);
+const [W, H] = r.sizeFor(1200);
+r.render(p, W, H);
+r.gl?.finish?.();
+log('first render (geometry + field + shade) ms ' + (performance.now() - t0).toFixed(1));
+// Frames with a changing light: only the shading pass runs.
+const frames = 60;
+t0 = performance.now();
+await new Promise((done) => {
+  let i = 0;
+  const tick = () => {
+    r.render({ ...p, lightAz: 135 + i * 3 }, W, H);
+    if (++i < frames) requestAnimationFrame(tick); else done();
+  };
+  requestAnimationFrame(tick);
+});
+log('fps ' + (frames / ((performance.now() - t0) / 1000)).toFixed(1));
+r.render(p, W, H);
+document.title = 'done';
+</script>
