@@ -268,6 +268,28 @@ describe('automatic guides', () => {
     const down = Array.from({ length: 100 }, (_, i) => [156, 104 + i]);
     expect(bridgeGaps([line(10, 150, 100), down], 8).length).toBe(2);
   });
+
+  it('joins pieces traced away from the gap (start to start)', () => {
+    expect(bridgeGaps([line(10, 150, 100).reverse(), line(157, 300, 100)], 8).length).toBe(1);
+  });
+
+  it('joins a contour broken in three', () => {
+    const out = bridgeGaps([line(157, 300, 100), line(10, 150, 100), line(307, 450, 100)], 8);
+    expect(out.length).toBe(1);
+    expect(pathLength(out[0])).toBeGreaterThan(430);
+  });
+
+  it('stays fast with thousands of short chains', () => {
+    // A busy photo (the Van Gogh sample) gives 2000 to 5000 chains.
+    const rng = mulberry32(5);
+    const chains = Array.from({ length: 4000 }, () => {
+      const x = rng() * 800, y = rng() * 600, a = rng() * Math.PI, n = 4 + Math.floor(rng() * 20);
+      return Array.from({ length: n }, (_, i) => [x + i * Math.cos(a), y + i * Math.sin(a)]);
+    });
+    const t = performance.now();
+    bridgeGaps(chains, 8);
+    expect(performance.now() - t).toBeLessThan(1000);
+  });
 });
 
 describe('row pieces stay orderly', () => {

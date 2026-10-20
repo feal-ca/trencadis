@@ -125,41 +125,83 @@ function traceChains(edge, w, h) {
 }
 
 // Join chains whose ends are close and point the same way, so a contour
-// broken by a small gap becomes one guide.
+// broken by a small gap becomes one guide. Chains are undirected: any end may
+// meet any end. Ends are bucketed in a grid of cell `gap`, the close pairs
+// that line up are linked shortest gap first (each end once, never into a
+// loop), and linked chains are concatenated. A busy photo has thousands of
+// chains, so this must stay near linear.
 export function bridgeGaps(chains, gap) {
-  const dir = (c, atEnd) => {
-    const k = Math.min(6, c.length - 1);
-    const [a, b] = atEnd ? [c[c.length - 1 - k], c[c.length - 1]] : [c[k], c[0]];
-    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-    return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
-  };
+  const n = chains.length;
+  if (n < 2) return chains;
   const cosMax = Math.cos((35 * Math.PI) / 180);
-  let merged = true;
-  while (merged) {
-    merged = false;
-    outer: for (let i = 0; i < chains.length; i++) {
-      for (let j = 0; j < chains.length; j++) {
-        if (i === j) continue;
-        // The end of i against the start of j, or against its end (reversed).
-        for (const flip of [false, true]) {
-          const b = flip ? chains[j].slice().reverse() : chains[j];
-          const e = chains[i][chains[i].length - 1], s0 = b[0];
-          const d = Math.hypot(s0[0] - e[0], s0[1] - e[1]);
+  // End e of chain c is 2c (start) or 2c + 1 (end): its point and the
+  // direction pointing out of the chain there.
+  const pt = new Float64Array(8 * n);
+  for (let c = 0; c < n; c++) {
+    const ch = chains[c], k = Math.min(6, ch.length - 1);
+    for (const atEnd of [0, 1]) {
+      const [a, b] = atEnd ? [ch[ch.length - 1 - k], ch[ch.length - 1]] : [ch[k], ch[0]];
+      const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      pt.set([b[0], b[1], (b[0] - a[0]) / l, (b[1] - a[1]) / l], 4 * (2 * c + atEnd));
+    }
+  }
+  const cell = (v) => Math.floor(v / gap);
+  const grid = new Map();
+  for (let e = 0; e < 2 * n; e++) {
+    const key = cell(pt[4 * e]) + ',' + cell(pt[4 * e + 1]);
+    if (!grid.has(key)) grid.set(key, []);
+    grid.get(key).push(e);
+  }
+  const pairs = [];
+  for (let e = 0; e < 2 * n; e++) {
+    const [ex, ey, ux, uy] = pt.subarray(4 * e, 4 * e + 4);
+    for (let gy = cell(ey) - 1; gy <= cell(ey) + 1; gy++) {
+      for (let gx = cell(ex) - 1; gx <= cell(ex) + 1; gx++) {
+        for (const f of grid.get(gx + ',' + gy) ?? []) {
+          if (f <= e || f >> 1 === e >> 1) continue;
+          const [fx, fy, vx, vy] = pt.subarray(4 * f, 4 * f + 4);
+          const d = Math.hypot(fx - ex, fy - ey);
           if (d > gap) continue;
-          const [ux, uy] = dir(chains[i], true);
-          const [vx, vy] = dir(b, false);
-          // b's start direction points backwards out of b, so it must oppose u.
+          // The two ends must point at each other, and across the gap.
           if (-(ux * vx + uy * vy) < cosMax) continue;
-          if (d > 1 && ((s0[0] - e[0]) * ux + (s0[1] - e[1]) * uy) / d < 0.5) continue;
-          chains[i] = chains[i].concat(b);
-          chains.splice(j, 1);
-          merged = true;
-          break outer;
+          if (d > 1 && (((fx - ex) * ux + (fy - ey) * uy) / d < 0.5 || ((ex - fx) * vx + (ey - fy) * vy) / d < 0.5)) continue;
+          pairs.push([d, e, f]);
         }
       }
     }
   }
-  return chains;
+  pairs.sort((a, b) => a[0] - b[0]);
+  const link = new Int32Array(2 * n).fill(-1);
+  const parent = Int32Array.from({ length: n }, (_, i) => i);
+  const root = (c) => { while (parent[c] !== c) c = parent[c] = parent[parent[c]]; return c; };
+  for (const [, e, f] of pairs) {
+    if (link[e] >= 0 || link[f] >= 0) continue;
+    const a = root(e >> 1), b = root(f >> 1);
+    if (a === b) continue;
+    link[e] = f; link[f] = e;
+    parent[a] = b;
+  }
+  // Walk each linked path from a free end, entering every chain by the end
+  // that was linked and leaving by the other.
+  const done = new Uint8Array(n);
+  const out = [];
+  const walk = (c, from) => {
+    let path = [];
+    for (;;) {
+      done[c] = 1;
+      path = path.concat(from === 0 ? chains[c] : chains[c].slice().reverse());
+      const next = link[2 * c + (1 - from)];
+      if (next < 0) return path;
+      c = next >> 1;
+      from = next & 1;
+    }
+  };
+  for (let c = 0; c < n; c++) {
+    if (done[c]) continue;
+    if (link[2 * c] < 0) out.push(walk(c, 0));
+    else if (link[2 * c + 1] < 0) out.push(walk(c, 1));
+  }
+  return out;
 }
 
 const chainLength = (c) => c.slice(1).reduce((s, q, i) => s + Math.hypot(q[0] - c[i][0], q[1] - c[i][1]), 0);
