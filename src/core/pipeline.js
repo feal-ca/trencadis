@@ -1,7 +1,7 @@
 import { analyze } from './analysis.js';
 import { applyPalette, shardColors } from './color.js';
 import { toLab } from './image.js';
-import { keysForStage, STAGE_ORDER } from './params.js';
+import { keysForStage, STAGE_ORDER, toWorkPx } from './params.js';
 import { renderMosaic } from './render.js';
 import { mulberry32 } from './rng.js';
 import { tessellate } from './tessellate.js';
@@ -37,12 +37,15 @@ export function createPipeline() {
       guides = next;
       guidesVersion++;
     },
-    async run(p, onStage, isStale = () => false, yieldFn = async () => {}, onStart = () => {}, opts = {}) {
+    async run(params, onStage, isStale = () => false, yieldFn = async () => {}, onStart = () => {}, opts = {}) {
       if (!full) return null;
+      // Cache keys use the settings as given; the stages get pixel lengths
+      // scaled to the working resolution.
+      const p = toWorkPx(params);
       const { img, lab } = full;
       const timings = {};
       const step = async (stage, fn) => {
-        const key = stageKey(stage, p);
+        const key = stageKey(stage, params);
         if (cache[stage]?.key !== key) {
           await yieldFn();
           if (isStale()) throw new StaleRun();

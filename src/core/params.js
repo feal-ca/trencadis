@@ -20,7 +20,7 @@ export const GROUPS = [
     id: 'analysis',
     params: [
       { key: 'workLong', label: 'Resolución de trabajo', min: 300, max: 1400, step: 50, def: 800, unit: ' px', stage: 'analysis',
-        help: 'Más alto: más detalle y cálculo más lento; más bajo: más rápido y más tosco.' },
+        help: 'Más alto: bordes más precisos y cálculo más lento; más bajo: más rápido y más tosco. No cambia el tamaño de los trozos.' },
       { key: 'sMin', label: 'Trozo mínimo', min: 3, max: 40, step: 0.5, def: 7, unit: ' px', stage: 'analysis',
         help: 'Tamaño de los trozos en las zonas con más detalle. Más alto: los detalles finos se pierden.' },
       { key: 'sMax', label: 'Trozo máximo', min: 8, max: 140, step: 1, def: 36, unit: ' px', stage: 'analysis',
@@ -208,3 +208,16 @@ export const isVisible = (q, p) => !q.hidden && (q.show ?? any)(p);
 
 export const STAGE_ORDER = ['analysis', 'tessellation', 'color', 'render'];
 export const keysForStage = (stage) => ALL_PARAMS.filter((q) => q.stage === stage).map((q) => q.key);
+
+// Pixel lengths in the settings are pixels of an 800 px wide photo, so the
+// working resolution changes how fine the mosaic is computed, not how it looks.
+// This turns them into pixels of the photo the pipeline actually gets.
+export const REFERENCE_LONG = 800;
+const SCALED = ALL_PARAMS.filter((q) => q.unit === ' px' && q.key !== 'workLong' && q.key !== 'outLong').map((q) => q.key);
+export function toWorkPx(p) {
+  const k = (p.workLong ?? REFERENCE_LONG) / REFERENCE_LONG;
+  if (k === 1) return p;
+  const out = { ...p };
+  for (const key of SCALED) out[key] = p[key] * k;
+  return out;
+}

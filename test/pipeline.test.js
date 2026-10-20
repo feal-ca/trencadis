@@ -46,3 +46,20 @@ describe('cpu render switch', () => {
     expect(res.shards).toBeGreaterThan(0);
   });
 });
+
+describe('working resolution', () => {
+  // The engine always hands the pipeline the photo at workLong on its long
+  // side; the same photo at 400 and 800 px should give the same mosaic, finer.
+  for (const algorithm of ['fracture', 'voronoi', 'cracks']) {
+    it(`changes quality, not the number of pieces (${algorithm})`, async () => {
+      const count = async (long) => {
+        const pipe = createPipeline();
+        pipe.setImage(syntheticImage(long, Math.round(long * 2 / 3)));
+        const res = await pipe.run({ ...DEFAULTS, algorithm, workLong: long }, () => {}, undefined, undefined, undefined, { cpuRender: false });
+        return res.shards;
+      };
+      const [a, b] = [await count(400), await count(800)];
+      expect(Math.abs(a - b) / b).toBeLessThan(0.2);
+    });
+  }
+});

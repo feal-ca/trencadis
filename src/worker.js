@@ -1,5 +1,6 @@
 import { fromImageData } from './core/image.js';
 import { createPipeline } from './core/pipeline.js';
+import { toWorkPx } from './core/params.js';
 import * as vis from './core/vis.js';
 
 const pipe = createPipeline();
@@ -64,7 +65,7 @@ self.onmessage = async (e) => {
     for (const stage of new Set(msg.keys.map((k) => STAGE_OF_VIEW[k]))) {
       const value = pipe.cached(stage);
       if (!value) continue;
-      const images = visualsFor(stage, value, lastParams, img)
+      const images = visualsFor(stage, value, toWorkPx(lastParams), img)
         .filter((v) => wanted.has(v.key))
         .map(({ key, label, make }) => ({ key, label, image: make() }));
       self.postMessage({ type: 'stage', id: latest, stage, images, viewsOnly: true }, images.map((v) => v.image.data.buffer));
@@ -82,7 +83,7 @@ self.onmessage = async (e) => {
         if (stage === 'tessellation') pipe.lastTess = value;
         if (!recomputed) return;
         const img = pipe.image;
-        const images = visualsFor(stage, value, p, img)
+        const images = visualsFor(stage, value, toWorkPx(p), img)
           .filter((v) => wanted.has(v.key) || v.key === 'original')
           .map(({ key, label, make }) => ({ key, label, image: make() }));
         const extra = {};

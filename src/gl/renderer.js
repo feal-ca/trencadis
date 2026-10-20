@@ -1,4 +1,5 @@
 import { mortarRgb } from '../core/color.js';
+import { toWorkPx } from '../core/params.js';
 import { PLACE } from '../core/placement.js';
 import { mulberry32 } from '../core/rng.js';
 import { FULLSCREEN_VS, ID_FS, ID_VS, JFA_FS, SEED_FS, SHADE_FS } from './shaders.js';
@@ -157,6 +158,7 @@ export function createRenderer(canvas, { onLost } = {}) {
       return [Math.max(1, Math.round(work[0] * s)), Math.max(1, Math.round(work[1] * s))];
     },
     render(p, W, H) {
+      p = toWorkPx(p);
       if (!api.ok || !colorTex) return;
       if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
       if (!targets || targets.W !== W || targets.H !== H) makeTargets(W, H);
