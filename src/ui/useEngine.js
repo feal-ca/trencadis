@@ -210,6 +210,8 @@ export function useEngine() {
     const s = 256 / Math.max(bmp.width, bmp.height);
     const w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
     mask.current = { w, h, data: new Float32Array(w * h), empty: true };
+    maskHistory.current = [];
+    setCanUndoMask(false);
     worker.current?.postMessage({ type: 'mask', mask: null });
     setMaskVersion((v) => v + 1);
   }, []);
@@ -232,6 +234,15 @@ export function useEngine() {
     m.empty = false;
     setMaskVersion((x) => x + 1);
   }, []);
+  // Undo: a copy of the mask before each stroke (it is small, 256 px).
+  const maskHistory = useRef([]);
+  const [canUndoMask, setCanUndoMask] = useState(false);
+  const beginStroke = useCallback(() => {
+    const m = mask.current;
+    if (!m) return;
+    maskHistory.current = [...maskHistory.current.slice(-19), { data: Float32Array.from(m.data), empty: m.empty }];
+    setCanUndoMask(true);
+  }, []);
   const commitMask = useCallback(() => {
     const m = mask.current;
     if (!m || !worker.current) return;
@@ -242,10 +253,22 @@ export function useEngine() {
   const clearMask = useCallback(() => {
     const m = mask.current;
     if (!m) return;
+    beginStroke();
     m.data.fill(0);
     m.empty = true;
     setMaskVersion((x) => x + 1);
     commitMask();
+  }, [commitMask, beginStroke]);
+  // Puts back the mask from before the last stroke. With `commit` false it
+  // only restores the pixels (a stroke cancelled before it was sent).
+  const undoMask = useCallback((commit = true) => {
+    const m = mask.current, prev = maskHistory.current.pop();
+    setCanUndoMask(maskHistory.current.length > 0);
+    if (!m || !prev) return;
+    m.data.set(prev.data);
+    m.empty = prev.empty;
+    setMaskVersion((x) => x + 1);
+    if (commit) commitMask();
   }, [commitMask]);
 
   // Hand-drawn guide lines, polylines in normalised image coordinates.
@@ -292,26 +315,46 @@ export function useEngine() {
     requestRender();
   }, [requestRender]);
 
-  const download = useCallback(async () => {
+  // The mosaic at export size, as PNG or JPG.
+  const exportFile = useCallback(async (format = 'png') => {
     const p = paramsRef.current;
+    const type = format === 'jpg' ? 'image/jpeg' : 'image/png';
     let blob;
     if (renderer.ok) {
-      blob = await renderer.toBlob(p, p.outLong);
+      blob = await renderer.toBlob(p, p.outLong, type, 0.9);
       requestRender();
     } else if (images.final) {
       const cv = document.createElement('canvas');
       cv.width = images.final.width;
       cv.height = images.final.height;
       cv.getContext('2d').putImageData(images.final, 0, 0);
-      blob = await new Promise((r) => cv.toBlob(r, 'image/png'));
+      blob = await new Promise((r) => cv.toBlob(r, type, 0.9));
     }
-    if (!blob) return;
+    return blob && new File([blob], `trencadis-${p.algorithm}-${p.seed}.${format}`, { type });
+  }, [renderer, images.final, requestRender]);
+
+  const download = useCallback(async (format) => {
+    const file = await exportFile(format);
+    if (!file) return;
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `trencadis-${p.algorithm}-${p.seed}.png`;
+    a.href = URL.createObjectURL(file);
+    a.download = file.name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  }, [renderer, images.final, requestRender]);
+  }, [exportFile]);
+
+  // Web Share with the image as a file (phones: save to Photos, send, post).
+  // Falls back to a download if the browser refuses, e.g. when encoding took
+  // long enough for the tap to stop counting as a user gesture.
+  const share = useCallback(async (format) => {
+    const file = await exportFile(format);
+    if (!file) return;
+    try {
+      await navigator.share({ files: [file], title: 'Trencadís' });
+    } catch (e) {
+      if (e.name !== 'AbortError') download(format);
+    }
+  }, [exportFile, download]);
 
   return {
     params, setParams, images, labels, busy, info, error, gpu, glCanvas, mosaicReady,
@@ -335,8 +378,9 @@ export function useEngine() {
       setMacros((m) => ({ ...m, manual: { ...m.manual, [id]: on } }));
       if (!on) setParams((p) => applyMacro(p, id, macrosRef.current.values[id]));
     },
-    loadBlob, loadSample, setViewport, setWanted, download,
-    mask, maskVersion, paint, commitMask, clearMask,
+    loadBlob, loadSample, setViewport, setWanted, download, share,
+    mask, maskVersion, paint, beginStroke, commitMask, clearMask, undoMask, canUndoMask,
     guides, lines, addGuide: (g) => commitGuides([...guides, g]), clearGuides: () => commitGuides([]),
+    undoGuide: () => commitGuides(guides.slice(0, -1)),
   };
 }

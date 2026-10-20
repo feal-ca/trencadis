@@ -46,7 +46,7 @@ function useRing(ref) {
 }
 
 // The photo with the detail mask tinted on top; pointer strokes paint it.
-function BrushLayer({ engine, brush }) {
+function BrushLayer({ engine, brush, api }) {
   const ref = useRef(null);
   const drawing = useRef(false);
   const original = engine.images.original;
@@ -83,15 +83,26 @@ function BrushLayer({ engine, brush }) {
     engine.paint(u, v, brush.size, brush.mode === 'remove' ? -1 : 1);
   };
   const ring = useRing(ref);
+  // A second finger turns the stroke into a pinch: take back what it painted.
+  api.current = {
+    cancel: () => { if (drawing.current) { drawing.current = false; engine.undoMask(false); } ring.hide(); },
+  };
   return (
     <>
       <canvas
         ref={ref}
         className="viewer-canvas brush-canvas"
-        onPointerDown={(e) => { if (e.button !== 0) return; drawing.current = true; e.currentTarget.setPointerCapture(e.pointerId); dab(e); }}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          drawing.current = true;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          engine.beginStroke();
+          ring.track(e);
+          dab(e);
+        }}
         onPointerMove={(e) => { ring.track(e); if (drawing.current) dab(e); }}
         onPointerLeave={ring.hide}
-        onPointerUp={() => { if (drawing.current) { drawing.current = false; engine.commitMask(); } }}
+        onPointerUp={(e) => { if (drawing.current) { drawing.current = false; engine.commitMask(); } if (e.pointerType === 'touch') ring.hide(); }}
       />
       {ring.view(brush.size)}
     </>
@@ -100,17 +111,21 @@ function BrushLayer({ engine, brush }) {
 
 // The photo with the guide lines. "free" mode: a stroke adds a line.
 // "points" mode: each click adds a vertex; double-click or Enter finishes,
-// Backspace removes the last vertex, Escape cancels.
-function DrawLayer({ engine, tool }) {
+// Backspace removes the last vertex, Escape cancels. On touch the viewer bar
+// shows buttons for the same (`onPending` reports the vertex count).
+function DrawLayer({ engine, tool, api, onPending }) {
   const ref = useRef(null);
   const stroke = useRef(null);
   const hover = useRef(null);
   const original = engine.images.original;
   const mode = tool?.mode ?? 'free';
+  // Whether the last pointer down added a vertex, so a pinch can take it back.
+  const added = useRef(false);
   const finish = () => {
     const g = stroke.current;
     stroke.current = null;
     hover.current = null;
+    onPending(0);
     if (g && g.length >= 2) engine.addGuide({ points: g, mode, snap: tool?.snap ?? true, snapRadius: tool?.radius ?? 0.02 });
     else redraw();
   };
@@ -152,13 +167,31 @@ function DrawLayer({ engine, tool }) {
     }
   };
   useEffect(redraw, [original, engine.guides, engine.lines]);
+  const cancel = () => { stroke.current = null; hover.current = null; onPending(0); redraw(); };
+  const back = () => {
+    if (!stroke.current) return;
+    stroke.current.pop();
+    if (!stroke.current.length) stroke.current = null;
+    onPending(stroke.current?.length ?? 0);
+    redraw();
+  };
+  const ring = useRing(ref);
+  api.current = {
+    finish, back,
+    cancel: () => {
+      ring.hide();
+      if (mode !== 'points') cancel();
+      else if (added.current) { added.current = false; back(); }
+    },
+  };
+  useEffect(() => () => onPending(0), [mode]);
   useEffect(() => {
     if (mode !== 'points') return;
     const onKey = (e) => {
       if (!stroke.current) return;
       if (e.key === 'Enter') finish();
-      else if (e.key === 'Escape') { stroke.current = null; hover.current = null; redraw(); }
-      else if (e.key === 'Backspace') { stroke.current.pop(); if (!stroke.current.length) stroke.current = null; redraw(); }
+      else if (e.key === 'Escape') cancel();
+      else if (e.key === 'Backspace') back();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -169,17 +202,26 @@ function DrawLayer({ engine, tool }) {
     const ox = (r.width - cv.width * s) / 2, oy = (r.height - cv.height * s) / 2;
     return [Math.min(1, Math.max(0, (e.clientX - r.left - ox) / (cv.width * s))), Math.min(1, Math.max(0, (e.clientY - r.top - oy) / (cv.height * s)))];
   };
-  const ring = useRing(ref);
   const handlers = mode === 'points'
     ? {
-      onPointerDown: (e) => { if (e.button !== 0) return; (stroke.current ??= []).push(toUV(e)); redraw(); },
+      onPointerDown: (e) => {
+        if (e.button !== 0) return;
+        (stroke.current ??= []).push(toUV(e));
+        added.current = true;
+        onPending(stroke.current.length);
+        redraw();
+      },
       onPointerMove: (e) => { ring.track(e); if (stroke.current) { hover.current = toUV(e); redraw(); } },
+      onPointerUp: () => { added.current = false; },
       onDoubleClick: () => { if (stroke.current) { stroke.current.pop(); finish(); } },
     }
     : {
-      onPointerDown: (e) => { if (e.button !== 0) return; e.currentTarget.setPointerCapture(e.pointerId); stroke.current = [toUV(e)]; redraw(); },
+      onPointerDown: (e) => { if (e.button !== 0) return; e.currentTarget.setPointerCapture(e.pointerId); stroke.current = [toUV(e)]; ring.track(e); redraw(); },
       onPointerMove: (e) => { ring.track(e); if (stroke.current) { stroke.current.push(toUV(e)); redraw(); } },
-      onPointerUp: () => { if (stroke.current && stroke.current.length > 2) finish(); else { stroke.current = null; redraw(); } },
+      onPointerUp: (e) => {
+        if (e.pointerType === 'touch') ring.hide();
+        if (stroke.current && stroke.current.length > 2) finish(); else { stroke.current = null; redraw(); }
+      },
     };
   return (
     <>
@@ -205,6 +247,12 @@ export default function Viewer({ engine, view, brush, setTool }) {
   const toolRef = useRef(brush);
   toolRef.current = brush;
   const pan = useRef(null);
+  // Pointers down on the image, and the pinch they make when there are two.
+  const pointers = useRef(new Map());
+  const pinch = useRef(null);
+  // The active tool layer: cancel (a pinch started), and in points mode finish/back.
+  const toolApi = useRef(null);
+  const [pending, setPending] = useState(0);
   useEffect(() => { setZoom({ k: 1, x: 0, y: 0 }); }, [engine.bitmap]);
   const showBrush = view === 'brush' && !compare;
   const showDraw = view === 'draw' && !compare;
@@ -258,18 +306,50 @@ export default function Viewer({ engine, view, brush, setTool }) {
     return () => el.removeEventListener('wheel', onWheel);
   }, [setTool]);
 
-  // Dragging pans when zoomed in: left button without a tool, middle button always.
-  const onPanStart = (e) => {
+  // Dragging pans when zoomed in: left button or one finger without a tool,
+  // middle button always. Two fingers pinch to zoom and pan, tool or not; the
+  // second finger cancels whatever stroke the first one started.
+  const onDown = (e) => {
+    const r = box.current.getBoundingClientRect();
+    pointers.current.set(e.pointerId, [e.clientX - r.left, e.clientY - r.top]);
+    if (pointers.current.size === 2) {
+      e.stopPropagation();
+      toolApi.current?.cancel();
+      pan.current = null;
+      const [a, b] = [...pointers.current.values()];
+      pinch.current = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], ...zoomRef.current };
+      return;
+    }
+    if (pointers.current.size > 2 || pinch.current) { e.stopPropagation(); return; }
     if (zoomRef.current.k === 1 || !(e.button === 1 || (e.button === 0 && !toolRef.current))) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     pan.current = { sx: e.clientX, sy: e.clientY, ...zoomRef.current };
   };
-  const onPanMove = (e) => {
+  const onMove = (e) => {
+    const r = box.current.getBoundingClientRect();
+    if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, [e.clientX - r.left, e.clientY - r.top]);
+    const g = pinch.current;
+    if (g) {
+      e.stopPropagation();
+      if (pointers.current.size < 2) return;
+      const [a, b] = [...pointers.current.values()];
+      const k = clamp(g.k * Math.hypot(a[0] - b[0], a[1] - b[1]) / g.d, 1, 8);
+      const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      // The image point that was under the first midpoint follows the fingers.
+      const x = m[0] - ((g.m[0] - g.x) * k) / g.k, y = m[1] - ((g.m[1] - g.y) * k) / g.k;
+      setZoom({ k, x: clamp(x, r.width * (1 - k), 0), y: clamp(y, r.height * (1 - k), 0) });
+      return;
+    }
     const p0 = pan.current;
     if (!p0) return;
-    const r = box.current.getBoundingClientRect();
     setZoom({ k: p0.k, x: clamp(p0.x + e.clientX - p0.sx, r.width * (1 - p0.k), 0), y: clamp(p0.y + e.clientY - p0.sy, r.height * (1 - p0.k), 0) });
+  };
+  const onUp = (e) => {
+    pointers.current.delete(e.pointerId);
+    pan.current = null;
+    // The pinch ends when the last finger lifts, so the one left over doesn't draw.
+    if (pinch.current) { e.stopPropagation(); if (!pointers.current.size) pinch.current = null; }
   };
 
   const image = compare ? engine.images.original : engine.images[view];
@@ -300,13 +380,14 @@ export default function Viewer({ engine, view, brush, setTool }) {
       <div
         className={`viewer-box${zoom.k > 1 && !brush ? ' can-pan' : ''}`}
         ref={box}
-        onPointerDownCapture={onPanStart}
-        onPointerMove={onPanMove}
-        onPointerUp={() => { pan.current = null; }}
+        onPointerDownCapture={onDown}
+        onPointerMoveCapture={onMove}
+        onPointerUpCapture={onUp}
+        onPointerCancelCapture={onUp}
       >
         <div className="viewer-zoom" style={{ transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.k})` }}>
-          {showBrush ? <BrushLayer engine={engine} brush={brush} />
-            : showDraw ? <DrawLayer engine={engine} tool={brush} />
+          {showBrush ? <BrushLayer engine={engine} brush={brush} api={toolApi} />
+            : showDraw ? <DrawLayer engine={engine} tool={brush} api={toolApi} onPending={setPending} />
             : useGl ? <div className="viewer-host" ref={host} />
             : image && <ImageCanvas image={image} className="viewer-canvas" />}
         </div>
@@ -325,6 +406,12 @@ export default function Viewer({ engine, view, brush, setTool }) {
             : engine.busy ? 'Calculando…'
             : engine.info ? `${engine.info.shards.toLocaleString('es')} trozos` : ''}
         </span>
+        {showDraw && pending > 0 && (
+          <span className="point-actions">
+            <button type="button" className="link" onClick={() => toolApi.current?.back()}>Quitar punto</button>
+            <button type="button" className="btn btn-dark chamfer-s" onClick={() => toolApi.current?.finish()} disabled={pending < 2}>Terminar línea</button>
+          </span>
+        )}
         {zoom.k > 1 && (
           <button type="button" className="link" onClick={() => setZoom({ k: 1, x: 0, y: 0 })}>
             Ajustar ({Math.round(zoom.k * 100)} %)
@@ -332,7 +419,8 @@ export default function Viewer({ engine, view, brush, setTool }) {
         )}
         <button
           type="button"
-          className="link"
+          className="link hold"
+          onContextMenu={(e) => e.preventDefault()}
           onPointerDown={() => setCompare(true)}
           onPointerUp={() => setCompare(false)}
           onPointerLeave={() => setCompare(false)}

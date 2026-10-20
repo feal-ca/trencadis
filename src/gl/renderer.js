@@ -191,10 +191,10 @@ export function createRenderer(canvas, { onLost } = {}) {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     },
     // Render at export size and encode. The caller re-renders at display size.
-    toBlob(p, long) {
+    toBlob(p, long, type = 'image/png', quality) {
       const [W, H] = api.sizeFor(long);
       api.render(p, W, H);
-      return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
     },
   };
   return api;

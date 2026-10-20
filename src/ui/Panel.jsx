@@ -3,6 +3,7 @@ import { macroKeys } from '../core/macros.js';
 import { ALGORITHMS, isVisible, PARAM } from '../core/params.js';
 import { InfoTip, Macro, Param } from './Param.jsx';
 import { ALGORITHM_INFO, ROW_PARAMS, STEPS } from './steps.js';
+import { TOUCH, useMedia } from './useMedia.js';
 
 function AlgorithmPicker({ engine }) {
   const [open, setOpen] = useState(false);
@@ -48,7 +49,10 @@ function BrushTools({ engine, brush, setBrush }) {
           {tool('remove', 'Quitar detalle')}
           {tool('add', 'Añadir detalle')}
         </div>
-        <button type="button" className="link" onClick={engine.clearMask} disabled={engine.mask.current?.empty ?? true}>Borrar</button>
+        <span className="brush-links">
+          <button type="button" className="link" onClick={() => engine.undoMask()} disabled={!engine.canUndoMask}>Deshacer</button>
+          <button type="button" className="link" onClick={engine.clearMask} disabled={engine.mask.current?.empty ?? true}>Borrar</button>
+        </span>
       </div>
       {brush && (
         <label className="field-row brush-size">
@@ -64,7 +68,10 @@ function RowTools({ engine, tool, setTool, showLines }) {
   const drawing = tool?.kind === 'draw';
   const mode = tool?.mode ?? 'free';
   const snap = tool?.snap ?? true;
-  const set = (patch) => setTool({ kind: 'draw', mode, snap, radius: tool?.radius, ...patch });
+  const radius = tool?.radius ?? 0.02;
+  const set = (patch) => setTool({ kind: 'draw', mode, snap, radius, ...patch });
+  const touch = useMedia(TOUCH);
+  const zoomHelp = touch ? 'Con dos dedos amplías y mueves la imagen.' : 'La rueda cambia el círculo de enganche y Ctrl + rueda amplía.';
   return (
     <div className="field rows-block">
       <div className="field-row">
@@ -77,6 +84,7 @@ function RowTools({ engine, tool, setTool, showLines }) {
           {drawing ? 'Terminar' : 'Dibujar línea'}
         </button>
         <button type="button" className="link" onClick={showLines} disabled={!engine.lines.lines.length}>Ver las líneas</button>
+        <button type="button" className="link" onClick={engine.undoGuide} disabled={!engine.guides.length}>Deshacer línea</button>
         <button type="button" className="link" onClick={engine.clearGuides} disabled={!engine.guides.length}>
           Borrar mis líneas{engine.guides.length ? ` (${engine.guides.length})` : ''}
         </button>
@@ -90,12 +98,22 @@ function RowTools({ engine, tool, setTool, showLines }) {
           <label className="field-check">
             <input type="checkbox" checked={snap} onChange={(e) => set({ snap: e.target.checked })} />
             <span>Pegar al contorno</span>
-            <InfoTip label="Pegar al contorno" text="Al terminar, la línea se acerca al borde más marcado de la foto dentro del círculo que ves en el cursor. Cambia el tamaño del círculo con la rueda del ratón." />
+            <InfoTip label="Pegar al contorno" text={touch
+              ? 'Al terminar, la línea se acerca al borde más marcado de la foto dentro del círculo que ves bajo el dedo. Su tamaño se cambia aquí debajo.'
+              : 'Al terminar, la línea se acerca al borde más marcado de la foto dentro del círculo que ves en el cursor. Cambia el tamaño del círculo aquí debajo o con la rueda del ratón.'} />
           </label>
+          {snap && (
+            <label className="field-row brush-size">
+              <span>Círculo de enganche</span>
+              <input type="range" min={4} max={100} value={Math.round(radius * 1000)} onChange={(e) => set({ radius: e.target.value / 1000 })} />
+            </label>
+          )}
           <span className="help">
             {mode === 'free'
-              ? 'Arrastra sobre la foto; el temblor del ratón se suaviza. La rueda cambia el círculo de enganche y Ctrl + rueda amplía.'
-              : 'Haz clic en cada vértice; doble clic o Intro para terminar, Retroceso quita el último punto y Esc cancela. La rueda cambia el círculo de enganche y Ctrl + rueda amplía.'}
+              ? (touch ? 'Arrastra el dedo sobre la foto; el trazo se suaviza. ' : 'Arrastra sobre la foto; el temblor del ratón se suaviza. ') + zoomHelp
+              : touch
+                ? 'Toca cada vértice y pulsa «Terminar línea» bajo la imagen; «Quitar punto» borra el último. ' + zoomHelp
+                : 'Haz clic en cada vértice; doble clic o Intro para terminar, Retroceso quita el último punto y Esc cancela. ' + zoomHelp}
             {' '}En azul, las líneas que salen de los contornos de la foto; si acabas cerca de una, tu línea se une a ella.
           </span>
         </div>
@@ -178,9 +196,42 @@ function Section({ step, index, engine, open, onOpen, peek, onPeek, brush, setBr
   );
 }
 
-export default function Panel({ engine, open, setOpen, peek, setPeek, brush, setBrush }) {
+const FORMAT_STORE = 'trencadis.format.v1';
+// Web Share with files: phones mostly, and Safari/Edge on desktop.
+const CAN_SHARE = typeof navigator !== 'undefined' && !!navigator.canShare
+  && navigator.canShare({ files: [new File([''], 'x.png', { type: 'image/png' })] });
+
+export function Export({ engine }) {
+  const [format, setFormat] = useState(() => {
+    try { return localStorage.getItem(FORMAT_STORE) || 'png'; } catch { return 'png'; }
+  });
+  const pick = (f) => {
+    setFormat(f);
+    try { localStorage.setItem(FORMAT_STORE, f); } catch { /* storage unavailable */ }
+  };
+  const label = format === 'jpg' ? 'JPG' : 'PNG';
   return (
-    <aside className="side">
+    <div className="export">
+      <div className="seg" role="group" aria-label="Formato">
+        <button type="button" className={format === 'png' ? 'on' : ''} aria-pressed={format === 'png'} onClick={() => pick('png')} title="Sin pérdida, unos 3,5 MB">PNG</button>
+        <button type="button" className={format === 'jpg' ? 'on' : ''} aria-pressed={format === 'jpg'} onClick={() => pick('jpg')} title="Mucho más ligero">JPG</button>
+      </div>
+      <button type="button" className="btn btn-dark chamfer-s download" onClick={() => engine.download(format)} disabled={!engine.mosaicReady}>
+        Descargar {label}
+      </button>
+      {CAN_SHARE && (
+        <button type="button" className="btn chamfer-s" onClick={() => engine.share(format)} disabled={!engine.mosaicReady}>
+          Compartir
+        </button>
+      )}
+    </div>
+  );
+}
+
+// `withExport` false: the phone sheet shows the export row in its own footer.
+export default function Panel({ engine, open, setOpen, peek, setPeek, brush, setBrush, withExport = true }) {
+  return (
+    <>
       {STEPS.map((step, i) => (
         <Section
           key={step.id}
@@ -196,9 +247,7 @@ export default function Panel({ engine, open, setOpen, peek, setPeek, brush, set
           showLines={() => { setBrush(null); setPeek({ step: 'trozos', view: 'structure' }); }}
         />
       ))}
-      <button type="button" className="btn btn-dark chamfer-s download" onClick={engine.download} disabled={!engine.mosaicReady}>
-        Descargar PNG
-      </button>
-    </aside>
+      {withExport && <Export engine={engine} />}
+    </>
   );
 }

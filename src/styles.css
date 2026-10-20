@@ -175,13 +175,43 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
 .panot { position: absolute; inset: 0; width: 100%; height: 100%; }
 .panot-line { fill: none; stroke: var(--panot); stroke-width: 1.4; }
 
+/* Phones: the image fills the screen above a bottom sheet with the steps.
+   --sheet-h is the sheet's height, capped at its half position, so the image
+   shrinks with the sheet and is only covered when it is pulled up all the way. */
 @media (max-width: 860px) {
-  .app { height: auto; }
-  .top { flex-wrap: wrap; gap: 10px; }
-  .work { grid-template-columns: 1fr; }
-  .viewer { min-height: 62vh; }
-  .side { overflow: visible; }
+  .app { height: 100dvh; min-height: 0; overflow: hidden; }
+  .top { flex-wrap: wrap; gap: 4px 10px; padding: 8px 12px; }
+  .top .btn { padding: 7px 12px; }
+  .work { grid-template-columns: 1fr; padding: 0 8px calc(var(--sheet-h, 0px) + 8px); }
+  .viewer-bar { padding: 0 10px 8px; }
 }
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; gap: 0; padding-right: 0;
+  overflow: visible; background: var(--wall); border-top: 1px solid var(--line); border-radius: 14px 14px 0 0;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.12); transition: height 0.22s ease-out;
+}
+.sheet.is-dragging { transition: none; }
+.sheet-handle {
+  flex-shrink: 0; display: grid; place-items: center; height: 28px; border: 0; background: none;
+  cursor: grab; touch-action: none;
+}
+.sheet-handle span { width: 42px; height: 5px; border-radius: 3px; background: var(--line-strong); }
+.sheet-body {
+  flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px;
+  overflow-y: auto; overscroll-behavior: contain; padding: 0 10px;
+}
+.sheet-body > :last-child { margin-bottom: 4px; }
+.sheet-foot { flex-shrink: 0; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+
+.export { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: auto; flex-shrink: 0; }
+.export .download { flex: 1; margin-top: 0; }
+.brush-links { display: flex; gap: 12px; }
+.point-actions { display: flex; align-items: center; gap: 12px; }
+.point-actions .btn { padding: 5px 12px; }
+.viewer-bar { flex-wrap: wrap; }
+/* The image takes every touch: one finger draws or pans, two pinch. */
+.viewer-box { touch-action: none; }
+.hold { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .rows-block { border-top: 1px solid var(--line); padding-top: 12px; gap: 8px; }
 
 /* Working indicator: the image dims a little and a shard turns in the corner. */
@@ -237,3 +267,4 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
   background: var(--seg); color: var(--soft); font-size: 0.85rem; line-height: 1; cursor: pointer;
 }
 .reset:hover, .reset:focus-visible { background: var(--ink); color: var(--wall); }
+.sheet[data-snap='peek']:not(.is-dragging) .sheet-body { visibility: hidden; }
