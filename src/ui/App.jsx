@@ -55,7 +55,10 @@ export default function App() {
     <div className={`app${mobile ? ' is-mobile' : ''}`} style={mobile ? { '--sheet-h': `${sheetH}px` } : undefined}>
       <div className="strip" aria-hidden="true" />
       <header className="top">
-        <span className="brand">Trencadís</span>
+        <h1 className="brand-block">
+          <span className="brand">Trencadís</span>
+          <span className="tagline">Tu foto hecha mosaico, sin salir de tu dispositivo</span>
+        </h1>
         <button type="button" className="btn btn-dark chamfer-s" onClick={() => input.current.click()} title="También puedes arrastrarla aquí o pegarla con Ctrl+V">Subir foto</button>
         <input ref={input} type="file" accept="image/*" hidden onChange={(e) => e.target.files[0] && engine.loadBlob(e.target.files[0])} />
         <span className="samples muted">

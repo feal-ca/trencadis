@@ -70,6 +70,8 @@ a { color: inherit; }
 }
 .top { display: flex; align-items: center; gap: 18px; padding: 10px 16px; min-width: 0; }
 .brand { font-family: Gloock, Georgia, serif; font-size: 1.6rem; line-height: 1; text-decoration: none; }
+.brand-block { display: grid; gap: 3px; margin: 0; font: inherit; }
+.tagline { color: var(--soft); font-size: 0.82rem; line-height: 1.2; }
 
 .seg { display: inline-flex; background: var(--seg); padding: 3px; gap: 2px; border-radius: 999px; }
 .seg button { border: 0; background: none; padding: 4px 12px; border-radius: 999px; cursor: pointer; color: var(--soft); font-size: 0.88rem; }
