@@ -3,7 +3,8 @@
 <title>thumbs</title>
 <canvas id="c"></canvas>
 <script type="module">
-// Renders the method thumbnails; scripts/thumbs.mjs collects them.
+// Renders the method and style thumbnails, close-ups of the face where the
+// shape of the pieces shows; scripts/thumbs.mjs collects them.
 import { createPipeline } from '/src/core/pipeline.js';
 import { DEFAULTS } from '/src/core/params.js';
 import { applyMacroDefaults, applyStyle, STYLES } from '/src/core/macros.js';
@@ -26,11 +27,22 @@ const render = async (p) => {
   await pipe.run(p, (n, v) => { st[n] = v; }, undefined, undefined, undefined, { cpuRender: false });
   r.setShards(st.tessellation.shards, img.w, img.h, p.seed);
   r.setColors(st.color.colors, p.seed);
-  const [W, H] = r.sizeFor(600);
+  const [W, H] = r.sizeFor(1000);
   r.render(p, W, H);
-  return { url: document.getElementById('c').toDataURL('image/jpeg', 0.85), st };
+  // A square around the face (the crop is a share of the width).
+  const side = crop * W, sx = 0.47 * W - side / 2, sy = 0.4 * H - side / 2;
+  const out = new OffscreenCanvas(160, 160);
+  out.getContext('2d').drawImage(document.getElementById('c'), sx, sy, side, side, 0, 0, 160, 160);
+  const blob = await out.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+  return { url: await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); }), st };
 };
-for (const a of ALGORITHMS) out[`algo-${a.value}`] = (await render({ ...applyStyle(base, 'rectos'), algorithm: a.value })).url;
+let crop = 0.42;
+for (const a of ALGORITHMS) out[`algo-${a.value}`] = (await render({ ...base, groutColor: '#2f2b27', algorithm: a.value })).url;
+crop = 0.6;
+for (const st of STYLES) {
+  const p = applyStyle(DEFAULTS, st.id).params;
+  out[`style-${st.id}`] = (await render(p.groutColor === 'auto' ? { ...p, groutColor: '#2f2b27' } : p)).url;
+}
 window.result = out;
 document.title = 'done';
 </script>

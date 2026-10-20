@@ -54,6 +54,12 @@ function Label({ htmlFor, label, help, children, onReset }) {
   );
 }
 
+const GROUT_CHOICES = [
+  { value: '#d9d5cb', label: 'Cemento' },
+  { value: '#f4f1ea', label: 'Blanco' },
+  { value: '#2f2b27', label: 'Oscuro' },
+];
+
 const differs = (q, a, b) => (typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) > (q.step ?? 0) / 2 : a !== b);
 
 // `def` overrides the schema default (parameters a simple control sets).
@@ -78,6 +84,29 @@ export function Param({ k, engine, def = DEFAULTS[k] }) {
       <div className="field field-inline">
         <input id={id} type="checkbox" checked={value} onChange={(e) => set(e.target.checked)} />
         <Label htmlFor={id} label={q.label} help={q.help} onReset={reset} />
+      </div>
+    );
+  }
+  if (q.type === 'grout') {
+    const swatch = (v, label, color) => (
+      <button key={v} type="button" className={`swatch${value === v ? ' on' : ''}`} aria-pressed={value === v}
+        title={label} aria-label={label} style={{ '--swatch': color }} onClick={() => set(v)}>
+        {v === 'auto' && <span aria-hidden="true">A</span>}
+      </button>
+    );
+    const custom = value !== 'auto' && !GROUT_CHOICES.some((c) => c.value === value);
+    return (
+      <div className="field">
+        <Label htmlFor={id} label={q.label} help={q.help} onReset={reset}>
+          <output htmlFor={id}>{value === 'auto' ? 'automático' : custom ? 'a tu gusto' : GROUT_CHOICES.find((c) => c.value === value).label.toLowerCase()}</output>
+        </Label>
+        <div className="swatches" role="group" aria-label={q.label}>
+          {swatch('auto', 'Automático', engine.autoGrout)}
+          {GROUT_CHOICES.map((c) => swatch(c.value, c.label, c.value))}
+          <label className={`swatch swatch-custom${custom ? ' on' : ''}`} title="Otro color">
+            <input id={id} type="color" value={value === 'auto' ? engine.autoGrout : value} onChange={(e) => set(e.target.value)} aria-label="Otro color" />
+          </label>
+        </div>
       </div>
     );
   }

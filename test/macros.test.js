@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyMacro, applyStyle, macroKeys, MACROS, readMacro, readStyle, STYLES } from '../src/core/macros.js';
+import { applyMacro, applyMacroDefaults, applyStyle, macroKeys, MACROS, readMacro, readStyle, STYLES } from '../src/core/macros.js';
 import { DEFAULTS } from '../src/core/params.js';
 
 const close = (a, b) => expect(a).toBeCloseTo(b, 4);
@@ -20,7 +20,7 @@ describe('macros', () => {
   });
 
   it('macroKeys lists what a macro moves for the current algorithm', () => {
-    expect(macroKeys('size', DEFAULTS)).toEqual(['sMin', 'sMax']);
+    expect(macroKeys('size', DEFAULTS)).toEqual(['sMax', 'sMin']);
     expect(macroKeys('fidelity', { ...DEFAULTS, algorithm: 'slic' })).toEqual(['compactness']);
     expect(macroKeys('fidelity', { ...DEFAULTS, algorithm: 'voronoi' })).toEqual([]);
   });
@@ -53,18 +53,31 @@ describe('macros', () => {
   });
 });
 
+describe('size ratio', () => {
+  it('sets the smallest piece from the largest', () => {
+    const p = applyMacro({ ...DEFAULTS, sizeRatio: 3 }, 'size', 0.4);
+    close(p.sMax, 36);
+    close(p.sMin, 12);
+    close(readMacro(p, 'size'), 0.4);
+  });
+});
+
 describe('styles', () => {
-  it('defines the four styles from the spec', () => {
-    expect(STYLES.map((s) => s.label)).toEqual(['Cortes rectos', 'Azulejos de taller', 'Grietas', 'Teselas redondeadas']);
-    const taller = STYLES.find((s) => s.id === 'taller').params;
-    expect(taller).toMatchObject({ algorithm: 'fracture', palette: 'gaudi', paletteMix: 0.85, colorMode: 'vivid', saturation: 1.25 });
+  const base = applyMacroDefaults(DEFAULTS);
+  it('natural is the defaults', () => {
+    expect(applyStyle(DEFAULTS, 'natural').params).toEqual(base);
+    expect(readStyle(base, DEFAULTS)).toBe('natural');
   });
 
-  it('applyStyle keeps the fidelity macro for the new algorithm', () => {
-    const p = applyMacro({ ...DEFAULTS, algorithm: 'fracture' }, 'fidelity', 0.7);
-    const q = applyStyle(p, 'grietas');
-    expect(q.algorithm).toBe('cracks');
-    close(readMacro(q, 'fidelity'), 0.7);
-    expect(readStyle(q)).toBe('grietas');
-  });
+  for (const s of STYLES) {
+    it(`${s.label} keeps its simple controls simple and is recognised`, () => {
+      const { params, macros } = applyStyle(DEFAULTS, s.id);
+      for (const m of MACROS) {
+        if (macroKeys(m, params).length) close(readMacro(params, m), macros.values[m]);
+      }
+      expect(readStyle(params, DEFAULTS)).toBe(s.id);
+      expect(readStyle({ ...params, seed: params.seed + 1 }, DEFAULTS)).toBe(s.id);
+      expect(readStyle({ ...params, grout: params.grout + 0.5 }, DEFAULTS)).toBeNull();
+    });
+  }
 });

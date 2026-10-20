@@ -1,4 +1,4 @@
-import { hexToRgb } from './color.js';
+import { mortarRgb } from './color.js';
 import { placePolygon, placementRandoms } from './placement.js';
 import { area, rasterize } from './polygon.js';
 import { hash2, mulberry32 } from './rng.js';
@@ -75,7 +75,7 @@ export function renderMosaic(shards, colors, w, h, p) {
 
   const gBase = (p.grout * k) / 2;
   const bw = Math.max(1e-3, p.bevel * k);
-  const mortar = hexToRgb(p.groutColor);
+  const mortar = mortarRgb(p);
   const az = (p.lightAz * Math.PI) / 180, el = (p.lightEl * Math.PI) / 180;
   const L = [Math.cos(el) * Math.cos(az), -Math.cos(el) * Math.sin(az), Math.sin(el)];
   const Hv = norm([L[0], L[1], L[2] + 1]);

@@ -25,6 +25,9 @@ export const GROUPS = [
         help: 'Tamaño de los trozos en las zonas con más detalle. Más alto: los detalles finos se pierden.' },
       { key: 'sMax', label: 'Trozo máximo', min: 8, max: 140, step: 1, def: 36, unit: ' px', stage: 'analysis',
         help: 'Tamaño de los trozos en las zonas lisas. Más alto: fondos con pocas piezas grandes.' },
+      // Read by the size control: sMin = sMax / sizeRatio.
+      { key: 'sizeRatio', label: 'Variedad de tamaños', min: 1.5, max: 8, step: 0.1, def: 36 / 7, unit: '×', stage: 'analysis',
+        help: 'Cuántas veces es mayor el trozo más grande que el más pequeño. Más bajo: trozos parecidos, como el trencadís de verdad, y el detalle se ve por el color; más alto: trozos finos en el detalle.' },
       { key: 'gamma', label: 'Sensibilidad al detalle', min: 0.15, max: 3, step: 0.05, def: 0.7, stage: 'analysis',
         help: 'Más bajo: casi cualquier detalle encoge los trozos; más alto: solo los bordes fuertes.' },
       { key: 'ignoreTexture', label: 'Ignorar texturas', min: 0, max: 1, step: 0.01, def: 0, stage: 'analysis',
@@ -114,7 +117,7 @@ export const GROUPS = [
     id: 'color',
     params: [
       {
-        key: 'colorMode', label: 'Color de cada trozo', type: 'select', def: 'mean', stage: 'color',
+        key: 'colorMode', label: 'Color de cada trozo', type: 'select', def: 'vivid', stage: 'color',
         options: [
           { value: 'mean', label: 'Media' },
           { value: 'vivid', label: 'Más vivo' },
@@ -163,7 +166,9 @@ export const GROUPS = [
         help: 'Más alto: más mortero entre trozos; 0: sin junta.' },
       { key: 'rowGrout', label: 'Junta de las hileras', min: 1, max: 3, step: 0.05, def: 1.6, unit: '×', stage: 'render',
         help: 'Junta más ancha alrededor de las piezas de hilera, para que la fila se lea como una banda aunque las piezas sean grandes.' },
-      { key: 'groutColor', label: 'Color del mortero', type: 'color', def: '#d9d5cb', stage: 'render' },
+      // 'auto' or a hex colour; 'auto' is resolved per photo (autoGroutColor).
+      { key: 'groutColor', label: 'Mortero', type: 'grout', def: 'auto', stage: 'render',
+        help: 'Automático: un gris más oscuro que la foto, para que los trozos destaquen. El cemento claro es el clásico, pero sobre fotos oscuras llena la imagen de líneas blancas.' },
       { key: 'groutShadow', label: 'Sombra en la junta', min: 0, max: 1, step: 0.01, def: 0.45, stage: 'render',
         help: 'Más alto: la junta parece más hundida.' },
       { key: 'bevel', label: 'Ancho del bisel', min: 0, max: 6, step: 0.1, def: 1.4, unit: ' px', stage: 'render',

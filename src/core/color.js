@@ -10,6 +10,24 @@ export const GAUDI_PALETTE = [
 
 export const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
 
+// The grout colour to draw with. 'auto' is normally resolved per photo
+// before rendering; this fallback covers callers that skip that.
+export const mortarRgb = (p) => hexToRgb(/^#[0-9a-f]{6}$/i.test(p.groutColor) ? p.groutColor : '#3a3631');
+
+// Automatic grout: a warm grey well below the photo's median lightness, so the
+// pieces read against it. Light cement over a dark photo turns into a lace of
+// white lines; this keeps the joints in the photo's own key. `rgba` is the
+// photo's pixels (a small thumbnail is enough).
+export function autoGroutColor(rgba) {
+  const L = [];
+  const t = [0, 0, 0];
+  for (let i = 0; i < rgba.length; i += 4) L.push(rgbToLab(rgba[i] / 255, rgba[i + 1] / 255, rgba[i + 2] / 255, t)[0]);
+  L.sort((a, b) => a - b);
+  const median = L[L.length >> 1] ?? 50;
+  const g = Math.min(60, Math.max(10, 0.55 * median));
+  return '#' + labToRgb(g, 1, 4).map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('');
+}
+
 // One colour per shard from the pixels it covers.
 export function shardColors(shards, img, p) {
   const { w, h, rgb } = img;

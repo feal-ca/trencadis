@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { applyMacro, applyMacroDefaults, MACRO_DEFAULTS, MACROS } from '../core/macros.js';
+import { autoGroutColor } from '../core/color.js';
+import { applyMacro, applyMacroDefaults, applyStyle, MACRO_DEFAULTS, MACROS, readStyle } from '../core/macros.js';
 import { DEFAULTS, keysForStage } from '../core/params.js';
 import { createRenderer } from '../gl/renderer.js';
 
@@ -89,8 +90,17 @@ export function useEngine() {
   const sent = useRef(null);
   const view = useRef([800, 600]);
   const frame = useRef(0);
-  const paramsRef = useRef(params);
-  paramsRef.current = params;
+  // The grout colour 'auto' depends on the photo; everything downstream gets
+  // `effective`, with it resolved to a real colour.
+  const [autoGrout, setAutoGrout] = useState('#3a3631');
+  const effective = useMemo(
+    () => (params.groutColor === 'auto' ? { ...params, groutColor: autoGrout } : params),
+    [params, autoGrout],
+  );
+  const paramsRef = useRef(effective);
+  paramsRef.current = effective;
+  const rawParams = useRef(params);
+  rawParams.current = params;
 
   const glCanvas = useMemo(() => {
     const c = document.createElement('canvas');
@@ -176,6 +186,9 @@ export function useEngine() {
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(bitmap, 0, 0, w, h);
     const data = ctx.getImageData(0, 0, w, h);
+    const thumb = new OffscreenCanvas(64, Math.max(1, Math.round((64 * h) / w)));
+    thumb.getContext('2d').drawImage(cv, 0, 0, thumb.width, thumb.height);
+    setAutoGrout(autoGroutColor(thumb.getContext('2d').getImageData(0, 0, thumb.width, thumb.height).data));
     worker.current.postMessage({ type: 'image', image: data }, [data.data.buffer]);
     sent.current = null;
   }, [bitmap, params.workLong, readable]);
@@ -191,16 +204,16 @@ export function useEngine() {
   useEffect(() => {
     try { localStorage.setItem(STORE, JSON.stringify(params)); } catch { /* ignore */ }
     if (!bitmap || !readable) return;
-    const kind = changeKind(sent.current, params);
+    const kind = changeKind(sent.current, effective);
     if (kind === 'none') return;
     if (kind === 'render' && renderer.ok) {
-      sent.current = params;
+      sent.current = effective;
       requestRender();
       return;
     }
-    const t = setTimeout(() => { sent.current = params; post(params); }, 40);
+    const t = setTimeout(() => { sent.current = effective; post(effective); }, 40);
     return () => clearTimeout(t);
-  }, [params, bitmap, readable, renderer, post, requestRender]);
+  }, [effective, bitmap, readable, renderer, post, requestRender]);
 
   // Detail brush: values in [-1, 1] on a grid with a 256 px long side, so it
   // survives changes of working resolution.
@@ -361,7 +374,7 @@ export function useEngine() {
   }, [exportFile, download]);
 
   return {
-    params, setParams, images, labels, busy, info, error, gpu, glCanvas, mosaicReady,
+    params, setParams, images, labels, busy, info, error, gpu, glCanvas, mosaicReady, autoGrout,
     hasImage: !!bitmap, bitmap,
     setParam: (key, value) => setParams((p) => {
       let next = { ...p, [key]: value };
@@ -370,8 +383,19 @@ export function useEngine() {
       // A new method gets the same "Parecido a la foto" in its own terms.
       const m = macrosRef.current;
       if (key === 'algorithm' && !m.manual.fidelity) next = applyMacro(next, 'fidelity', m.values.fidelity);
+      // The size ratio is read by the size control, which then sets sMin.
+      if (key === 'sizeRatio' && !m.manual.size) next = applyMacro(next, 'size', m.values.size);
       return next;
     }),
+    style: readStyle(params, DEFAULTS),
+    // A one-click look replaces every setting; returns what restore() needs to undo it.
+    setStyle: (id) => {
+      const before = { params: rawParams.current, macros: macrosRef.current };
+      const next = applyStyle(DEFAULTS, id);
+      setMacros(next.macros);
+      setParams({ ...next.params, seed: rawParams.current.seed });
+      return before;
+    },
     macros,
     setMacro: (id, value) => {
       setMacros((m) => ({ ...m, values: { ...m.values, [id]: value } }));
@@ -384,7 +408,7 @@ export function useEngine() {
     },
     // Every setting back to its default; returns what to pass to restore() to undo it.
     resetAll: () => {
-      const before = { params: paramsRef.current, macros: macrosRef.current };
+      const before = { params: rawParams.current, macros: macrosRef.current };
       setMacros({ values: { ...MACRO_DEFAULTS }, manual: {} });
       setParams(applyMacroDefaults(DEFAULTS));
       return before;

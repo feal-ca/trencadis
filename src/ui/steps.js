@@ -54,7 +54,7 @@ export const STEPS = [
       { key: 'orientation', label: 'Dirección de los bordes' },
     ],
     simple: [{ macro: 'size' }, { param: 'ignoreTexture' }, { kind: 'brush' }],
-    advanced: ['gamma', 'detailSigma', 'detailSmooth', 'tensorSigma', 'workLong'],
+    advanced: ['sizeRatio', 'gamma', 'detailSigma', 'detailSmooth', 'tensorSigma', 'workLong'],
     summary: (p) => `Trozos de ${Math.round(p.sMin)} a ${Math.round(p.sMax)} px`,
   },
   {
@@ -85,8 +85,8 @@ export const STEPS = [
     explanation: 'Se dibuja el mosaico: el mortero entre trozos, un bisel en cada borde y una inclinación distinta en cada trozo, para que la luz brille de forma desigual, como en el esmalte de verdad. La colocación a mano gira y mueve un poco cada pieza, para que los cortes no queden alineados. Todo esto se calcula en la tarjeta gráfica y responde al momento.',
     formula: 'junta: píxeles a menos de ancho / 2 del borde\ncolocación: giro ≤ 6°, desplazamiento ≤ 1,2 px, encogido ≤ 6 %\nluz = (ambiente + difusa) · color + brillo · (n · h)^dureza   (Blinn-Phong)',
     views: [],
-    simple: [{ param: 'grout' }, { param: 'place' }, { macro: 'gloss' }, { param: 'lightAz' }],
-    advanced: ['groutColor', 'groutShadow', 'bevel', 'bevelStrength', 'lightEl', 'ambient', 'glazeNoise', 'outLong', 'supersample'],
+    simple: [{ param: 'grout' }, { param: 'groutColor' }, { param: 'place' }, { macro: 'gloss' }, { param: 'lightAz' }],
+    advanced: ['groutShadow', 'bevel', 'bevelStrength', 'lightEl', 'ambient', 'glazeNoise', 'outLong', 'supersample'],
     summary: (p) => `Junta de ${String(p.grout).replace('.', ',')} px`,
   },
 ];

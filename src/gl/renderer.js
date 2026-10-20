@@ -1,4 +1,4 @@
-import { hexToRgb } from '../core/color.js';
+import { mortarRgb } from '../core/color.js';
 import { PLACE } from '../core/placement.js';
 import { mulberry32 } from '../core/rng.js';
 import { FULLSCREEN_VS, ID_FS, ID_VS, JFA_FS, SEED_FS, SHADE_FS } from './shaders.js';
@@ -186,7 +186,7 @@ export function createRenderer(canvas, { onLost } = {}) {
       gl.uniform1f(loc.uGlaze, p.glazeNoise);
       gl.uniform1f(loc.uSeed, p.seed);
       gl.uniform1f(loc.uRowGrout, p.rowGrout ?? 1);
-      gl.uniform3fv(loc.uMortar, hexToRgb(p.groutColor));
+      gl.uniform3fv(loc.uMortar, mortarRgb(p));
       gl.uniform3f(loc.uLight, Math.cos(el) * Math.cos(az), -Math.cos(el) * Math.sin(az), Math.sin(el));
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     },

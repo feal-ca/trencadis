@@ -16,7 +16,9 @@ const FIDELITY_BY_ALGORITHM = {
 
 // The first term of each macro is the one readMacro inverts.
 const TERMS = {
-  size: () => [lin('sMin', 4, 7.5), lin('sMax', 16, 50)],
+  // The size control sets the largest piece; the smallest follows from the
+  // style's size ratio (a narrow range looks more like real trencadís).
+  size: (p) => [lin('sMax', 16, 50), { key: 'sMin', map: (t) => Math.max(3, (16 + 50 * t) / (p.sizeRatio ?? 36 / 7)) }],
   fidelity: (p) => FIDELITY_BY_ALGORITHM[p.algorithm] ?? [],
   gloss: () => [lin('specular', 0, 1.2), lin('tilt', 0.02, 0.28), exp10('shininess', 1.2, 1)],
 };
@@ -50,25 +52,41 @@ export function readMacro(params, id) {
 export const applyMacroDefaults = (params) =>
   MACROS.reduce((p, id) => applyMacro(p, id, MACRO_DEFAULTS[id]), params);
 
-const PLAIN_COLOR = { palette: 'none', colorMode: 'mean', saturation: 1.15 };
-
+// One-click looks. Each is a full set of settings: the defaults, the style's
+// own parameters, then its simple controls (so they stay simple, not "a mano").
 export const STYLES = [
-  { id: 'rectos', label: 'Cortes rectos', params: { algorithm: 'fracture', ...PLAIN_COLOR } },
-  { id: 'taller', label: 'Azulejos de taller', params: { algorithm: 'fracture', palette: 'gaudi', paletteMix: 0.85, colorMode: 'vivid', saturation: 1.25 } },
-  { id: 'grietas', label: 'Grietas', params: { algorithm: 'cracks', ...PLAIN_COLOR } },
-  { id: 'teselas', label: 'Teselas redondeadas', params: { algorithm: 'voronoi', ...PLAIN_COLOR } },
+  { id: 'natural', label: 'Natural', params: {}, macros: {} },
+  {
+    id: 'parkguell', label: 'Park Güell',
+    params: { algorithm: 'fracture', palette: 'gaudi', paletteMix: 0.5, saturation: 1.35, groutColor: '#ece8df', grout: 1.5, sizeRatio: 2.9 },
+    macros: { size: 0.44, fidelity: 0.85, gloss: 0.75 },
+  },
+  {
+    id: 'romano', label: 'Romano',
+    params: { algorithm: 'voronoi', lloydIters: 10, sizeRatio: 2.8, saturation: 0.85, place: 0.55, grout: 1.1, groutColor: '#9a9286', autoGuides: 0.5, rowScale: 0.9, rowLength: 1.1, colorJitter: 0.05 },
+    macros: { size: 0, gloss: 0.05 },
+  },
+  {
+    id: 'vitral', label: 'Vitral',
+    params: { algorithm: 'voronoi-aniso', sizeRatio: 6.2, saturation: 1.6, lightness: 0.06, groutColor: '#141210', grout: 3.4, ambient: 0.75, bevel: 0.6, glazeNoise: 0.06, place: 0.1 },
+    macros: { size: 0.8, gloss: 0.15 },
+  },
 ];
 
-// Switching style changes the algorithm, so the fidelity macro is re-applied
-// to keep "Parecido a la foto" meaning the same thing.
-export function applyStyle(params, id) {
+// The parameters and simple-control values of a style, from `defaults`.
+export function applyStyle(defaults, id) {
   const style = STYLES.find((s) => s.id === id);
-  const f = readMacro(params, 'fidelity');
-  const next = { ...params, ...style.params };
-  return f === null ? next : applyMacro(next, 'fidelity', f);
+  const values = { ...MACRO_DEFAULTS, ...style.macros };
+  const params = MACROS.reduce((p, m) => applyMacro(p, m, values[m]), { ...defaults, ...style.params });
+  return { params, macros: { values, manual: {} } };
 }
 
-export function readStyle(params) {
-  const style = STYLES.find((s) => Object.entries(s.params).every(([k, v]) => params[k] === v));
+// The style whose settings these are, or null once anything but the seed
+// ("Otra versión") was changed.
+export function readStyle(params, defaults) {
+  const style = STYLES.find((s) => {
+    const want = applyStyle(defaults, s.id).params;
+    return Object.keys(want).every((k) => k === 'seed' || (typeof want[k] === 'number' ? Math.abs(want[k] - params[k]) < 1e-9 : want[k] === params[k]));
+  });
   return style ? style.id : null;
 }

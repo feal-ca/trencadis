@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { macroKeys } from '../core/macros.js';
+import { macroKeys, STYLES } from '../core/macros.js';
 import { ALGORITHMS, isVisible, PARAM } from '../core/params.js';
 import { InfoTip, Macro, Param } from './Param.jsx';
 import { ALGORITHM_INFO, ROW_PARAMS, STEPS } from './steps.js';
@@ -152,9 +152,11 @@ function Section({ step, index, engine, open, onOpen, peek, onPeek, brush, setBr
   const formula = step.id === 'trozos' ? ALGORITHM_INFO[algo].formula : step.formula;
   const summary = step.id === 'trozos' ? ALGORITHMS.find((a) => a.value === algo).label : step.summary?.(engine.params);
   // Parameters a simple control on screen already moves only appear through
-  // its "Ajustar a mano"; the CPU antialiasing only matters without a GPU.
+  // its "Ajustar a mano"; the CPU antialiasing only matters without a GPU, and
+  // the size ratio only through the simple size control.
   const covered = new Set(step.simple.filter((c) => c.macro).flatMap((c) => macroKeys(c.macro, engine.params)));
-  const advanced = step.advanced.filter((k) => isVisible(PARAM[k], engine.params) && !covered.has(k) && !(k === 'supersample' && engine.gpu));
+  const advanced = step.advanced.filter((k) => isVisible(PARAM[k], engine.params) && !covered.has(k) && !(k === 'supersample' && engine.gpu)
+    && !(k === 'sizeRatio' && engine.macros.manual.size));
   const canPeek = step.views.length > 0;
   return (
     <section className={`section${open ? ' open' : ''}`}>
@@ -228,6 +230,27 @@ export function Export({ engine }) {
   );
 }
 
+// One-click looks above the steps. Picking one replaces every setting, so it
+// can be undone until the next change.
+function Styles({ engine }) {
+  const [undo, setUndo] = useState(null);
+  if (undo && engine.style !== undo.id) setUndo(null);
+  return (
+    <div className="styles">
+      <div className="styles-row" role="group" aria-label="Estilo">
+        {STYLES.map((s) => (
+          <button key={s.id} type="button" className={`style${engine.style === s.id ? ' on' : ''}`} aria-pressed={engine.style === s.id}
+            onClick={() => { if (engine.style !== s.id) setUndo({ id: s.id, before: engine.setStyle(s.id) }); }}>
+            <img className="chamfer-s" src={`./styles/style-${s.id}.jpg`} alt="" />
+            <span>{s.label}</span>
+          </button>
+        ))}
+      </div>
+      {undo && <button type="button" className="link styles-undo" onClick={() => { engine.restore(undo.before); setUndo(null); }}>Deshacer: volver a mis ajustes</button>}
+    </div>
+  );
+}
+
 // Puts every setting back to its default; until the next change it offers to undo that.
 function ResetAll({ engine }) {
   const [undo, setUndo] = useState(null);
@@ -242,6 +265,7 @@ function ResetAll({ engine }) {
 export default function Panel({ engine, open, setOpen, peek, setPeek, brush, setBrush, withExport = true }) {
   return (
     <>
+      <Styles engine={engine} />
       {STEPS.map((step, i) => (
         <Section
           key={step.id}
