@@ -294,7 +294,11 @@ export function useEngine() {
       worker.current?.postMessage({ type: 'guides', guides: [] });
       setBitmap(bmp);
     } catch {
-      setError('No se ha podido leer esa imagen. Prueba con un JPG o un PNG.');
+      // HEIC (iPhone photos) only opens in Safari; elsewhere it fails here.
+      const heic = /hei[cf]$/i.test(blob.type) || /\.hei[cf]$/i.test(blob.name ?? '');
+      setError(heic
+        ? 'Este navegador no abre fotos HEIC, el formato del iPhone. Ábrela en Safari o guárdala como JPG (en el iPhone: Ajustes › Cámara › Formatos › Más compatible).'
+        : 'No se ha podido leer esa imagen. Prueba con un JPG o un PNG.');
     }
   }, [resetMask]);
 
@@ -378,6 +382,16 @@ export function useEngine() {
       setMacros((m) => ({ ...m, manual: { ...m.manual, [id]: on } }));
       if (!on) setParams((p) => applyMacro(p, id, macrosRef.current.values[id]));
     },
+    // Every setting back to its default; returns what to pass to restore() to undo it.
+    resetAll: () => {
+      const before = { params: paramsRef.current, macros: macrosRef.current };
+      setMacros({ values: { ...MACRO_DEFAULTS }, manual: {} });
+      setParams(applyMacroDefaults(DEFAULTS));
+      return before;
+    },
+    restore: ({ params: p, macros: m }) => { setMacros(m); setParams(p); },
+    isDefault: Object.entries(applyMacroDefaults(DEFAULTS)).every(([k, v]) => params[k] === v)
+      && !Object.values(macros.manual).some(Boolean),
     loadBlob, loadSample, setViewport, setWanted, download, share,
     mask, maskVersion, paint, beginStroke, commitMask, clearMask, undoMask, canUndoMask,
     guides, lines, addGuide: (g) => commitGuides([...guides, g]), clearGuides: () => commitGuides([]),

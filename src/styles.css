@@ -130,7 +130,9 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
 .algos { display: grid; gap: 4px; }
 .algo { display: grid; grid-template-columns: 46px 1fr; gap: 10px; align-items: center; border: 0; background: none; padding: 5px; cursor: pointer; text-align: left; }
 .algo:hover { background: var(--wall); }
-.algo.on { background: var(--seg); }
+/* The chosen method: a dark frame, so it never looks like the hovered one. */
+.algo.on { background: var(--seg); box-shadow: inset 0 0 0 2px var(--ink); }
+.algo.on b::after { content: ' ✓'; }
 .algo-img { display: block; height: 46px; overflow: hidden; background: var(--seg); }
 .algo-img img { width: 100%; height: 100%; object-fit: cover; }
 .algo b { display: block; font-weight: 600; font-size: 0.92rem; }
@@ -169,6 +171,8 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
 .brush-size input { width: 55%; }
 .brush-canvas { cursor: crosshair; touch-action: none; }
 .download { margin-top: auto; flex-shrink: 0; }
+.reset-all { align-self: center; margin-top: auto; }
+.reset-all + .export { margin-top: 0; }
 
 .drop { position: absolute; inset: 0; display: grid; place-items: center; background: var(--panel); }
 .drop p { position: relative; margin: 0; font-family: Gloock, Georgia, serif; font-size: 1.4rem; }

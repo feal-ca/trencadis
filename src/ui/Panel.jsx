@@ -228,6 +228,16 @@ export function Export({ engine }) {
   );
 }
 
+// Puts every setting back to its default; until the next change it offers to undo that.
+function ResetAll({ engine }) {
+  const [undo, setUndo] = useState(null);
+  if (undo && !engine.isDefault) setUndo(null);
+  if (!undo && engine.isDefault) return null;
+  return undo
+    ? <button type="button" className="link reset-all" onClick={() => { engine.restore(undo); setUndo(null); }}>Deshacer: volver a mis ajustes</button>
+    : <button type="button" className="link reset-all" onClick={() => setUndo(engine.resetAll())}>Restablecer todos los ajustes</button>;
+}
+
 // `withExport` false: the phone sheet shows the export row in its own footer.
 export default function Panel({ engine, open, setOpen, peek, setPeek, brush, setBrush, withExport = true }) {
   return (
@@ -247,6 +257,7 @@ export default function Panel({ engine, open, setOpen, peek, setPeek, brush, set
           showLines={() => { setBrush(null); setPeek({ step: 'trozos', view: 'structure' }); }}
         />
       ))}
+      <ResetAll engine={engine} />
       {withExport && <Export engine={engine} />}
     </>
   );

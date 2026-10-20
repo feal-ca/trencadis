@@ -22,6 +22,18 @@ export default function App() {
     if (!engine.hasImage) engine.loadSample(SAMPLES[0].src);
   }, []);
 
+  // Ctrl+V / Cmd+V with an image on the clipboard loads it.
+  useEffect(() => {
+    const onPaste = (e) => {
+      const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith('image/'));
+      if (!file) return;
+      e.preventDefault();
+      engine.loadBlob(file);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [engine.loadBlob]);
+
   // `brush` is the active tool: the detail brush or guide drawing.
   const view = brush ? brush.kind : peek?.view ?? 'final';
   const peekStep = peek && STEPS.find((s) => s.id === peek.step);
@@ -44,7 +56,7 @@ export default function App() {
       <div className="strip" aria-hidden="true" />
       <header className="top">
         <span className="brand">Trencadís</span>
-        <button type="button" className="btn btn-dark chamfer-s" onClick={() => input.current.click()}>Subir foto</button>
+        <button type="button" className="btn btn-dark chamfer-s" onClick={() => input.current.click()} title="También puedes arrastrarla aquí o pegarla con Ctrl+V">Subir foto</button>
         <input ref={input} type="file" accept="image/*" hidden onChange={(e) => e.target.files[0] && engine.loadBlob(e.target.files[0])} />
         <span className="samples muted">
           o prueba con{' '}
