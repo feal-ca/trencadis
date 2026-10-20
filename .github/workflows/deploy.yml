@@ -39,6 +39,11 @@ jobs:
       - name: Build with Vite
         run: npm run build
 
+      - name: Smoke test in Chromium
+        run: |
+          npx playwright-core install --with-deps chromium
+          npm run smoke
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
