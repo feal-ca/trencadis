@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { autoGroutColor } from '../core/color.js';
+import { createHistory } from '../core/history.js';
 import { applyMacro, applyMacroDefaults, applyStyle, MACRO_DEFAULTS, MACROS, readStyle } from '../core/macros.js';
 import { DEFAULTS, keysForStage } from '../core/params.js';
 import { createRenderer } from '../gl/renderer.js';
@@ -75,6 +76,28 @@ export function useEngine() {
   useEffect(() => {
     try { localStorage.setItem(MACRO_STORE, JSON.stringify(macros)); } catch { /* ignore */ }
   }, [macros]);
+  // Undo/redo of settings: a step is recorded once changes pause for 500 ms,
+  // so dragging a slider is one step.
+  const history = useRef(null);
+  history.current ??= createHistory({ params, macros });
+  const [, setHistoryVersion] = useState(0);
+  const pending = useRef(null);
+  const flushHistory = useCallback(() => {
+    clearTimeout(pending.current?.timer);
+    if (pending.current) history.current.record(pending.current.state);
+    pending.current = null;
+  }, []);
+  useEffect(() => {
+    const state = { params, macros };
+    clearTimeout(pending.current?.timer);
+    pending.current = { state, timer: setTimeout(() => { flushHistory(); setHistoryVersion((v) => v + 1); }, 500) };
+  }, [params, macros, flushHistory]);
+  const travel = (dir) => {
+    flushHistory();
+    const s = dir < 0 ? history.current.undo() : history.current.redo();
+    if (s) { setMacros(s.macros); setParams(s.params); }
+    setHistoryVersion((v) => v + 1);
+  };
   const [images, setImages] = useState({});
   const [labels, setLabels] = useState({});
   const [busy, setBusy] = useState(null);
@@ -420,6 +443,11 @@ export function useEngine() {
       return before;
     },
     restore: ({ params: p, macros: m }) => { setMacros(m); setParams(p); },
+    undo: () => travel(-1),
+    redo: () => travel(1),
+    // A change not recorded yet can be undone too.
+    canUndo: history.current.canUndo || !history.current.matches({ params, macros }),
+    canRedo: history.current.canRedo,
     isDefault: Object.entries(applyMacroDefaults(DEFAULTS)).every(([k, v]) => params[k] === v)
       && !Object.values(macros.manual).some(Boolean),
     loadBlob, loadSample, setViewport, setWanted, download, share,

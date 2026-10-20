@@ -255,10 +255,21 @@ function Styles({ engine }) {
 function ResetAll({ engine }) {
   const [undo, setUndo] = useState(null);
   if (undo && !engine.isDefault) setUndo(null);
-  if (!undo && engine.isDefault) return null;
-  return undo
-    ? <button type="button" className="link reset-all" onClick={() => { engine.restore(undo); setUndo(null); }}>Deshacer: volver a mis ajustes</button>
-    : <button type="button" className="link reset-all" onClick={() => setUndo(engine.resetAll())}>Restablecer todos los ajustes</button>;
+  const history = (engine.canUndo || engine.canRedo) && (
+    <span className="history">
+      <button type="button" className="link" onClick={engine.undo} disabled={!engine.canUndo} title="Deshacer el último cambio (Ctrl+Z)" aria-label="Deshacer el último cambio">↶</button>
+      <button type="button" className="link" onClick={engine.redo} disabled={!engine.canRedo} title="Rehacer (Ctrl+Mayús+Z)" aria-label="Rehacer">↷</button>
+    </span>
+  );
+  if (!undo && engine.isDefault && !history) return null;
+  return (
+    <div className="reset-all">
+      {history}
+      {undo
+        ? <button type="button" className="link" onClick={() => { engine.restore(undo); setUndo(null); }}>Deshacer: volver a mis ajustes</button>
+        : !engine.isDefault && <button type="button" className="link" onClick={() => setUndo(engine.resetAll())}>Restablecer todos los ajustes</button>}
+    </div>
+  );
 }
 
 // `withExport` false: the phone sheet shows the export row in its own footer.

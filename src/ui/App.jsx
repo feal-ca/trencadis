@@ -22,6 +22,25 @@ export default function App() {
     if (!engine.hasImage) engine.loadSample(SAMPLES[0].src);
   }, []);
 
+  // Ctrl+Z / Ctrl+Shift+Z: with the brush, its last stroke; while drawing
+  // lines, the last line; otherwise the settings.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const key = e.key.toLowerCase();
+      const redo = (key === 'z' && e.shiftKey) || key === 'y';
+      if (key !== 'z' && !redo) return;
+      if (e.target.matches?.('input[type=text], input[type=number], textarea')) return;
+      e.preventDefault();
+      if (redo) engine.redo();
+      else if (brush?.kind === 'brush') engine.undoMask();
+      else if (brush?.kind === 'draw') engine.undoGuide();
+      else engine.undo();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
   // Ctrl+V / Cmd+V with an image on the clipboard loads it.
   useEffect(() => {
     const onPaste = (e) => {
