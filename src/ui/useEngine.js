@@ -150,7 +150,7 @@ export function useEngine() {
       } else if (data.type === 'done') {
         if (DEBUG) (window.__runs ??= []).push({ ms: performance.now() - sentAt.current, timings: data.timings });
         setBusy(null);
-        setInfo({ shards: data.shards });
+        setInfo({ shards: data.shards, sMax: posted.current?.sMax });
       } else if (data.type === 'error') {
         setBusy(null);
         setError(data.message);
@@ -193,7 +193,10 @@ export function useEngine() {
     sent.current = null;
   }, [bitmap, params.workLong, readable]);
 
+  // The settings of the run in flight, so its result can be read against them.
+  const posted = useRef(null);
   const post = useCallback((p) => {
+    posted.current = p;
     const id = ++runId.current;
     setError(null);
     setBusy('analysis');
@@ -388,6 +391,9 @@ export function useEngine() {
       return next;
     }),
     style: readStyle(params, DEFAULTS),
+    // Pieces expected at the current size: with a fixed size ratio every piece
+    // scales with sMax, so the count goes as 1 / sMax² from the last run.
+    estimate: info?.sMax ? info.shards * (info.sMax / params.sMax) ** 2 : null,
     // A one-click look replaces every setting; returns what restore() needs to undo it.
     setStyle: (id) => {
       const before = { params: rawParams.current, macros: macrosRef.current };

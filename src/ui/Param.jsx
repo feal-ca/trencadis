@@ -15,6 +15,12 @@ function format(q, v) {
   return `${Number(v).toFixed(digits).replace('.', ',')}${q.unit ?? ''}`;
 }
 
+// About how many pieces, to two significant figures.
+const pieces = (n) => {
+  const step = n < 1000 ? 10 : 100;
+  return `≈ ${(Math.max(step, Math.round(n / step) * step)).toLocaleString('es')} trozos`;
+};
+
 const word = (t) => (t < 0.2 ? 'muy bajo' : t < 0.4 ? 'bajo' : t < 0.6 ? 'medio' : t < 0.8 ? 'alto' : 'muy alto');
 
 // An ⓘ next to a control's name; the explanation opens on hover, focus or tap.
@@ -144,7 +150,7 @@ export function Macro({ id, engine }) {
   return (
     <div className={`field macro${manual ? ' is-manual' : ''}`}>
       <Label htmlFor={fid} label={info.label} help={info.help} onReset={reset}>
-        <output htmlFor={fid}>{manual ? 'a mano' : word(value)}</output>
+        <output htmlFor={fid}>{manual ? 'a mano' : id === 'size' && engine.estimate ? pieces(engine.estimate) : word(value)}</output>
       </Label>
       <Range id={fid} value={value} disabled={manual} onChange={(v) => engine.setMacro(id, v)} />
       <button type="button" className="link macro-switch" onClick={() => engine.setManual(id, !manual)}>
