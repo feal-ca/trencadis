@@ -13,7 +13,7 @@ import { createRenderer } from '/src/gl/renderer.js';
 const out = document.getElementById('out');
 const log = (s) => { out.textContent += s + '\n'; };
 const algorithm = new URLSearchParams(location.search).get('algo') || 'fracture';
-const bmp = await createImageBitmap(await (await fetch('/samples/vermeer.jpg')).blob());
+const bmp = await createImageBitmap(await (await fetch('/samples/vermeer.webp')).blob());
 const s = 800 / Math.max(bmp.width, bmp.height);
 const cv = new OffscreenCanvas(Math.round(bmp.width * s), Math.round(bmp.height * s));
 cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);

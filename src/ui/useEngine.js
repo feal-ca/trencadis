@@ -11,9 +11,9 @@ const DEBUG = typeof location !== 'undefined' && location.search.includes('debug
 const RENDER_KEYS = new Set(keysForStage('render'));
 
 export const SAMPLES = [
-  { src: './samples/vermeer.jpg', label: 'Vermeer' },
-  { src: './samples/vangogh.jpg', label: 'Van Gogh' },
-  { src: './samples/barcas.jpg', label: 'Barcas' },
+  { src: './samples/vermeer.webp', label: 'Vermeer' },
+  { src: './samples/vangogh.webp', label: 'Van Gogh' },
+  { src: './samples/barcas.webp', label: 'Barcas' },
 ];
 
 // Firefox's fingerprinting protection can return random pixels from canvas

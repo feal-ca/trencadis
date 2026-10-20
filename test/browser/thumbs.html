@@ -12,7 +12,7 @@ import { fromImageData } from '/src/core/image.js';
 import { createRenderer } from '/src/gl/renderer.js';
 import { ALGORITHMS } from '/src/core/params.js';
 
-const bmp = await createImageBitmap(await (await fetch('/samples/vermeer.jpg')).blob());
+const bmp = await createImageBitmap(await (await fetch('/samples/vermeer.webp')).blob());
 const s = 700 / Math.max(bmp.width, bmp.height);
 const cv = new OffscreenCanvas(Math.round(bmp.width * s), Math.round(bmp.height * s));
 cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
