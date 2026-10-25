@@ -88,7 +88,7 @@ export function extractGuides(img, an, p, edges = edgeMap(img, p)) {
 
 const NB = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
 
-function traceChains(edge, w, h) {
+export function traceChains(edge, w, h) {
   const seen = new Uint8Array(w * h);
   const degree = (i) => {
     const x = i % w, y = (i / w) | 0;
@@ -204,9 +204,9 @@ export function bridgeGaps(chains, gap) {
   return out;
 }
 
-const chainLength = (c) => c.slice(1).reduce((s, q, i) => s + Math.hypot(q[0] - c[i][0], q[1] - c[i][1]), 0);
+export const chainLength = (c) => c.slice(1).reduce((s, q, i) => s + Math.hypot(q[0] - c[i][0], q[1] - c[i][1]), 0);
 
-function smoothChain(c) {
+export function smoothChain(c) {
   if (c.length < 5) return c;
   const out = c.map((_, i) => {
     let x = 0, y = 0, n = 0;
@@ -334,13 +334,22 @@ export function overlayRows(baseShards, guides, w, h, p, an) {
   if (!guides.length) return baseShards;
   const rows = rowLabels(guides, w, h, p, an.size);
   if (!rows.count) return baseShards;
+  return overlayPieces(baseShards, rows.labels, w, h, an);
+}
+
+// Lays the pieces of `extra` (a label map, -1 where the background stays) on
+// top of `baseShards`. Background pieces cut by them are re-traced and their
+// small fragments merged into neighbours; untouched ones keep their polygon.
+// `tag` is spread into the new pieces ({ row: true } for rows). With `polys`
+// (one per extra label) those are used as they are instead of being traced.
+export function overlayPieces(baseShards, extra, w, h, an, tag = { row: true }, eps = 0.8, polys = null) {
   const labels = new Int32Array(w * h).fill(-1);
   const order = baseShards.map((s, id) => [area(s.poly), id]).sort((a, b) => b[0] - a[0]);
   for (const [, id] of order) rasterize(baseShards[id].poly, w, h, (x, y) => { labels[y * w + x] = id; });
   const ROW = baseShards.length;
   // Which base piece each pixel belonged to before the rows went on top.
   const baseOf = Int32Array.from(labels);
-  for (let i = 0; i < w * h; i++) if (rows.labels[i] >= 0) labels[i] = ROW + rows.labels[i];
+  for (let i = 0; i < w * h; i++) if (extra[i] >= 0) labels[i] = ROW + extra[i];
 
   const { labels: parts, origin } = splitComponents(labels, w, h);
   // Base pieces that ended up in more than one part were cut by a row.
@@ -373,11 +382,31 @@ export function overlayRows(baseShards, guides, w, h, p, an) {
     if (now < ROW) changed.add(now);
     if (was >= 0) changed.add(was);
   }
-  const intact = baseShards.filter((_, id) => !changed.has(id)).map(({ poly }) => ({ poly, row: false }));
+  const intact = baseShards.filter((_, id) => !changed.has(id)).map(({ poly, row, intent }) => ({ poly, row: !!row, intent: !!intent }));
   const redo = new Set();
-  for (let i = 0; i < w * h; i++) if (protect.has(merged[i]) || changed.has(origin[merged[i]])) redo.add(merged[i]);
-  const traced = labelsToPolygons(merged, w, h, 0.8, 4, redo).map(({ poly, label }) => ({ poly, row: protect.has(label) }));
-  return intact.concat(traced);
+  for (let i = 0; i < w * h; i++) if ((!polys && protect.has(merged[i])) || changed.has(origin[merged[i]])) redo.add(merged[i]);
+  const traced = labelsToPolygons(merged, w, h, eps, 4, redo).map(({ poly, label }) => (protect.has(label) ? { poly, row: false, ...tag } : { poly, row: false }));
+  const given = polys ? polys.map((poly) => ({ poly, row: false, ...tag })) : [];
+  return intact.concat(traced, given);
+}
+
+// The guide list can also hold eraser strokes, { erase: [[u, v], ...],
+// radius } in normalised coordinates (radius a fraction of the long side).
+// A stroke removes the lines it touches: drawn lines made before it, and any
+// automatic line. Returns the drawn lines kept, in working pixels, and a
+// test for automatic ones. Erasing removes a line whole.
+export function eraseGuides(list, w, h, edges = null, p = {}) {
+  const L = Math.max(w, h);
+  const strokes = (list ?? []).map((g, i) => g.erase && { i, r: g.radius * L, pts: g.erase.map(([u, v]) => [u * w, v * h]) });
+  const touches = (line, s) => line.some(([x, y]) => s.pts.some(([ex, ey]) => (x - ex) ** 2 + (y - ey) ** 2 <= s.r * s.r));
+  const after = (i) => strokes.filter((s) => s && s.i > i);
+  const drawn = (list ?? []).flatMap((g, i) => {
+    if (g.erase) return [];
+    const [line] = drawnGuides([g], w, h, edges, p);
+    return line && !after(i).some((s) => touches(line, s)) ? [line] : [];
+  });
+  const all = after(-1);
+  return { drawn, keep: (line) => !all.some((s) => touches(line, s)) };
 }
 
 

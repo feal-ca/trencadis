@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { LAB } from '../core/params.js';
 
 function ImageCanvas({ image, className }) {
   const ref = useRef(null);
@@ -46,13 +47,16 @@ function useRing(ref) {
 }
 
 // The photo with the detail mask tinted on top; pointer strokes paint it.
+// LAB: with brush.layer 'important', the important areas instead.
 function BrushLayer({ engine, brush, api }) {
   const ref = useRef(null);
   const drawing = useRef(false);
   const original = engine.images.original;
+  const important = brush.layer === 'important';
+  const layer = important ? engine.important : engine;
 
   useEffect(() => {
-    const cv = ref.current, m = engine.mask.current;
+    const cv = ref.current, m = layer.mask.current;
     if (!cv || !original || !m) return;
     cv.width = original.width;
     cv.height = original.height;
@@ -62,14 +66,14 @@ function BrushLayer({ engine, brush, api }) {
     const data = new ImageData(m.w, m.h);
     for (let i = 0; i < m.data.length; i++) {
       const v = m.data[i];
-      // Ochre where detail is removed, cobalt where it is added.
-      const [r, g, b] = v < 0 ? [216, 160, 50] : [40, 86, 165];
+      // Ochre where detail is removed, cobalt where it is added; important in vermilion.
+      const [r, g, b] = important ? [214, 64, 40] : v < 0 ? [216, 160, 50] : [40, 86, 165];
       data.data.set([r, g, b, Math.min(255, Math.abs(v) * 170)], i * 4);
     }
     tint.getContext('2d').putImageData(data, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(tint, 0, 0, cv.width, cv.height);
-  }, [original, engine.maskVersion, engine.mask]);
+  }, [original, layer.maskVersion, layer.mask, important]);
 
   // Map a pointer to normalised image coordinates through object-fit: contain.
   const toUV = (e) => {
@@ -80,12 +84,12 @@ function BrushLayer({ engine, brush, api }) {
   };
   const dab = (e) => {
     const [u, v] = toUV(e);
-    engine.paint(u, v, brush.size, brush.mode === 'remove' ? -1 : 1);
+    layer.paint(u, v, brush.size, brush.mode === 'remove' ? (important ? 0 : -1) : 1);
   };
   const ring = useRing(ref);
   // A second finger turns the stroke into a pinch: take back what it painted.
   api.current = {
-    cancel: () => { if (drawing.current) { drawing.current = false; engine.undoMask(false); } ring.hide(); },
+    cancel: () => { if (drawing.current) { drawing.current = false; layer.undoMask(false); } ring.hide(); },
   };
   return (
     <>
@@ -96,29 +100,52 @@ function BrushLayer({ engine, brush, api }) {
           if (e.button !== 0) return;
           drawing.current = true;
           e.currentTarget.setPointerCapture(e.pointerId);
-          engine.beginStroke();
+          layer.beginStroke();
           ring.track(e);
           dab(e);
         }}
         onPointerMove={(e) => { ring.track(e); if (drawing.current) dab(e); }}
         onPointerLeave={ring.hide}
-        onPointerUp={(e) => { if (drawing.current) { drawing.current = false; engine.commitMask(); } if (e.pointerType === 'touch') ring.hide(); }}
+        onPointerUp={(e) => { if (drawing.current) { drawing.current = false; layer.commitMask(); } if (e.pointerType === 'touch') ring.hide(); }}
       />
       {ring.view(brush.size)}
     </>
   );
 }
 
+// LAB: the objects the segmentation model found, one colour each, at the
+// model's resolution (pixels of no object stay clear).
+// Twelve colours far apart from each other.
+const ZONE_COLORS = [
+  [230, 25, 75], [60, 180, 75], [255, 225, 25], [0, 130, 200], [245, 130, 48], [145, 30, 180],
+  [70, 240, 240], [240, 50, 230], [128, 128, 0], [0, 128, 128], [170, 110, 40], [128, 0, 0],
+];
+function zonesCanvas(seg) {
+  const cv = new OffscreenCanvas(seg.w, seg.h);
+  const data = new ImageData(seg.w, seg.h);
+  for (let i = 0; i < seg.labels.length; i++) {
+    const l = seg.labels[i];
+    if (l < 0) continue;
+    data.data.set([...ZONE_COLORS[l % ZONE_COLORS.length], 150], i * 4);
+  }
+  cv.getContext('2d').putImageData(data, 0, 0);
+  return cv;
+}
+
 // The photo with the guide lines. "free" mode: a stroke adds a line.
 // "points" mode: each click adds a vertex; double-click or Enter finishes,
 // Backspace removes the last vertex, Escape cancels. On touch the viewer bar
 // shows buttons for the same (`onPending` reports the vertex count).
+// "erase" mode: a click or a stroke removes the lines it touches, drawn or
+// automatic. LAB: with `tool.zones`, the objects found are tinted.
 function DrawLayer({ engine, tool, api, onPending }) {
   const ref = useRef(null);
   const stroke = useRef(null);
   const hover = useRef(null);
   const original = engine.images.original;
   const mode = tool?.mode ?? 'free';
+  const radius = tool?.radius ?? 0.02;
+  const zones = useMemo(() => (tool?.zones && engine.segments ? zonesCanvas(engine.segments) : null), [tool?.zones, engine.segments]);
   // Whether the last pointer down added a vertex, so a pinch can take it back.
   const added = useRef(false);
   const finish = () => {
@@ -138,6 +165,10 @@ function DrawLayer({ engine, tool, api, onPending }) {
     ctx.putImageData(original, 0, 0);
     ctx.fillStyle = 'rgba(247, 246, 242, 0.35)';
     ctx.fillRect(0, 0, cv.width, cv.height);
+    if (zones) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(zones, 0, 0, cv.width, cv.height);
+    }
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     const draw = (g) => {
@@ -152,11 +183,19 @@ function DrawLayer({ engine, tool, api, onPending }) {
     used.slice(engine.lines.drawn).forEach(draw);
     // Your strokes as drawn, faint; the lines actually used (snapped, joined), in black.
     ctx.strokeStyle = 'rgba(37, 34, 30, 0.3)';
-    engine.guides.forEach((g) => draw(g.points ?? g));
+    // Eraser strokes are not drawn, nor the strokes they removed.
+    const L = Math.max(cv.width, cv.height);
+    const erased = (g, i) => engine.guides.slice(i + 1).some((e) => e.erase && (g.points ?? g).some(([u, v]) => e.erase
+      .some(([eu, ev]) => Math.hypot((u - eu) * cv.width, (v - ev) * cv.height) <= e.radius * L)));
+    engine.guides.forEach((g, i) => { if (!g.erase && !erased(g, i)) draw(g.points ?? g); });
     ctx.lineWidth = Math.max(3, cv.width / 160);
     ctx.strokeStyle = '#25221e';
     used.slice(0, engine.lines.drawn).forEach(draw);
-    if (stroke.current) {
+    if (stroke.current && mode === 'erase') {
+      ctx.lineWidth = 2 * radius * Math.max(cv.width, cv.height);
+      ctx.strokeStyle = 'rgba(214, 64, 40, 0.35)';
+      draw(stroke.current.length > 1 ? stroke.current : [stroke.current[0], stroke.current[0]]);
+    } else if (stroke.current) {
       draw(hover.current ? [...stroke.current, hover.current] : stroke.current);
       ctx.fillStyle = '#25221e';
       for (const [u, v] of mode === 'points' ? stroke.current : []) {
@@ -166,7 +205,7 @@ function DrawLayer({ engine, tool, api, onPending }) {
       }
     }
   };
-  useEffect(redraw, [original, engine.guides, engine.lines]);
+  useEffect(redraw, [original, engine.guides, engine.lines, zones]);
   const cancel = () => { stroke.current = null; hover.current = null; onPending(0); redraw(); };
   const back = () => {
     if (!stroke.current) return;
@@ -202,7 +241,18 @@ function DrawLayer({ engine, tool, api, onPending }) {
     const ox = (r.width - cv.width * s) / 2, oy = (r.height - cv.height * s) / 2;
     return [Math.min(1, Math.max(0, (e.clientX - r.left - ox) / (cv.width * s))), Math.min(1, Math.max(0, (e.clientY - r.top - oy) / (cv.height * s)))];
   };
-  const handlers = mode === 'points'
+  const handlers = mode === 'erase'
+    ? {
+      onPointerDown: (e) => { if (e.button !== 0) return; e.currentTarget.setPointerCapture(e.pointerId); stroke.current = [toUV(e)]; ring.track(e); redraw(); },
+      onPointerMove: (e) => { ring.track(e); if (stroke.current) { stroke.current.push(toUV(e)); redraw(); } },
+      onPointerUp: (e) => {
+        if (e.pointerType === 'touch') ring.hide();
+        const g = stroke.current;
+        stroke.current = null;
+        if (g) engine.addGuide({ erase: g, radius }); else redraw();
+      },
+    }
+    : mode === 'points'
     ? {
       onPointerDown: (e) => {
         if (e.button !== 0) return;
@@ -226,7 +276,7 @@ function DrawLayer({ engine, tool, api, onPending }) {
   return (
     <>
       <canvas ref={ref} className="viewer-canvas brush-canvas" onPointerLeave={ring.hide} {...handlers} />
-      {tool?.snap !== false && ring.view(tool?.radius ?? 0.02)}
+      {(mode === 'erase' || tool?.snap !== false) && ring.view(radius)}
     </>
   );
 }
@@ -257,12 +307,22 @@ export default function Viewer({ engine, view, brush, setTool }) {
   const showBrush = view === 'brush' && !compare;
   const showDraw = view === 'draw' && !compare;
   const useGl = view === 'final' && engine.gpu && !compare;
+  // LAB: the mosaic without the important pieces on the left, with them on the right.
+  const [split, setSplit] = useState(true);
+  const canSplit = LAB && useGl && engine.params.intent && (engine.params.intentAll || !(engine.important.mask.current?.empty ?? true)) && engine.compareReady;
+  const showSplit = canSplit && split;
 
   useEffect(() => {
     if (!useGl || !host.current) return;
     host.current.appendChild(engine.glCanvas);
     return () => engine.glCanvas.remove();
-  }, [useGl, engine.glCanvas]);
+  }, [useGl, showSplit, engine.glCanvas]);
+  const compareHost = useRef(null);
+  useEffect(() => {
+    if (!showSplit || !compareHost.current) return;
+    compareHost.current.appendChild(engine.compareCanvas);
+    return () => engine.compareCanvas.remove();
+  }, [showSplit, engine.compareCanvas]);
 
   useEffect(() => { engine.setWanted(view === 'brush' || view === 'draw' ? 'original' : view); }, [view, engine.setWanted]);
 
@@ -388,6 +448,12 @@ export default function Viewer({ engine, view, brush, setTool }) {
         <div className="viewer-zoom" style={{ transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.k})` }}>
           {showBrush ? <BrushLayer engine={engine} brush={brush} api={toolApi} />
             : showDraw ? <DrawLayer engine={engine} tool={brush} api={toolApi} onPending={setPending} />
+            : showSplit ? (
+              <div className="lab-split">
+                <div><div className="viewer-host" ref={compareHost} /><span className="lab-tag">Sin intención</span></div>
+                <div><div className="viewer-host" ref={host} /><span className="lab-tag">Con intención</span></div>
+              </div>
+            )
             : useGl ? <div className="viewer-host" ref={host} />
             : image && <ImageCanvas image={image} className="viewer-canvas" />}
         </div>
@@ -411,6 +477,9 @@ export default function Viewer({ engine, view, brush, setTool }) {
             <button type="button" className="link" onClick={() => toolApi.current?.back()}>Quitar punto</button>
             <button type="button" className="btn btn-dark chamfer-s" onClick={() => toolApi.current?.finish()} disabled={pending < 2}>Terminar línea</button>
           </span>
+        )}
+        {canSplit && (
+          <button type="button" className="link" onClick={() => setSplit(!split)}>{split ? 'Solo el resultado' : 'Lado a lado'}</button>
         )}
         {zoom.k > 1 && (
           <button type="button" className="link" onClick={() => setZoom({ k: 1, x: 0, y: 0 })}>

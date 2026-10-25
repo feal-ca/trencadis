@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { autoGroutColor } from '../core/color.js';
 import { createHistory } from '../core/history.js';
 import { applyMacro, applyMacroDefaults, applyStyle, MACRO_DEFAULTS, MACROS, readStyle } from '../core/macros.js';
-import { DEFAULTS, keysForStage } from '../core/params.js';
+import { DEFAULTS, keysForStage, LAB } from '../core/params.js';
 import { createRenderer } from '../gl/renderer.js';
+import { useMaskLayer } from './useMaskLayer.js';
 
 const STORE = 'trencadis.params.v2';
 const MACRO_STORE = 'trencadis.macros.v1';
@@ -134,6 +135,17 @@ export function useEngine() {
     try { return createRenderer(glCanvas); } catch { return { ok: false }; }
   }, [glCanvas]);
   const gpu = renderer.ok;
+  // LAB: a second renderer for the mosaic without the important pieces.
+  const compareCanvas = useMemo(() => {
+    const c = document.createElement('canvas');
+    c.className = 'viewer-canvas';
+    return c;
+  }, []);
+  const compareRenderer = useMemo(() => {
+    if (!LAB) return { ok: false };
+    try { return createRenderer(compareCanvas); } catch { return { ok: false }; }
+  }, [compareCanvas]);
+  const [compareReady, setCompareReady] = useState(false);
 
   const requestRender = useCallback(() => {
     if (!renderer.ok || frame.current) return;
@@ -144,15 +156,22 @@ export function useEngine() {
       const [W, H] = renderer.sizeFor(1000);
       const s = Math.min((cw * dpr) / W, (ch * dpr) / H, Math.min(4096, renderer.maxSize) / Math.max(W, H));
       renderer.render(paramsRef.current, Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)));
+      if (compareRenderer.ok) compareRenderer.render(paramsRef.current, Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)));
     });
-  }, [renderer]);
+  }, [renderer, compareRenderer]);
 
   useEffect(() => {
     const w = new Worker(new URL('../worker.js', import.meta.url), { type: 'module' });
     w.onmessage = ({ data }) => {
       if (data.id !== runId.current) return;
       if (data.type === 'progress') setBusy(data.stage);
-      else if (data.type === 'stage') {
+      else if (data.type === 'stage' && data.stage === 'compare') {
+        if (!compareRenderer.ok) return;
+        compareRenderer.setShards(data.shards.map((poly, i) => ({ poly, row: data.rows?.[i] })), data.w, data.h, paramsRef.current.seed);
+        compareRenderer.setColors(data.colors, paramsRef.current.seed);
+        setCompareReady(true);
+        requestRender();
+      } else if (data.type === 'stage') {
         setImages((prev) => {
           const next = { ...prev, ...Object.fromEntries(data.images.map((v) => [v.key, v.image])) };
           // Views of this stage that were not redrawn are out of date now.
@@ -181,7 +200,7 @@ export function useEngine() {
     };
     worker.current = w;
     return () => w.terminate();
-  }, [renderer, requestRender]);
+  }, [renderer, compareRenderer, requestRender]);
 
   // Send the photo, resized to the working resolution, whenever either changes.
   // If the browser is hiding canvas pixels, wait for the first click and retry.
@@ -224,7 +243,7 @@ export function useEngine() {
     setError(null);
     setBusy('analysis');
     sentAt.current = performance.now();
-    worker.current.postMessage({ type: 'run', id, params: p, views: wanted.current, cpuRender: !renderer.ok });
+    worker.current.postMessage({ type: 'run', id, params: p, views: wanted.current, cpuRender: !renderer.ok, compare: LAB });
   }, [renderer]);
 
   useEffect(() => {
@@ -241,74 +260,50 @@ export function useEngine() {
     return () => clearTimeout(t);
   }, [effective, bitmap, readable, renderer, post, requestRender]);
 
-  // Detail brush: values in [-1, 1] on a grid with a 256 px long side, so it
-  // survives changes of working resolution.
-  const mask = useRef(null);
-  const [maskVersion, setMaskVersion] = useState(0);
-  const resetMask = useCallback((bmp) => {
-    const s = 256 / Math.max(bmp.width, bmp.height);
-    const w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
-    mask.current = { w, h, data: new Float32Array(w * h), empty: true };
-    maskHistory.current = [];
-    setCanUndoMask(false);
-    worker.current?.postMessage({ type: 'mask', mask: null });
-    setMaskVersion((v) => v + 1);
-  }, []);
-  // One soft dab at normalised (u, v); radius as a fraction of the long side.
-  const paint = useCallback((u, v, radius, target) => {
-    const m = mask.current;
-    if (!m) return;
-    const L = Math.max(m.w, m.h), r = radius * L;
-    const cx = u * m.w, cy = v * m.h;
-    for (let y = Math.max(0, Math.floor(cy - r)); y <= Math.min(m.h - 1, Math.ceil(cy + r)); y++) {
-      for (let x = Math.max(0, Math.floor(cx - r)); x <= Math.min(m.w - 1, Math.ceil(cx + r)); x++) {
-        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / r;
-        if (d >= 1) continue;
-        // Gaussian falloff: strong in the middle, nothing at the rim.
-        const k = 0.3 * Math.exp(-4 * d * d) * (1 - d);
-        const i = y * m.w + x;
-        m.data[i] += (target - m.data[i]) * k;
-      }
-    }
-    m.empty = false;
-    setMaskVersion((x) => x + 1);
-  }, []);
-  // Undo: a copy of the mask before each stroke (it is small, 256 px).
-  const maskHistory = useRef([]);
-  const [canUndoMask, setCanUndoMask] = useState(false);
-  const beginStroke = useCallback(() => {
-    const m = mask.current;
-    if (!m) return;
-    maskHistory.current = [...maskHistory.current.slice(-19), { data: Float32Array.from(m.data), empty: m.empty }];
-    setCanUndoMask(true);
-  }, []);
-  const commitMask = useCallback(() => {
-    const m = mask.current;
-    if (!m || !worker.current) return;
-    worker.current.postMessage({ type: 'mask', mask: m.empty ? null : { w: m.w, h: m.h, data: Float32Array.from(m.data) } });
+  // Detail brush, values in [-1, 1]; LAB: areas marked important, in [0, 1].
+  const rerun = useCallback(() => {
     sent.current = paramsRef.current;
     post(paramsRef.current);
   }, [post]);
-  const clearMask = useCallback(() => {
-    const m = mask.current;
-    if (!m) return;
-    beginStroke();
-    m.data.fill(0);
-    m.empty = true;
-    setMaskVersion((x) => x + 1);
-    commitMask();
-  }, [commitMask, beginStroke]);
-  // Puts back the mask from before the last stroke. With `commit` false it
-  // only restores the pixels (a stroke cancelled before it was sent).
-  const undoMask = useCallback((commit = true) => {
-    const m = mask.current, prev = maskHistory.current.pop();
-    setCanUndoMask(maskHistory.current.length > 0);
-    if (!m || !prev) return;
-    m.data.set(prev.data);
-    m.empty = prev.empty;
-    setMaskVersion((x) => x + 1);
-    if (commit) commitMask();
-  }, [commitMask]);
+  const detail = useMaskLayer(worker, 'mask', rerun);
+  const important = useMaskLayer(worker, 'important', rerun);
+
+  // LAB: objects found by the segmentation model, for hileras along their
+  // outlines. It runs in its own worker whenever the photo changes.
+  const segWorker = useRef(null);
+  const segRun = useRef(0);
+  const [segStatus, setSegStatus] = useState(null);
+  // A copy of the objects for the viewer to show the zones.
+  const [segments, setSegments] = useState(null);
+  useEffect(() => {
+    if (!LAB || !bitmap || !readable) return;
+    const id = ++segRun.current;
+    worker.current?.postMessage({ type: 'segments', segments: null });
+    setSegments(null);
+    if (!segWorker.current) {
+      segWorker.current = new Worker(new URL('../lab/segment-worker.js', import.meta.url), { type: 'module' });
+      segWorker.current.onmessage = ({ data }) => {
+        if (data.id !== segRun.current) return;
+        if (data.type === 'log') console.log('[sam]', data.text);
+        else if (data.type === 'error') setSegStatus(`Error al buscar objetos: ${data.message}`);
+        else if (data.type === 'segments') {
+          setSegStatus(`${data.count} objetos en ${(data.ms / 1000).toFixed(1)} s`);
+          setSegments({ ...data.segments, count: data.count, labels: data.segments.labels.slice() });
+          worker.current?.postMessage({ type: 'segments', segments: data.segments }, [data.segments.labels.buffer]);
+          rerun();
+        }
+      };
+    }
+    setSegStatus('Buscando objetos…');
+    // The model works at 1024 px anyway; send it the photo at that size.
+    const s = Math.min(1, 1024 / Math.max(bitmap.width, bitmap.height));
+    const cv = new OffscreenCanvas(Math.round(bitmap.width * s), Math.round(bitmap.height * s));
+    cv.getContext('2d').drawImage(bitmap, 0, 0, cv.width, cv.height);
+    // ?samDevice=wasm forces the CPU (headless browsers only have a software GPU).
+    const device = new URLSearchParams(location.search).get('samDevice');
+    cv.convertToBlob({ type: 'image/png' }).then((blob) => segWorker.current.postMessage({ id, blob, device }));
+  }, [bitmap, readable, rerun]);
+  useEffect(() => () => segWorker.current?.terminate(), []);
 
   // Hand-drawn guide lines, polylines in normalised image coordinates.
   const [guides, setGuides] = useState([]);
@@ -328,7 +323,9 @@ export function useEngine() {
       setImages({});
       setInfo(null);
       setMosaicReady(false);
-      resetMask(bmp);
+      setCompareReady(false);
+      detail.resetMask(bmp);
+      important.resetMask(bmp);
       setGuides([]);
       worker.current?.postMessage({ type: 'guides', guides: [] });
       setBitmap(bmp);
@@ -339,7 +336,7 @@ export function useEngine() {
         ? 'Este navegador no abre fotos HEIC, el formato del iPhone. Ábrela en Safari o guárdala como JPG (en el iPhone: Ajustes › Cámara › Formatos › Más compatible).'
         : 'No se ha podido leer esa imagen. Prueba con un JPG o un PNG.');
     }
-  }, [resetMask]);
+  }, [detail.resetMask, important.resetMask]);
 
   const loadSample = useCallback(async (src) => {
     const res = await fetch(src);
@@ -401,6 +398,7 @@ export function useEngine() {
 
   return {
     params, setParams, images, labels, busy, info, error, gpu, glCanvas, mosaicReady, autoGrout,
+    compareCanvas, compareReady: compareRenderer.ok && compareReady,
     hasImage: !!bitmap, bitmap,
     setParam: (key, value) => setParams((p) => {
       let next = { ...p, [key]: value };
@@ -451,7 +449,7 @@ export function useEngine() {
     isDefault: Object.entries(applyMacroDefaults(DEFAULTS)).every(([k, v]) => params[k] === v)
       && !Object.values(macros.manual).some(Boolean),
     loadBlob, loadSample, setViewport, setWanted, download, share,
-    mask, maskVersion, paint, beginStroke, commitMask, clearMask, undoMask, canUndoMask,
+    ...detail, important, segStatus, segments,
     guides, lines, addGuide: (g) => commitGuides([...guides, g]), clearGuides: () => commitGuides([]),
     undoGuide: () => commitGuides(guides.slice(0, -1)),
   };

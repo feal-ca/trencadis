@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab: segmentar todo</title>
+  <style>
+    body { margin: 16px; font: 15px system-ui, sans-serif; background: #f7f6f2; color: #25221e; }
+    canvas { max-width: 100%; display: block; margin-top: 12px; }
+    pre { background: #fff; padding: 8px; }
+    button { margin-right: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Lab: segmentar todo (SlimSAM)</h1>
+  <p>
+    <input type="file" id="file" accept="image/*" />
+    o prueba con
+    <button data-src="../samples/vermeer.webp">Vermeer</button>
+    <button data-src="../samples/vangogh.webp">Van Gogh</button>
+    <button data-src="../samples/barcas.webp">Barcas</button>
+  </p>
+  <p>En la URL: <code>?points=256&amp;crops=2&amp;cropPoints=160&amp;batch=32&amp;skip=1&amp;iou=0.86&amp;stability=0.9&amp;device=webgpu|wasm</code>. La primera vez descarga el modelo (unos 10 MB).</p>
+  <pre id="log"></pre>
+  <canvas id="out"></canvas>
+  <script type="module" src="./segment.js"></script>
+</body>
+</html>

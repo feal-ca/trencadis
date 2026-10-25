@@ -33,7 +33,7 @@ export default function App() {
       if (e.target.matches?.('input[type=text], input[type=number], textarea')) return;
       e.preventDefault();
       if (redo) engine.redo();
-      else if (brush?.kind === 'brush') engine.undoMask();
+      else if (brush?.kind === 'brush') (brush.layer === 'important' ? engine.important : engine).undoMask();
       else if (brush?.kind === 'draw') engine.undoGuide();
       else engine.undo();
     };

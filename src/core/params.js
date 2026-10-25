@@ -106,6 +106,24 @@ export const GROUPS = [
         help: 'Largo en múltiplos del ancho. 1: piezas cuadradas; más alto: rectángulos alargados.' },
       { key: 'rowCount', label: 'Filas por hilera', min: 1, max: 4, step: 1, def: 2, stage: 'tessellation',
         help: 'Con 2, el contorno queda justo en la junta entre las dos filas y cada fila toma el color de su lado.' },
+      // LAB (?lab): hileras along the objects found by a segmentation model.
+      { key: 'segGuides', lab: true, label: 'Hileras en los contornos de los objetos', type: 'checkbox', def: true, stage: 'tessellation',
+        help: 'Un modelo de IA encuentra los objetos de la foto (persona, cara, pelo, torre, río) y se ponen hileras a lo largo de sus contornos.' },
+      { key: 'segCuts', lab: true, label: 'Cortar las piezas en el borde de los objetos', type: 'checkbox', def: true, stage: 'tessellation',
+        help: 'Una pieza que pisa dos objetos se corta en dos con una línea recta a lo largo del borde, como un azulejo recortado.' },
+      // LAB (?lab): tiling with intention in the areas marked important.
+      { key: 'intent', lab: true, label: 'Teselado con intención', type: 'checkbox', def: true, stage: 'analysis',
+        help: 'En las zonas marcadas como importantes, una pieza por cada parte de la forma (iris, blanco del ojo, pájaro).' },
+      { key: 'intentDE', lab: true, label: 'Diferencia entre partes', min: 2, max: 40, step: 0.5, def: 12, stage: 'tessellation',
+        help: 'Cuánto deben diferir de color dos zonas vecinas para ser partes distintas (ΔE). Más alto: menos partes; más bajo: cada matiz es su propia parte.' },
+      { key: 'intentAll', lab: true, label: 'Toda la imagen', type: 'checkbox', def: false, stage: 'analysis',
+        help: 'Toda la foto se hace con piezas con intención, sin método de fondo.' },
+      { key: 'intentScale', lab: true, label: 'Tamaño de las piezas con intención', min: 0.4, max: 3, step: 0.05, def: 1.3, unit: '×', stage: 'tessellation',
+        help: 'En proporción al tamaño de trozo de cada zona. Una parte más pequeña que esto es una sola pieza.' },
+      { key: 'intentRim', lab: true, label: 'Devolver al fondo lo que toca el borde', type: 'checkbox', def: true, stage: 'tessellation',
+        help: 'Las partes que tocan el borde de la marca (el cielo alrededor del pájaro) las hace el método de fondo.' },
+      { key: 'intentStraight', lab: true, label: 'Rectitud de las piezas importantes', min: 0, max: 5, step: 0.1, def: 2.5, unit: ' px', stage: 'tessellation',
+        help: 'Más alto: aristas rectas, como azulejo cortado; 0: siguen el contorno píxel a píxel.' },
       // Shared by raster-based methods
       { key: 'minWidth', label: 'Grosor mínimo', min: 0, max: 0.8, step: 0.01, def: 0.3, stage: 'tessellation', show: algo('voronoi-aniso', 'slic', 'cracks'),
         help: 'Los trozos más estrechos que esto (en tamaños de trozo) se unen a su vecino. 0: se dejan todos.' },
@@ -204,7 +222,8 @@ export const PARAM = Object.fromEntries(ALL_PARAMS.map((q) => [q.key, q]));
 export const DEFAULTS = Object.fromEntries(ALL_PARAMS.map((q) => [q.key, q.def]));
 // Hidden parameters keep their default: they duplicate another control
 // ("Tamaño de los trozos", "Otra versión") or have no clear visible effect.
-export const isVisible = (q, p) => !q.hidden && (q.show ?? any)(p);
+export const LAB = typeof location !== 'undefined' && new URLSearchParams(location.search).has('lab');
+export const isVisible = (q, p) => !q.hidden && (!q.lab || LAB) && (q.show ?? any)(p);
 
 export const STAGE_ORDER = ['analysis', 'tessellation', 'color', 'render'];
 export const keysForStage = (stage) => ALL_PARAMS.filter((q) => q.stage === stage).map((q) => q.key);

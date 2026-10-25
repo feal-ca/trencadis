@@ -1,11 +1,14 @@
 import { Delaunay } from 'd3-delaunay';
-import { combineGuides, drawnGuides, edgeMap, extractGuides, overlayRows } from './andamento.js';
+import { combineGuides, edgeMap, eraseGuides, extractGuides, overlayRows } from './andamento.js';
 import { growCracks } from './cracks.js';
 import { fracture } from './fracture.js';
 import { labelsToPolygons } from './polygonize.js';
 import { labelAnisotropic, labelIsotropic, lloyd, poissonVariable } from './sampling.js';
 import { slic } from './slic.js';
 import { mergeSlivers } from './slivers.js';
+import { overlayIntentional } from './lab/intentional.js';
+import { cutBySegments } from './lab/segcuts.js';
+import { segmentGuides } from './lab/segguides.js';
 
 // Every algorithm returns { shards, structure }:
 //   shards     [{ poly, depth? }] in working-image pixels
@@ -14,12 +17,29 @@ import { mergeSlivers } from './slivers.js';
 //
 // Rows along guide lines (automatic contours plus `guides`, the hand-drawn
 // ones in normalised coordinates) are laid over whichever background.
-export function tessellate(img, lab, an, p, rng, guides = null) {
+// LAB: pieces "with intention" in the areas of `important` go on top of all,
+// and `before` keeps the result without them for comparison.
+export function tessellate(img, lab, an, p, rng, guides = null, important = null, segments = null) {
+  if (p.intent && p.intentAll) {
+    const all = overlayIntentional(null, img, lab, an, p, null, rng);
+    if (all) return { shards: all, structure: { kind: 'depth' }, before: [] };
+  }
+  const rows = tessellateRows(img, lab, an, p, rng, guides, p.segGuides ? segments : null);
+  // LAB: pieces that straddle two objects are cut along their border.
+  const res = p.segCuts && segments ? { ...rows, shards: cutBySegments(rows.shards, segments, an.w, an.h, p) } : rows;
+  const intent = p.intent && important ? overlayIntentional(res.shards, img, lab, an, p, important, rng) : null;
+  return intent ? { ...res, shards: intent, before: res.shards } : res;
+}
+
+// LAB: `segments` (objects found by a segmentation model) add hileras along
+// their outlines, ahead of the ones from strong edges.
+function tessellateRows(img, lab, an, p, rng, guides, segments = null) {
   const base = tessellateBase(img, lab, an, p, rng);
   const wantsEdges = (p.autoGuides ?? 0) > 0 || (guides ?? []).some((g) => g.snap);
   const edges = wantsEdges ? edgeMap(img, p) : null;
-  const drawn = drawnGuides(guides, an.w, an.h, edges, p);
-  const lines = combineGuides(drawn, edges ? extractGuides(img, an, p, edges) : [], an.w, an.h, p, an.size);
+  const { drawn, keep } = eraseGuides(guides, an.w, an.h, edges, p);
+  const auto = segmentGuides(segments, an.w, an.h, p).concat(edges ? extractGuides(img, an, p, edges) : []).filter(keep);
+  const lines = combineGuides(drawn, auto, an.w, an.h, p, an.size);
   if (!lines.length) return base;
   return {
     shards: overlayRows(base.shards, lines, an.w, an.h, p, an),

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { macroKeys, STYLES } from '../core/macros.js';
-import { ALGORITHMS, isVisible, PARAM } from '../core/params.js';
+import { ALGORITHMS, isVisible, LAB, PARAM } from '../core/params.js';
 import { InfoTip, Macro, Param } from './Param.jsx';
 import { ALGORITHM_INFO, ROW_PARAMS, STEPS } from './steps.js';
 import { TOUCH, useMedia } from './useMedia.js';
@@ -69,7 +69,8 @@ function RowTools({ engine, tool, setTool, showLines }) {
   const mode = tool?.mode ?? 'free';
   const snap = tool?.snap ?? true;
   const radius = tool?.radius ?? 0.02;
-  const set = (patch) => setTool({ kind: 'draw', mode, snap, radius, ...patch });
+  const set = (patch) => setTool({ ...tool, kind: 'draw', mode, snap, radius, ...patch });
+  const erasing = mode === 'erase';
   const touch = useMedia(TOUCH);
   const zoomHelp = touch ? 'Con dos dedos amplías y mueves la imagen.' : 'La rueda cambia el círculo de enganche y Ctrl + rueda amplía.';
   return (
@@ -80,16 +81,32 @@ function RowTools({ engine, tool, setTool, showLines }) {
       </div>
       <Param k="autoGuides" engine={engine} />
       <div className="brush-row">
-        <button type="button" className={`btn chamfer-s${drawing ? ' btn-dark' : ''}`} aria-pressed={drawing} onClick={() => setTool(drawing ? null : { kind: 'draw', mode, snap })}>
+        <button type="button" className={`btn chamfer-s${drawing ? ' btn-dark' : ''}`} aria-pressed={drawing} onClick={() => setTool(drawing ? null : { kind: 'draw', mode: erasing ? 'free' : mode, snap })}>
           {drawing ? 'Terminar' : 'Dibujar línea'}
         </button>
         <button type="button" className="link" onClick={showLines} disabled={!engine.lines.lines.length}>Ver las líneas</button>
-        <button type="button" className="link" onClick={engine.undoGuide} disabled={!engine.guides.length}>Deshacer línea</button>
+        <button type="button" className={`btn chamfer-s${drawing && erasing ? ' btn-dark' : ''}`} aria-pressed={drawing && erasing}
+          onClick={() => setTool(drawing && erasing ? null : { ...tool, kind: 'draw', mode: 'erase', radius })} disabled={!engine.lines.lines.length && !(drawing && erasing)}>
+          Borrar líneas
+        </button>
+        <button type="button" className="link" onClick={engine.undoGuide} disabled={!engine.guides.length}>Deshacer</button>
         <button type="button" className="link" onClick={engine.clearGuides} disabled={!engine.guides.length}>
-          Borrar mis líneas{engine.guides.length ? ` (${engine.guides.length})` : ''}
+          Deshacer todo{engine.guides.length ? ` (${engine.guides.length})` : ''}
         </button>
       </div>
-      {drawing && (
+      {drawing && erasing && (
+        <div className="draw-options">
+          <label className="field-row brush-size">
+            <span>Tamaño del borrador</span>
+            <input type="range" min={4} max={100} value={Math.round(radius * 1000)} onChange={(e) => set({ radius: e.target.value / 1000 })} />
+          </label>
+          <span className="help">
+            Haz clic sobre una línea, o pasa por encima de varias, y se quitan enteras: las tuyas y las automáticas. «Deshacer» las devuelve.
+            {touch ? ' Con dos dedos amplías y mueves la imagen.' : ' La rueda cambia el tamaño del borrador.'}
+          </span>
+        </div>
+      )}
+      {drawing && !erasing && (
         <div className="draw-options">
           <div className="seg" role="group" aria-label="Forma de dibujar">
             <button type="button" className={mode === 'free' ? 'on' : ''} aria-pressed={mode === 'free'} onClick={() => set({ mode: 'free' })}>A mano</button>
@@ -128,12 +145,75 @@ function RowTools({ engine, tool, setTool, showLines }) {
   );
 }
 
+// LAB (?lab): hileras along the objects a segmentation model finds.
+function SegmentTools({ engine, showLines, tool, setTool }) {
+  const zones = tool?.kind === 'draw' && tool.zones;
+  return (
+    <div className="field lab-block">
+      <div className="field-row">
+        <span className="rows-title">Laboratorio: objetos</span>
+        <InfoTip label="Objetos" text="Un modelo de IA (SlimSAM, unos 10 MB la primera vez) busca los objetos de la foto en tu dispositivo. Sus contornos se usan como líneas de hilera, además de las tuyas y las de los contornos fuertes." />
+      </div>
+      <span className="help">{engine.segStatus ?? 'Sube una foto.'}</span>
+      <Param k="segGuides" engine={engine} />
+      <Param k="segCuts" engine={engine} />
+      <div className="brush-row">
+        <button type="button" className={`btn chamfer-s${zones ? ' btn-dark' : ''}`} aria-pressed={!!zones} disabled={!engine.segments}
+          onClick={() => setTool(zones ? { ...tool, zones: false } :{ mode: 'free', snap: true, ...(tool?.kind === 'draw' ? tool : {}), kind: 'draw', zones: true })}>
+          {zones ? 'Ocultar las zonas' : 'Ver las zonas'}
+        </button>
+        <button type="button" className="link" onClick={showLines} disabled={!engine.lines.lines.length}>Ver las líneas</button>
+      </div>
+    </div>
+  );
+}
+
+// LAB (?lab): the important brush and the settings of tiling with intention.
+function LabTools({ engine, brush, setBrush }) {
+  const imp = engine.important;
+  const active = brush?.kind === 'brush' && brush.layer === 'important' ? brush : null;
+  const tool = (mode, label) => (
+    <button type="button" className={active?.mode === mode ? 'on' : ''} aria-pressed={active?.mode === mode}
+      onClick={() => setBrush(active?.mode === mode ? null : { kind: 'brush', layer: 'important', mode, size: active?.size ?? 0.04 })}>
+      {label}
+    </button>
+  );
+  return (
+    <div className="field lab-block">
+      <div className="field-row">
+        <span className="rows-title">Laboratorio: con intención</span>
+        <InfoTip label="Con intención" text="Pinta lo importante (un ojo, un pájaro, una perla). Dentro de la marca, cada parte de la forma recibe sus propias piezas; fuera, el método de siempre las rodea. A la izquierda verás el mosaico sin esto." />
+      </div>
+      <div className="brush-row">
+        <div className="seg" role="group" aria-label="Pincel de importancia">
+          {tool('add', 'Marcar importante')}
+          {tool('remove', 'Quitar marca')}
+        </div>
+        <span className="brush-links">
+          <button type="button" className="link" onClick={() => imp.undoMask()} disabled={!imp.canUndoMask}>Deshacer</button>
+          <button type="button" className="link" onClick={imp.clearMask} disabled={imp.mask.current?.empty ?? true}>Borrar</button>
+        </span>
+      </div>
+      {active && (
+        <label className="field-row brush-size">
+          <span>Tamaño del pincel</span>
+          <input type="range" min={5} max={200} value={Math.round(active.size * 1000)} onChange={(e) => setBrush({ ...active, size: e.target.value / 1000 })} />
+        </label>
+      )}
+      {['intent', 'intentAll', 'intentDE', 'intentScale', 'intentStraight', 'intentRim'].map((k) => <Param key={k} k={k} engine={engine} />)}
+    </div>
+  );
+}
+
 function Controls({ step, engine, brush, setBrush, showLines }) {
+  const lab = LAB && step.id === 'trozos'
+    ? [<SegmentTools key="seg" engine={engine} showLines={showLines} tool={brush} setTool={setBrush} />, <LabTools key="lab" engine={engine} brush={brush} setBrush={setBrush} />]
+    : [];
   return step.simple.map((c, i) => {
     if (c.macro) return <Macro key={i} id={c.macro} engine={engine} />;
     if (c.param) return <Param key={i} k={c.param} engine={engine} />;
     if (c.kind === 'algorithm') return <AlgorithmPicker key={i} engine={engine} />;
-    if (c.kind === 'brush') return <BrushTools key={i} engine={engine} brush={brush?.kind === 'brush' ? brush : null} setBrush={(b) => setBrush(b && { ...b, kind: 'brush' })} />;
+    if (c.kind === 'brush') return <BrushTools key={i} engine={engine} brush={brush?.kind === 'brush' && !brush.layer ? brush : null} setBrush={(b) => setBrush(b && { ...b, kind: 'brush' })} />;
     if (c.kind === 'rows') return <RowTools key={i} engine={engine} tool={brush} setTool={setBrush} showLines={showLines} />;
     if (c.kind === 'reseed') {
       return (
@@ -143,7 +223,7 @@ function Controls({ step, engine, brush, setBrush, showLines }) {
       );
     }
     return null;
-  });
+  }).concat(lab);
 }
 
 function Section({ step, index, engine, open, onOpen, peek, onPeek, brush, setBrush, showLines }) {

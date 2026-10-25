@@ -313,3 +313,38 @@ describe('row pieces stay orderly', () => {
     expect(lum(weak.slice(0, 3))).toBeLessThan(lum(weak.slice(3, 6)));
   });
 });
+
+import { eraseGuides } from '../src/core/andamento.js';
+
+describe('erasing lines', () => {
+  const W = 400, H = 300;
+  const across = { points: [[0.1, 0.5], [0.9, 0.5]], mode: 'points', snap: false };
+  const rubber = (u, v) => ({ erase: [[u, v]], radius: 0.02 });
+
+  it('an eraser stroke removes the drawn line it touches, made before it', () => {
+    expect(eraseGuides([across], W, H).drawn).toHaveLength(1);
+    expect(eraseGuides([across, rubber(0.5, 0.51)], W, H).drawn).toHaveLength(0);
+    // Far from the line, or before it was drawn: the line stays.
+    expect(eraseGuides([across, rubber(0.5, 0.8)], W, H).drawn).toHaveLength(1);
+    expect(eraseGuides([rubber(0.5, 0.51), across], W, H).drawn).toHaveLength(1);
+  });
+
+  it('removes the automatic lines it touches, whole, and only those', () => {
+    const disc = Array.from({ length: 60 }, (_, i) => [200 + 60 * Math.cos(i / 9.5), 150 + 60 * Math.sin(i / 9.5)]);
+    const side = [[20, 20], [20, 280]];
+    const { keep } = eraseGuides([rubber(260 / W, 150 / H)], W, H);
+    expect(keep(disc)).toBe(false);
+    expect(keep(side)).toBe(true);
+  });
+
+  it('the hileras skip the erased automatic outline', () => {
+    const img = discImage(W, H, 100);
+    const p = { ...DEFAULTS, autoGuides: 0.5 };
+    const run = (guides) => tessellate(img, toLab(img), analyze(img, p), p, mulberry32(2), guides);
+    const before = run([]).structure;
+    expect(before.kind).toBe('guides');
+    // Erase on the disc's outline, at its right-hand side.
+    const after = run([rubber(300 / W, 150 / H)]).structure;
+    expect(after.kind === 'guides' ? after.guides.length : 0).toBeLessThan(before.guides.length);
+  });
+});
