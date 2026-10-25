@@ -319,3 +319,22 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
 .seg-actions { display: flex; align-items: center; gap: 12px; }
 .seg-bar { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.25); }
 .seg-bar > div { height: 100%; border-radius: 2px; background: #e3a33b; transition: width 0.2s; }
+
+/* Shapes over the image: the outline of those found, fading after the
+   search, and the touched ones with their menu. */
+.seg-outline { pointer-events: none; filter: drop-shadow(0 0 1px rgba(20, 18, 16, 0.9)); transition: opacity 0.8s; }
+.seg-outline.is-gone { opacity: 0; }
+.shape-canvas { cursor: pointer; touch-action: none; filter: drop-shadow(0 0 1px rgba(20, 18, 16, 0.9)); }
+.shape-menu {
+  position: absolute; z-index: 4; display: flex; gap: 2px; padding: 3px;
+  background: rgba(20, 18, 16, 0.86); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.shape-menu button {
+  border: 0; padding: 8px 11px; background: none; color: #fff; font: inherit; font-size: 0.85rem; white-space: nowrap; cursor: pointer;
+}
+.shape-menu button:hover, .shape-menu button:focus-visible { background: rgba(255, 255, 255, 0.14); }
+.shape-menu button.on { background: #e3a33b; color: #25221e; font-weight: 600; }
+.shape-note {
+  position: absolute; z-index: 4; pointer-events: none; padding: 5px 10px; border-radius: 6px; white-space: nowrap;
+  background: rgba(20, 18, 16, 0.78); color: #fff; font-size: 0.82rem;
+}

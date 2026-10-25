@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createLongPress, nearestLine } from './longPress.js';
+import SegStatus from './SegStatus.jsx';
+import ShapeLayer, { SegOutline } from './ShapeLayer.jsx';
 
 function ImageCanvas({ image, className }) {
   const ref = useRef(null);
@@ -45,31 +48,12 @@ function useRing(ref) {
   return { track, hide: () => setRing(null), view };
 }
 
-// LAB: the objects the segmentation model found, one colour each, at the
-// model's resolution (pixels of no object stay clear).
-// Twelve colours far apart from each other.
-const ZONE_COLORS = [
-  [230, 25, 75], [60, 180, 75], [255, 225, 25], [0, 130, 200], [245, 130, 48], [145, 30, 180],
-  [70, 240, 240], [240, 50, 230], [128, 128, 0], [0, 128, 128], [170, 110, 40], [128, 0, 0],
-];
-function zonesCanvas(seg) {
-  const cv = new OffscreenCanvas(seg.w, seg.h);
-  const data = new ImageData(seg.w, seg.h);
-  for (let i = 0; i < seg.labels.length; i++) {
-    const l = seg.labels[i];
-    if (l < 0) continue;
-    data.data.set([...ZONE_COLORS[l % ZONE_COLORS.length], 150], i * 4);
-  }
-  cv.getContext('2d').putImageData(data, 0, 0);
-  return cv;
-}
-
 // The photo with the guide lines. "free" mode: a stroke adds a line.
 // "points" mode: each click adds a vertex; double-click or Enter finishes,
 // Backspace removes the last vertex, Escape cancels. On touch the viewer bar
 // shows buttons for the same (`onPending` reports the vertex count).
-// "erase" mode: a click or a stroke removes the lines it touches, drawn or
-// automatic. LAB: with `tool.zones`, the objects found are tinted.
+// In both, holding still on a line (drawn or automatic) turns it red, and
+// letting go removes it.
 function DrawLayer({ engine, tool, api, onPending }) {
   const ref = useRef(null);
   const stroke = useRef(null);
@@ -77,9 +61,11 @@ function DrawLayer({ engine, tool, api, onPending }) {
   const original = engine.images.original;
   const mode = tool?.mode ?? 'free';
   const radius = tool?.radius ?? 0.02;
-  const zones = useMemo(() => (tool?.zones && engine.segments ? zonesCanvas(engine.segments) : null), [tool?.zones, engine.segments]);
   // Whether the last pointer down added a vertex, so a pinch can take it back.
   const added = useRef(false);
+  // The line a long press is about to remove: { index, dist, uv }.
+  const target = useRef(null);
+  const timer = useRef(0);
   const finish = () => {
     const g = stroke.current;
     stroke.current = null;
@@ -97,10 +83,6 @@ function DrawLayer({ engine, tool, api, onPending }) {
     ctx.putImageData(original, 0, 0);
     ctx.fillStyle = 'rgba(247, 246, 242, 0.35)';
     ctx.fillRect(0, 0, cv.width, cv.height);
-    if (zones) {
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(zones, 0, 0, cv.width, cv.height);
-    }
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     const draw = (g) => {
@@ -115,19 +97,23 @@ function DrawLayer({ engine, tool, api, onPending }) {
     used.slice(engine.lines.drawn).forEach(draw);
     // Your strokes as drawn, faint; the lines actually used (snapped, joined), in black.
     ctx.strokeStyle = 'rgba(37, 34, 30, 0.3)';
-    // Eraser strokes are not drawn, nor the strokes they removed.
-    const L = Math.max(cv.width, cv.height);
-    const erased = (g, i) => engine.guides.slice(i + 1).some((e) => e.erase && (g.points ?? g).some(([u, v]) => e.erase
-      .some(([eu, ev]) => Math.hypot((u - eu) * cv.width, (v - ev) * cv.height) <= e.radius * L)));
+    // Removals are not drawn, nor the strokes they removed. A stroke may
+    // have moved by up to its snap radius, so that much more counts.
+    const aspect = cv.width / cv.height;
+    const erased = (g, i) => engine.guides.slice(i + 1).some((e) => e.erase && e.erase.some(([eu, ev]) => nearestLine(
+      [g.points ?? g], eu, ev, aspect, e.radius + (g.snap !== false && g.snapRadius ? g.snapRadius : 0))));
     engine.guides.forEach((g, i) => { if (!g.erase && !erased(g, i)) draw(g.points ?? g); });
     ctx.lineWidth = Math.max(3, cv.width / 160);
     ctx.strokeStyle = '#25221e';
     used.slice(0, engine.lines.drawn).forEach(draw);
-    if (stroke.current && mode === 'erase') {
-      ctx.lineWidth = 2 * radius * Math.max(cv.width, cv.height);
-      ctx.strokeStyle = 'rgba(214, 64, 40, 0.35)';
-      draw(stroke.current.length > 1 ? stroke.current : [stroke.current[0], stroke.current[0]]);
-    } else if (stroke.current) {
+    if (target.current && used[target.current.index]) {
+      ctx.lineWidth = Math.max(5, cv.width / 110);
+      ctx.strokeStyle = '#d64028';
+      draw(used[target.current.index]);
+    }
+    if (stroke.current) {
+      ctx.lineWidth = Math.max(3, cv.width / 160);
+      ctx.strokeStyle = '#25221e';
       draw(hover.current ? [...stroke.current, hover.current] : stroke.current);
       ctx.fillStyle = '#25221e';
       for (const [u, v] of mode === 'points' ? stroke.current : []) {
@@ -137,7 +123,7 @@ function DrawLayer({ engine, tool, api, onPending }) {
       }
     }
   };
-  useEffect(redraw, [original, engine.guides, engine.lines, zones]);
+  useEffect(redraw, [original, engine.guides, engine.lines]);
   const cancel = () => { stroke.current = null; hover.current = null; onPending(0); redraw(); };
   const back = () => {
     if (!stroke.current) return;
@@ -146,11 +132,51 @@ function DrawLayer({ engine, tool, api, onPending }) {
     onPending(stroke.current?.length ?? 0);
     redraw();
   };
+  const toUV = (e) => {
+    const cv = ref.current, r = cv.getBoundingClientRect();
+    const s = Math.min(r.width / cv.width, r.height / cv.height);
+    const ox = (r.width - cv.width * s) / 2, oy = (r.height - cv.height * s) / 2;
+    return [Math.min(1, Math.max(0, (e.clientX - r.left - ox) / (cv.width * s))), Math.min(1, Math.max(0, (e.clientY - r.top - oy) / (cv.height * s)))];
+  };
+  // Holding still: the nearest line within the snap circle turns red, and
+  // the stroke (or the vertex) the press began is dropped.
+  const fire = useRef(null);
+  fire.current = (x, y) => {
+    const cv = ref.current;
+    if (!cv) return;
+    const uv = toUV({ clientX: x, clientY: y });
+    const hit = nearestLine(engine.lines.lines, uv[0], uv[1], cv.width / cv.height, radius);
+    if (mode === 'points') { if (added.current) { added.current = false; back(); } } else stroke.current = null;
+    target.current = hit && { ...hit, uv };
+    redraw();
+  };
+  const press = useRef(null);
+  press.current ??= createLongPress({ onFire: (x, y) => fire.current(x, y) });
+  const pressDown = (e) => {
+    press.current.down(e.pointerId, e.clientX, e.clientY, performance.now());
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => press.current.tick(performance.now()), 460);
+  };
+  // Letting go after a long press removes the red line; true if the press
+  // had fired, so the pointer up does nothing else.
+  const pressUp = (e) => {
+    clearTimeout(timer.current);
+    if (press.current.up(e.pointerId) !== 'fired') return false;
+    const t = target.current;
+    target.current = null;
+    if (t) engine.addGuide({ erase: [t.uv], radius: t.dist + 0.002 });
+    else redraw();
+    return true;
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
   const ring = useRing(ref);
   api.current = {
     finish, back,
     cancel: () => {
       ring.hide();
+      clearTimeout(timer.current);
+      press.current.cancel();
+      if (target.current) { target.current = null; redraw(); }
       if (mode !== 'points') cancel();
       else if (added.current) { added.current = false; back(); }
     },
@@ -167,54 +193,56 @@ function DrawLayer({ engine, tool, api, onPending }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
-  const toUV = (e) => {
-    const cv = ref.current, r = cv.getBoundingClientRect();
-    const s = Math.min(r.width / cv.width, r.height / cv.height);
-    const ox = (r.width - cv.width * s) / 2, oy = (r.height - cv.height * s) / 2;
-    return [Math.min(1, Math.max(0, (e.clientX - r.left - ox) / (cv.width * s))), Math.min(1, Math.max(0, (e.clientY - r.top - oy) / (cv.height * s)))];
-  };
-  const handlers = mode === 'erase'
-    ? {
-      onPointerDown: (e) => { if (e.button !== 0) return; e.currentTarget.setPointerCapture(e.pointerId); stroke.current = [toUV(e)]; ring.track(e); redraw(); },
-      onPointerMove: (e) => { ring.track(e); if (stroke.current) { stroke.current.push(toUV(e)); redraw(); } },
-      onPointerUp: (e) => {
-        if (e.pointerType === 'touch') ring.hide();
-        const g = stroke.current;
-        stroke.current = null;
-        if (g) engine.addGuide({ erase: g, radius }); else redraw();
-      },
-    }
-    : mode === 'points'
+  const handlers = mode === 'points'
     ? {
       onPointerDown: (e) => {
         if (e.button !== 0) return;
         (stroke.current ??= []).push(toUV(e));
         added.current = true;
+        pressDown(e);
         onPending(stroke.current.length);
         redraw();
       },
-      onPointerMove: (e) => { ring.track(e); if (stroke.current) { hover.current = toUV(e); redraw(); } },
-      onPointerUp: () => { added.current = false; },
+      onPointerMove: (e) => {
+        ring.track(e);
+        press.current.move(e.pointerId, e.clientX, e.clientY);
+        if (stroke.current && !target.current) { hover.current = toUV(e); redraw(); }
+      },
+      onPointerUp: (e) => { pressUp(e); added.current = false; },
       onDoubleClick: () => { if (stroke.current) { stroke.current.pop(); finish(); } },
     }
     : {
-      onPointerDown: (e) => { if (e.button !== 0) return; e.currentTarget.setPointerCapture(e.pointerId); stroke.current = [toUV(e)]; ring.track(e); redraw(); },
-      onPointerMove: (e) => { ring.track(e); if (stroke.current) { stroke.current.push(toUV(e)); redraw(); } },
+      onPointerDown: (e) => {
+        if (e.button !== 0) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        stroke.current = [toUV(e)];
+        pressDown(e);
+        ring.track(e);
+        redraw();
+      },
+      onPointerMove: (e) => {
+        ring.track(e);
+        press.current.move(e.pointerId, e.clientX, e.clientY);
+        if (stroke.current) { stroke.current.push(toUV(e)); redraw(); }
+      },
       onPointerUp: (e) => {
         if (e.pointerType === 'touch') ring.hide();
+        if (pressUp(e)) return;
         if (stroke.current && stroke.current.length > 2) finish(); else { stroke.current = null; redraw(); }
       },
     };
   return (
     <>
-      <canvas ref={ref} className="viewer-canvas brush-canvas" onPointerLeave={ring.hide} {...handlers} />
-      {(mode === 'erase' || tool?.snap !== false) && ring.view(radius)}
+      <canvas ref={ref} className="viewer-canvas brush-canvas" onPointerLeave={ring.hide} onContextMenu={(e) => e.preventDefault()} {...handlers} />
+      {tool?.snap !== false && ring.view(radius)}
     </>
   );
 }
 
-// The big image: the WebGL mosaic, a stage image, or the line drawing layer. A faint
-// Eixample grid sits behind it; dropping a file shows the panot.
+// The big image: the WebGL mosaic, a stage image, or the line drawing layer,
+// with the outline of the shapes found and the touched shapes over it, and
+// the shape search's progress at the bottom. A faint Eixample grid sits
+// behind it; dropping a file shows the panot.
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 export default function Viewer({ engine, view, brush, setTool }) {
@@ -238,6 +266,7 @@ export default function Viewer({ engine, view, brush, setTool }) {
   useEffect(() => { setZoom({ k: 1, x: 0, y: 0 }); }, [engine.bitmap]);
   const showDraw = view === 'draw' && !compare;
   const useGl = view === 'final' && engine.gpu && !compare;
+  const showShapes = view === 'final' && brush?.kind === 'shape' && !compare && engine.hasImage;
 
   useEffect(() => {
     if (!useGl || !host.current) return;
@@ -369,9 +398,12 @@ export default function Viewer({ engine, view, brush, setTool }) {
           {showDraw ? <DrawLayer engine={engine} tool={brush} api={toolApi} onPending={setPending} />
             : useGl ? <div className="viewer-host" ref={host} />
             : image && <ImageCanvas image={image} className="viewer-canvas" />}
+          {engine.hasImage && <SegOutline engine={engine} />}
+          {showShapes && <ShapeLayer engine={engine} api={toolApi} zoom={zoom} />}
         </div>
         {!ready && <p className="viewer-empty">{engine.hasImage ? 'Calculando…' : 'Todavía no hay foto.'}</p>}
         {engine.busy && ready && <span className="busy-mark" role="status" aria-label="Calculando" />}
+        <SegStatus engine={engine} />
       </div>
       {dropping && (
         <div className="drop">
