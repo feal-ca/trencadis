@@ -6,6 +6,7 @@ import { applyMacroDefaults } from '../src/core/macros.js';
 import { ALGORITHMS, DEFAULTS, toWorkPx } from '../src/core/params.js';
 import { bbox, rasterize } from '../src/core/polygon.js';
 import { mulberry32 } from '../src/core/rng.js';
+import { regionWidths } from '../src/core/slivers.js';
 import { tessellate } from '../src/core/tessellate.js';
 import { flatImage } from './helpers.js';
 
@@ -133,6 +134,19 @@ describe('pieces with intention inside a touched shape', () => {
     expect(outside.length).toBeGreaterThan(0);
     for (const { poly } of outside) expect(result.has(key(poly))).toBe(true);
     expect(overlayFocus(background, img, lab, an, p, mulberry32(3), [])).toBe(background);
+  });
+
+  it.each(ALGORITHMS.map((a) => a.value))('overlayFocus leaves no sliver of the background next to the zone (%s)', (algorithm) => {
+    const p = { ...base, algorithm };
+    const background = tessellate(img, lab, an, p, mulberry32(1)).shards;
+    const out = overlayFocus(background, img, lab, an, p, mulberry32(3), [syntheticParts()]);
+    const before = new Set(background.map((s) => JSON.stringify(s.poly)));
+    // Background pieces the overlay re-traced, each with its own label.
+    const redone = out.filter((s) => !s.intent && !before.has(JSON.stringify(s.poly)));
+    expect(redone.length).toBeGreaterThan(0);
+    const labels = new Int32Array(W * H).fill(-1);
+    redone.forEach(({ poly }, id) => rasterize(poly, W, H, (x, y) => { labels[y * W + x] = id; }));
+    for (const width of regionWidths(labels, W, H).values()) expect(width).toBeGreaterThanOrEqual(0.25 * p.sMax);
   });
 
   it('focusSize never goes below sMin', () => {

@@ -282,8 +282,9 @@ export function overlayRows(baseShards, guides, w, h, p, an) {
 // small fragments merged into neighbours; untouched ones keep their polygon.
 // `tag` is spread into the new pieces ({ row: true } for rows). With `polys`
 // (one per extra label) those are used as they are instead of being traced.
-// With `onlyCut`, fragments merge only into other cut pieces or into the new
-// pieces, so background pieces the overlay does not cut never change.
+// With `onlyCut`, fragments merge only into other pieces the overlay cut or
+// trimmed, or into the new pieces, so background pieces it does not touch
+// never change.
 export function overlayPieces(baseShards, extra, w, h, an, tag = { row: true }, eps = 0.8, polys = null, { onlyCut = false } = {}) {
   const labels = new Int32Array(w * h).fill(-1);
   const order = baseShards.map((s, id) => [area(s.poly), id]).sort((a, b) => b[0] - a[0]);
@@ -320,9 +321,12 @@ export function overlayPieces(baseShards, extra, w, h, an, tag = { row: true }, 
   }
   let merged;
   if (onlyCut) {
-    // Uncut background pieces neither merge nor absorb; new pieces may absorb.
+    // Background pieces that lost no pixel to the overlay neither merge nor
+    // absorb; trimmed and cut ones may, and new pieces may absorb.
+    const trimmed = new Set();
+    for (let i = 0; i < w * h; i++) if (extra[i] >= 0 && baseOf[i] >= 0) trimmed.add(baseOf[i]);
     const keep = new Set();
-    origin.forEach((old, id) => { if (old < ROW && !splitIds.has(old)) keep.add(id); });
+    origin.forEach((old, id) => { if (old < ROW && !trimmed.has(old)) keep.add(id); });
     const only = new Set([...touching].filter((l) => !keep.has(l)));
     merged = mergeSlivers(parts, w, h, an.size, 0.25, { protect: keep, only });
   } else {
