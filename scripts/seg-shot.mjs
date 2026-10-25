@@ -4,10 +4,13 @@
 // before and after. Exits 1 unless progress, segments, the shape and its
 // parts all arrive.
 // Usage: CHROMIUM=... node scripts/seg-shot.mjs [photo] [out.png] [u] [v]
+// The pictures go to the system temp directory unless out.png says otherwise.
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { createServer } from 'vite';
 
-const [photo = 'public/samples/vermeer.webp', out = 'seg-shot.png', u = '0.345', v = '0.374'] = process.argv.slice(2);
+const [photo = 'public/samples/vermeer.webp', out = join(tmpdir(), 'seg-shot.png'), u = '0.345', v = '0.374'] = process.argv.slice(2);
 const server = await createServer({
   // Cross-origin isolation, so WASM can use threads.
   server: { port: 5193, strictPort: true, headers: { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'credentialless' } },
@@ -72,7 +75,7 @@ try {
   const id = await page.evaluate(([a, b]) => window.__trencadis.pickShape(a, b), [+u, +v]);
   const zone = await page.evaluate(() => window.__trencadis.zones[0] && { id: window.__trencadis.zones[0].id, box: window.__trencadis.zones[0].region?.box });
   console.log(`shape ${id} at ${secs()}`, JSON.stringify(zone));
-  if (!id) throw new Error('no shape');
+  if (!id || id.error) throw new Error(`no shape${id?.error ? `: ${id.error}` : ''}`);
   await page.evaluate((z) => window.__trencadis.setZoneMode(z, 'more'), id);
   await page.waitForFunction(() => window.__trencadis.zones[0]?.parts, null, { timeout: 600000 });
   const parts = await page.evaluate(() => { const p = window.__trencadis.zones[0].parts; return { box: p.box, w: p.w, h: p.h, count: p.count }; });
