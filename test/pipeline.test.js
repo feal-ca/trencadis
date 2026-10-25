@@ -63,3 +63,55 @@ describe('working resolution', () => {
     });
   }
 });
+
+describe('zones', () => {
+  const BOX = [0.25, 0.25, 0.75, 0.75];
+  const region = (box) => ({ box, w: 16, h: 16, data: new Uint8Array(256).fill(1) });
+  // One part filling the whole zone, at the crop resolution of a 240 x 160 photo.
+  const parts = () => ({ box: BOX, w: 120, h: 80, labels: new Int32Array(120 * 80), count: 1 });
+  const lessZone = { id: 1, mode: 'less', region: region(BOX), parts: null };
+  const moreZone = { id: 2, mode: 'more', region: region(BOX), parts: parts() };
+  const tess = async (zones, p = {}) => {
+    const pipe = createPipeline();
+    pipe.setImage(syntheticImage());
+    pipe.setZones(zones);
+    let value;
+    await pipe.run({ ...DEFAULTS, outLong: 300, supersample: 1, ...p }, (n, v) => { if (n === 'tessellation') value = v; }, undefined, undefined, undefined, { cpuRender: false });
+    return value.shards;
+  };
+  const inside = (s, w = 240, h = 160) => {
+    const cx = s.poly.reduce((a, q) => a + q[0], 0) / s.poly.length / w;
+    const cy = s.poly.reduce((a, q) => a + q[1], 0) / s.poly.length / h;
+    return cx > BOX[0] && cx < BOX[2] && cy > BOX[1] && cy < BOX[3];
+  };
+  const meanArea = (shards) => shards.reduce((a, s) => a + area(s.poly), 0) / shards.length;
+
+  it('a less zone makes its pieces larger', async () => {
+    const without = (await tess(null)).filter((s) => inside(s));
+    const withZone = (await tess([lessZone])).filter((s) => inside(s));
+    expect(meanArea(withZone)).toBeGreaterThan(meanArea(without));
+  });
+
+  it('a more zone adds intent pieces', async () => {
+    expect((await tess(null)).some((s) => s.intent)).toBe(false);
+    expect((await tess([moreZone])).some((s) => s.intent)).toBe(true);
+  });
+
+  it('zones survive a change of working resolution and method', async () => {
+    const check = (shards, w, h) => {
+      const intent = shards.filter((s) => s.intent);
+      expect(intent.length).toBeGreaterThan(0);
+      expect(intent.every((s) => inside(s, w, h))).toBe(true);
+    };
+    const pipe = createPipeline();
+    pipe.setZones([moreZone]);
+    const run = async (long, algorithm) => {
+      pipe.setImage(syntheticImage(long, Math.round(long * 2 / 3)));
+      let value;
+      await pipe.run({ ...DEFAULTS, algorithm, workLong: long }, (n, v) => { if (n === 'tessellation') value = v; }, undefined, undefined, undefined, { cpuRender: false });
+      return value.shards;
+    };
+    check(await run(800, 'fracture'), 800, 533);
+    check(await run(600, 'voronoi'), 600, 400);
+  });
+});

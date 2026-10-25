@@ -2,6 +2,7 @@ import { Delaunay } from 'd3-delaunay';
 import { combineGuides, edgeMap, eraseGuides, overlayRows } from './andamento.js';
 import { growCracks } from './cracks.js';
 import { fracture } from './fracture.js';
+import { overlayFocus } from './focus.js';
 import { labelsToPolygons } from './polygonize.js';
 import { labelAnisotropic, labelIsotropic, lloyd, poissonVariable } from './sampling.js';
 import { slic } from './slic.js';
@@ -18,10 +19,13 @@ import { segmentGuides } from './seglines.js';
 // `guides`, the hand-drawn ones in normalised coordinates) are laid over
 // whichever background. `segments` is { w, h, labels } from the segmentation
 // model, or null; pieces that straddle two objects are cut along their
-// border. `zones` is accepted for the zone tool and not used yet.
+// border. The "more" zones in `zones` (zones.js) then get pieces with
+// intention on top, from their parts.
 export function tessellate(img, lab, an, p, rng, guides = null, segments = null, zones = null) {
   const rows = tessellateRows(img, lab, an, p, rng, guides, segments);
-  return segments ? { ...rows, shards: cutBySegments(rows.shards, segments, an.w, an.h, p) } : rows;
+  const cut = segments ? cutBySegments(rows.shards, segments, an.w, an.h, p) : rows.shards;
+  const partsList = (zones ?? []).filter((z) => z.mode === 'more' && z.parts).map((z) => z.parts);
+  return { ...rows, shards: overlayFocus(cut, img, lab, an, p, rng, partsList) };
 }
 
 function tessellateRows(img, lab, an, p, rng, guides, segments) {

@@ -5,6 +5,7 @@ import { keysForStage, STAGE_ORDER, toWorkPx } from './params.js';
 import { renderMosaic } from './render.js';
 import { mulberry32 } from './rng.js';
 import { tessellate } from './tessellate.js';
+import { zonesDetailMask } from './zones.js';
 
 // Runs the four stages, reusing cached results whose inputs did not change.
 // `onStage(name, result)` fires after each stage; `isStale()` lets the caller
@@ -12,7 +13,7 @@ import { tessellate } from './tessellate.js';
 // { cpuRender: false } stops after the colour stage, for when the GPU draws
 // the mosaic.
 export function createPipeline() {
-  let full = null, imgVersion = 0, mask = null, maskVersion = 0, guides = null, guidesVersion = 0;
+  let full = null, imgVersion = 0, zones = null, zonesVersion = 0, guides = null, guidesVersion = 0;
   let segments = null, segmentsVersion = 0;
   const cache = {};
 
@@ -20,7 +21,7 @@ export function createPipeline() {
     const upto = STAGE_ORDER.slice(0, STAGE_ORDER.indexOf(stage) + 1);
     const vals = upto.flatMap((s) => keysForStage(s).map((k) => p[k]));
     const after = stage !== 'analysis';
-    return JSON.stringify([imgVersion, maskVersion, after ? guidesVersion : 0, after ? segmentsVersion : 0, vals]);
+    return JSON.stringify([imgVersion, zonesVersion, after ? guidesVersion : 0, after ? segmentsVersion : 0, vals]);
   };
 
   return {
@@ -29,10 +30,11 @@ export function createPipeline() {
       imgVersion++;
     },
     hasImage: () => !!full,
-    // Detail brush, { w, h, data } in [-1, 1], or null.
-    setMask(next) {
-      mask = next;
-      maskVersion++;
+    // Touched shapes (zones.js), or null. "Less" zones calm the detail map;
+    // "more" zones get pieces with intention.
+    setZones(next) {
+      zones = next?.length ? next : null;
+      zonesVersion++;
     },
     // Hand-drawn guide lines, polylines in normalised coordinates.
     setGuides(next) {
@@ -67,8 +69,8 @@ export function createPipeline() {
         return cache[stage].value;
       };
       try {
-        const an = await step('analysis', () => analyze(img, p, mask));
-        const tess = await step('tessellation', () => tessellate(img, lab, an, p, mulberry32(p.seed), guides, segments));
+        const an = await step('analysis', () => analyze(img, p, zonesDetailMask(zones)));
+        const tess = await step('tessellation', () => tessellate(img, lab, an, p, mulberry32(p.seed), guides, segments, zones));
         const col = await step('color', () => {
           const flat = shardColors(tess.shards, img, p);
           const pal = applyPalette(flat, tess.shards, p, mulberry32(p.seed + 101));

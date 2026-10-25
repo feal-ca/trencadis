@@ -49,8 +49,8 @@ self.onmessage = async (e) => {
     pipe.setImage(fromImageData(msg.image));
     return;
   }
-  if (msg.type === 'mask') {
-    pipe.setMask(msg.mask);
+  if (msg.type === 'zones') {
+    pipe.setZones(msg.zones);
     return;
   }
   if (msg.type === 'segments') {
