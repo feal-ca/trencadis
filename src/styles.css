@@ -78,6 +78,7 @@ a { color: inherit; }
 .seg button.on { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
 .samples { font-size: 0.9rem; }
 .samples .link { font-size: inherit; }
+.kofi { margin-left: auto; white-space: nowrap; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center;

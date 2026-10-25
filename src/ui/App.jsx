@@ -89,6 +89,7 @@ export default function App() {
             </span>
           ))}
         </span>
+        <a className="kofi link" href="https://ko-fi.com/fealca" target="_blank" rel="noopener">Invítame a un café</a>
       </header>
       <main className="work">
         <div className="work-main">
