@@ -4,7 +4,7 @@ import { createHistory } from '../core/history.js';
 import { applyMacro, applyMacroDefaults, applyStyle, MACRO_DEFAULTS, MACROS, readStyle } from '../core/macros.js';
 import { DEFAULTS, keysForStage } from '../core/params.js';
 import { createRenderer } from '../gl/renderer.js';
-import { createSegSession, startPolicy } from './segSession.js';
+import { createSegSession, segOverrides, startPolicy } from './segSession.js';
 import { TOUCH } from './useMedia.js';
 
 const STORE = 'trencadis.params.v2';
@@ -278,6 +278,9 @@ export function useEngine() {
         segWorker.current = new Worker(new URL('../seg/worker.js', import.meta.url), { type: 'module' });
         segWorker.current.onmessage = ({ data }) => {
           if (data.type === 'log') { if (DEBUG) console.log('[sam]', data.text); return; }
+          // Segmentation timings share window.__runs with the pipeline's;
+          // `seg` tells them apart.
+          if (data.type === 'timing') { if (DEBUG) (window.__runs ??= []).push(data.entry); return; }
           if (!session.current.receive(data) || data.type !== 'segments') return;
           setSegments({ ...data.segments, count: data.count, labels: data.segments.labels.slice() });
           worker.current?.postMessage({ type: 'segments', segments: data.segments }, [data.segments.labels.buffer]);
@@ -292,9 +295,9 @@ export function useEngine() {
           session.current.fail('No se ha podido cargar el buscador de formas');
         };
       }
-      // ?samDevice=wasm forces the CPU (headless browsers only have a software GPU).
-      const device = new URLSearchParams(location.search).get('samDevice');
-      segWorker.current.postMessage(msg.type === 'coarse' && device ? { ...msg, device } : msg);
+      // ?samDevice=wasm forces the CPU (headless browsers only have a software
+      // GPU); ?segBatch= and ?segPoints= try other settings.
+      segWorker.current.postMessage(msg.type === 'coarse' ? { ...msg, ...segOverrides(location.search) } : msg);
     },
   });
   useEffect(() => () => { segWorker.current?.terminate(); segWorker.current = null; }, []);

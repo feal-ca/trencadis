@@ -81,6 +81,8 @@ try {
   await page.waitForTimeout(500);
   await page.screenshot({ path: out, clip: await clip() });
   await page.screenshot({ path: out.replace(/\.png$/, '-full.png') });
+  // The segmentation timings that ?debug collects next to the pipeline runs.
+  for (const e of await page.evaluate(() => (window.__runs ?? []).filter((r) => r.seg))) console.log('[timing]', JSON.stringify(e));
   console.log(`saved ${before}, ${out} at ${secs()}`);
   ok = end.phase === 'done' && !!lastDecode && lastDecode.done === lastDecode.total && parts.count > 0;
 } finally {

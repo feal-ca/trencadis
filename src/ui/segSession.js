@@ -13,6 +13,21 @@ export function startPolicy({ touch, webgpu, stored }) {
   return touch || !webgpu ? 'ask' : 'auto';
 }
 
+// The URL overrides for the coarse pass, for trying values without
+// rebuilding: ?samDevice=wasm|webgpu, ?segBatch=N and ?segPoints=N. Values
+// that are not positive integers are ignored.
+export function segOverrides(search) {
+  const q = new URLSearchParams(search);
+  const out = {};
+  const device = q.get('samDevice');
+  if (device) out.device = device;
+  for (const [key, name] of [['segBatch', 'batch'], ['segPoints', 'points']]) {
+    const v = q.get(key);
+    if (v && /^[1-9]\d*$/.test(v)) out[name] = Number(v);
+  }
+  return out;
+}
+
 // `post(msg)` sends a message to the worker and `onState(state)` is called
 // with every new state, where
 //   state = { phase: 'idle' | 'ask' | 'off' | 'download' | 'encode' | 'decode' | 'done' | 'error',

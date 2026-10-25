@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSegSession, startPolicy } from '../src/ui/segSession.js';
+import { createSegSession, segOverrides, startPolicy } from '../src/ui/segSession.js';
 
 // A session with a fake worker: `sent` keeps every message posted to it.
 function setup(policy = 'auto') {
@@ -186,5 +186,17 @@ describe('segmentation session across photos and crashes', () => {
     s.retry();
     expect(sent.filter((m) => m.type === 'coarse')).toHaveLength(2);
     expect(s.state.phase).toBe('download');
+  });
+});
+
+describe('segOverrides', () => {
+  it('reads the device, batch and points from the query', () => {
+    expect(segOverrides('?debug&samDevice=wasm&segBatch=16&segPoints=48')).toEqual({ device: 'wasm', batch: 16, points: 48 });
+  });
+  it('ignores values that are not positive integers', () => {
+    expect(segOverrides('?segBatch=0&segPoints=-3')).toEqual({});
+    expect(segOverrides('?segBatch=abc&segPoints=1.5')).toEqual({});
+    expect(segOverrides('?segBatch=&segPoints=')).toEqual({});
+    expect(segOverrides('')).toEqual({});
   });
 });
