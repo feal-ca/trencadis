@@ -22,8 +22,8 @@ export default function App() {
     if (!engine.hasImage) engine.loadSample(SAMPLES[0].src);
   }, []);
 
-  // Ctrl+Z / Ctrl+Shift+Z: with the brush, its last stroke; while drawing
-  // lines, the last line; otherwise the settings.
+  // Ctrl+Z / Ctrl+Shift+Z: while drawing lines, the last line; otherwise the
+  // settings and the touched shapes.
   useEffect(() => {
     const onKey = (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
@@ -33,7 +33,6 @@ export default function App() {
       if (e.target.matches?.('input[type=text], input[type=number], textarea')) return;
       e.preventDefault();
       if (redo) engine.redo();
-      else if (brush?.kind === 'brush') (brush.layer === 'important' ? engine.important : engine).undoMask();
       else if (brush?.kind === 'draw') engine.undoGuide();
       else engine.undo();
     };
@@ -53,7 +52,7 @@ export default function App() {
     return () => window.removeEventListener('paste', onPaste);
   }, [engine.loadBlob]);
 
-  // `brush` is the active tool: the detail brush or guide drawing.
+  // `brush` is the active tool: guide drawing.
   const view = brush ? brush.kind : peek?.view ?? 'final';
   const peekStep = peek && STEPS.find((s) => s.id === peek.step);
 

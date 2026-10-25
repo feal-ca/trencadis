@@ -53,7 +53,7 @@ export const STEPS = [
       { key: 'detail', label: 'Detalle' },
       { key: 'orientation', label: 'Dirección de los bordes' },
     ],
-    simple: [{ macro: 'size' }, { param: 'ignoreTexture' }, { kind: 'brush' }],
+    simple: [{ macro: 'size' }, { param: 'ignoreTexture' }],
     advanced: ['sizeRatio', 'gamma', 'detailSigma', 'detailSmooth', 'tensorSigma', 'workLong'],
     summary: (p) => `Trozos de ${Math.round(p.sMin)} a ${Math.round(p.sMax)} px`,
   },

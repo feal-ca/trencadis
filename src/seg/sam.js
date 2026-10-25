@@ -28,18 +28,14 @@ export const opts = {
 };
 
 let model, processor;
-// `onProgress({ loaded, total })` reports the bytes downloaded so far, summed
-// over every file of the model and the processor.
+// `onProgress({ loaded, total })` reports the bytes of the model downloaded so
+// far. The library sizes every file of the model before it starts, so
+// `total` stays put; the processor's files are tiny and not counted.
 export async function load(onProgress, log = () => {}) {
   if (model) return;
   const t = performance.now();
-  const files = new Map();
   const progress_callback = onProgress && ((e) => {
-    if (e.status !== 'progress' || !e.total) return;
-    files.set(e.file, { loaded: e.loaded, total: e.total });
-    let loaded = 0, total = 0;
-    for (const f of files.values()) { loaded += f.loaded; total += f.total; }
-    onProgress({ loaded, total });
+    if (e.status === 'progress_total' && e.total) onProgress({ loaded: e.loaded, total: e.total });
   });
   // fp16 was fastest on WebGPU (24 s vs 44 s fp32, 121 s q8 on an Intel
   // Gen12 laptop); q8 is fastest on the CPU.
@@ -52,7 +48,7 @@ export async function load(onProgress, log = () => {}) {
     opts.dtype = 'q8';
     model = await SamModel.from_pretrained(MODEL, { device: 'wasm', dtype: opts.dtype, progress_callback });
   }
-  processor = await AutoProcessor.from_pretrained(MODEL, { progress_callback });
+  processor = await AutoProcessor.from_pretrained(MODEL);
   log(`model loaded on ${opts.device} (${opts.dtype}) in ${Math.round(performance.now() - t)} ms`);
   // Which GPU WebGPU got: a software ("fallback") adapter is slower than WASM.
   const adapter = await navigator.gpu?.requestAdapter();
@@ -89,6 +85,66 @@ function promptPoints({ an, s }, box, target, seed) {
   return pts;
 }
 
+// The model's encoding of an image: the embeddings, the scale `k` from image
+// px to model input px, and the size of the mask grid (model px / 4).
+async function encode(image) {
+  const inputs = await processor(image);
+  const emb = await model.get_image_embeddings(inputs);
+  const [rh, rw] = inputs.reshaped_input_sizes[0];
+  return { emb, k: rw / image.width, mw: Math.ceil(rw / 4), mh: Math.ceil(rh / 4) };
+}
+
+// The encoding of the whole photo, kept for the touches on it (pickMask) and
+// reused by the first pass of segmentEverything on the same image.
+let embedded = null;
+export async function embedImage(image) {
+  embedded = null;
+  embedded = { image, ...await encode(image) };
+  return embedded;
+}
+
+// Bilinear upsampling of one mask's logits, over mask cells [x0, y0, x1, y1]
+// (with a cell of margin), to display px at scale `ds` of the image. `origin`
+// is where the encoded image (or crop) sits in the image, in image px. Returns
+// { box: display px box, inclusive, data, area }, or null if nothing is on.
+function upsample(logits, off, W, enc, cells, origin, ds, W0, H0) {
+  const { k, mw, mh } = enc;
+  const [x0, y0, x1, y1] = cells;
+  const toImg = (mx) => mx * 4 / k;
+  const dx0 = Math.max(0, Math.floor((origin[0] + toImg(x0 - 1)) * ds)), dx1 = Math.min(W0 - 1, Math.ceil((origin[0] + toImg(x1 + 2)) * ds));
+  const dy0 = Math.max(0, Math.floor((origin[1] + toImg(y0 - 1)) * ds)), dy1 = Math.min(H0 - 1, Math.ceil((origin[1] + toImg(y1 + 2)) * ds));
+  const bw = dx1 - dx0 + 1, bh = dy1 - dy0 + 1;
+  if (bw <= 0 || bh <= 0) return null;
+  const data = new Uint8Array(bw * bh);
+  let area = 0;
+  for (let y = 0; y < bh; y++) {
+    const my = Math.min(mh - 1.001, Math.max(0, (((dy0 + y + 0.5) / ds - origin[1]) * k) / 4 - 0.5));
+    const yi = Math.floor(my), fy = my - yi;
+    for (let x = 0; x < bw; x++) {
+      const mx = Math.min(mw - 1.001, Math.max(0, (((dx0 + x + 0.5) / ds - origin[0]) * k) / 4 - 0.5));
+      const xi = Math.floor(mx), fx = mx - xi, o = off + yi * W + xi;
+      const v = (logits[o] * (1 - fx) + logits[o + 1] * fx) * (1 - fy) + (logits[o + W] * (1 - fx) + logits[o + W + 1] * fx) * fy;
+      if (v > 0) { data[y * bw + x] = 1; area++; }
+    }
+  }
+  return area ? { box: [dx0, dy0, dx1, dy1], data, area } : null;
+}
+
+// The cells of one mask with a positive logit: their box, count, and the
+// counts above +1 and -1 (for the stability score).
+function maskStats(logits, off, W, mw, mh) {
+  let hi = 0, lo = 0, area = 0, x0 = mw, y0 = mh, x1 = -1, y1 = -1;
+  for (let y = 0; y < mh; y++) {
+    for (let x = 0; x < mw; x++) {
+      const v = logits[off + y * W + x];
+      if (v > 1) hi++;
+      if (v > -1) lo++;
+      if (v > 0) { area++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+  }
+  return { area, box: [x0, y0, x1, y1], stab: lo ? hi / lo : 0 };
+}
+
 // One pass of the model over `box` (image px, inclusive) of the photo with
 // prompt points in image px. Candidates come back as masks at display scale
 // `ds`, each with its display-pixel box. In a crop, masks that touch an
@@ -97,14 +153,10 @@ function promptPoints({ an, s }, box, target, seed) {
 async function decodePass(image, box, points, ds, T, name, onBatch) {
   let t = performance.now();
   const full = box[0] === 0 && box[1] === 0 && box[2] === image.width - 1 && box[3] === image.height - 1;
-  const sub = full ? image : await image.crop(box);
-  const inputs = await processor(sub);
-  const emb = await model.get_image_embeddings(inputs);
+  const enc = full && embedded?.image === image ? embedded : full ? await embedImage(image) : await encode(await image.crop(box));
+  const { emb, k, mw, mh } = enc;
   T[`${name} encoder`] = performance.now() - t;
   t = performance.now();
-  const [rh, rw] = inputs.reshaped_input_sizes[0];
-  const k = rw / sub.width;
-  const mw = Math.ceil(rw / 4), mh = Math.ceil(rh / 4);
   const inner = { l: box[0] > 0, t: box[1] > 0, r: box[2] < image.width - 1, b: box[3] < image.height - 1 };
   const W0 = Math.round(image.width * ds), H0 = Math.round(image.height * ds);
   const cands = [];
@@ -123,7 +175,8 @@ async function decodePass(image, box, points, ds, T, name, onBatch) {
       const pt = points[s++];
       if (!covered(pt)) batch.push([(pt[0] - box[0]) * k, (pt[1] - box[1]) * k]);
     }
-    if (!batch.length) break;
+    // Every point left may have been skipped; progress still reaches the end.
+    if (!batch.length) { onBatch?.(s, points.length, cands.length); continue; }
     used += batch.length;
     const input_points = new Tensor('float32', batch.flat(), [1, batch.length, 1, 2]);
     const input_labels = new Tensor('int64', batch.map(() => 1n), [1, batch.length, 1]);
@@ -137,37 +190,12 @@ async function decodePass(image, box, points, ds, T, name, onBatch) {
         const iou = ious[b * nm + m];
         if (iou < opts.iou) continue;
         const off = (b * nm + m) * H * W;
-        let hi = 0, lo = 0, area = 0, x0 = mw, y0 = mh, x1 = -1, y1 = -1;
-        for (let y = 0; y < mh; y++) {
-          for (let x = 0; x < mw; x++) {
-            const v = logits[off + y * W + x];
-            if (v > 1) hi++;
-            if (v > -1) lo++;
-            if (v > 0) { area++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-          }
-        }
-        const stab = lo ? hi / lo : 0;
+        const { area, box: [x0, y0, x1, y1], stab } = maskStats(logits, off, W, mw, mh);
         if (stab < opts.stability || area < 6 || area > 0.95 * mw * mh) continue;
         // Two cells of margin: mask edges are padded and rounded.
         if ((inner.l && x0 <= 1) || (inner.t && y0 <= 1) || (inner.r && x1 >= mw - 3) || (inner.b && y1 >= mh - 3)) continue;
-        // Display box of the mask, then bilinear upsampling of its logits.
-        const toImg = (mx) => mx * 4 / k;
-        const dx0 = Math.max(0, Math.floor((box[0] + toImg(x0 - 1)) * ds)), dx1 = Math.min(W0 - 1, Math.ceil((box[0] + toImg(x1 + 2)) * ds));
-        const dy0 = Math.max(0, Math.floor((box[1] + toImg(y0 - 1)) * ds)), dy1 = Math.min(H0 - 1, Math.ceil((box[1] + toImg(y1 + 2)) * ds));
-        const bw = dx1 - dx0 + 1, bh = dy1 - dy0 + 1;
-        const data = new Uint8Array(bw * bh);
-        let darea = 0;
-        for (let y = 0; y < bh; y++) {
-          const my = Math.min(mh - 1.001, Math.max(0, (((dy0 + y + 0.5) / ds - box[1]) * k) / 4 - 0.5));
-          const yi = Math.floor(my), fy = my - yi;
-          for (let x = 0; x < bw; x++) {
-            const mx = Math.min(mw - 1.001, Math.max(0, (((dx0 + x + 0.5) / ds - box[0]) * k) / 4 - 0.5));
-            const xi = Math.floor(mx), fx = mx - xi, o = off + yi * W + xi;
-            const v = (logits[o] * (1 - fx) + logits[o + 1] * fx) * (1 - fy) + (logits[o + W] * (1 - fx) + logits[o + W + 1] * fx) * fy;
-            if (v > 0) { data[y * bw + x] = 1; darea++; }
-          }
-        }
-        if (darea) cands.push({ data, box: [dx0, dy0, dx1, dy1], area: darea, score: iou * stab, pass: name });
+        const up = upsample(logits, off, W, enc, [x0, y0, x1, y1], box, ds, W0, H0);
+        if (up) cands.push({ ...up, score: iou * stab, pass: name });
       }
     }
     onBatch?.(s, points.length, cands.length);
@@ -253,4 +281,107 @@ export async function segmentEverything(image, outLong = 600, { onBatch } = {}) 
   });
   T.nms = performance.now() - t;
   return { w, h, masks, candidates: cands.length, crops: crops.map((b) => b.map((v) => Math.round(v * ds))), T };
+}
+
+// Touched shapes come back as a region normalised to the photo:
+// { box: [u0, v0, u1, v1], w, h, data: Uint8Array(w*h) }, at a scale where
+// the photo's long side is REGION_LONG px.
+const REGION_LONG = 512;
+// Parts of a shape are found at this long side of the crop around it.
+const PARTS_LONG = 256;
+
+// The mask the model gives for prompt points [[u, v, 1 | 0]] (normalised; 1
+// is a point on the shape, 0 one off it) on the photo of the last
+// embedImage(). Of the three candidate masks it keeps the one with the
+// highest predicted IoU. Returns the region, or null if the mask is empty.
+export async function pickMask(points) {
+  const enc = embedded;
+  if (!enc) throw new Error('no photo encoded');
+  const { image, emb, k } = enc;
+  const input_points = new Tensor('float32', points.flatMap(([u, v]) => [u * image.width * k, v * image.height * k]), [1, 1, points.length, 2]);
+  const input_labels = new Tensor('int64', points.map((p) => BigInt(p[2] ?? 1)), [1, 1, points.length]);
+  const out = await model({ ...emb, input_points, input_labels });
+  const [, , nm, H, W] = out.pred_masks.dims;
+  const ious = out.iou_scores.data;
+  let best = 0;
+  for (let m = 1; m < nm; m++) if (ious[m] > ious[best]) best = m;
+  const off = best * H * W, logits = out.pred_masks.data;
+  const { area, box } = maskStats(logits, off, W, enc.mw, enc.mh);
+  if (!area) return null;
+  const ds = REGION_LONG / Math.max(image.width, image.height);
+  const W0 = Math.round(image.width * ds), H0 = Math.round(image.height * ds);
+  const up = upsample(logits, off, W, enc, box, [0, 0], ds, W0, H0);
+  if (!up) return null;
+  const [x0, y0, x1, y1] = up.box;
+  return { box: [x0 / W0, y0 / H0, (x1 + 1) / W0, (y1 + 1) / H0], w: x1 - x0 + 1, h: y1 - y0 + 1, data: up.data };
+}
+
+// The parts of a touched shape, for "Más detalle": a crop around the region
+// (15 % of margin) is encoded again at the model's full resolution and a grid
+// of about 48 prompt points inside the region finds the parts in it (an iris,
+// the white of an eye, an eyelid). Each pixel of the region takes the
+// smallest part covering it; what no part covers is one more part, so the
+// parts fill the shape. Returns { box, w, h, labels: Int32Array(w*h), count }
+// over the crop, normalised to the photo, with the crop's long side at
+// PARTS_LONG px and -1 outside the region.
+export async function segmentParts(image, region) {
+  const [u0, v0, u1, v1] = region.box;
+  const mu = 0.15 * (u1 - u0), mv = 0.15 * (v1 - v0);
+  const box = [
+    Math.max(0, Math.floor((u0 - mu) * image.width)), Math.max(0, Math.floor((v0 - mv) * image.height)),
+    Math.min(image.width - 1, Math.ceil((u1 + mu) * image.width) - 1), Math.min(image.height - 1, Math.ceil((v1 + mv) * image.height) - 1),
+  ];
+  const inRegion = (u, v) => {
+    const rx = Math.floor(((u - u0) / (u1 - u0)) * region.w), ry = Math.floor(((v - v0) / (v1 - v0)) * region.h);
+    return rx >= 0 && ry >= 0 && rx < region.w && ry < region.h && region.data[ry * region.w + rx] === 1;
+  };
+  // Grid spacing (image px) for about 48 points on the region's area.
+  let on = 0;
+  for (let i = 0; i < region.data.length; i++) on += region.data[i];
+  const area = (on / (region.w * region.h)) * (u1 - u0) * image.width * (v1 - v0) * image.height;
+  const step = Math.max(1, Math.sqrt(area / 48));
+  const points = [];
+  for (let y = v0 * image.height + step / 2; y < v1 * image.height; y += step) {
+    for (let x = u0 * image.width + step / 2; x < u1 * image.width; x += step) {
+      // Detail 1, so decodePass never skips a point.
+      if (inRegion(x / image.width, y / image.height)) points.push([x, y, 1]);
+    }
+  }
+  const cw = box[2] - box[0] + 1, ch = box[3] - box[1] + 1;
+  const ds = PARTS_LONG / Math.max(cw, ch);
+  const cands = points.length ? nms(await decodePass(image, box, points, ds, {}, 'parts')) : [];
+
+  // The parts grid over the crop, in display px at scale ds.
+  const ox = Math.round(box[0] * ds), oy = Math.round(box[1] * ds);
+  const pw = Math.max(1, Math.round(cw * ds)), ph = Math.max(1, Math.round(ch * ds));
+  const inside = new Uint8Array(pw * ph);
+  for (let y = 0; y < ph; y++) {
+    for (let x = 0; x < pw; x++) inside[y * pw + x] = inRegion((ox + x + 0.5) / ds / image.width, (oy + y + 0.5) / ds / image.height) ? 1 : 0;
+  }
+  const masks = [];
+  for (const c of cands) {
+    const data = new Uint8Array(pw * ph);
+    const bw = c.box[2] - c.box[0] + 1;
+    let n = 0;
+    for (let i = 0; i < c.data.length; i++) {
+      if (!c.data[i]) continue;
+      const x = c.box[0] + (i % bw) - ox, y = c.box[1] + Math.floor(i / bw) - oy;
+      if (x < 0 || y < 0 || x >= pw || y >= ph || !inside[y * pw + x]) continue;
+      data[y * pw + x] = 1;
+      n++;
+    }
+    if (n) masks.push({ data, area: n });
+  }
+  const labels = partition({ w: pw, h: ph, masks });
+  // Consecutive labels for the parts left, the uncovered rest included.
+  const ids = new Map();
+  for (let i = 0; i < labels.length; i++) {
+    if (!inside[i]) { labels[i] = -1; continue; }
+    if (!ids.has(labels[i])) ids.set(labels[i], ids.size);
+    labels[i] = ids.get(labels[i]);
+  }
+  return {
+    box: [ox / ds / image.width, oy / ds / image.height, (ox + pw) / ds / image.width, (oy + ph) / ds / image.height],
+    w: pw, h: ph, labels, count: ids.size,
+  };
 }

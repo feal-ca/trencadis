@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LAB } from '../core/params.js';
 
 function ImageCanvas({ image, className }) {
   const ref = useRef(null);
@@ -44,73 +43,6 @@ function useRing(ref) {
       style={{ left: ring.x, top: ring.y, width: 2 * fraction * ring.long, height: 2 * fraction * ring.long }} />
   );
   return { track, hide: () => setRing(null), view };
-}
-
-// The photo with the detail mask tinted on top; pointer strokes paint it.
-// LAB: with brush.layer 'important', the important areas instead.
-function BrushLayer({ engine, brush, api }) {
-  const ref = useRef(null);
-  const drawing = useRef(false);
-  const original = engine.images.original;
-  const important = brush.layer === 'important';
-  const layer = important ? engine.important : engine;
-
-  useEffect(() => {
-    const cv = ref.current, m = layer.mask.current;
-    if (!cv || !original || !m) return;
-    cv.width = original.width;
-    cv.height = original.height;
-    const ctx = cv.getContext('2d');
-    ctx.putImageData(original, 0, 0);
-    const tint = new OffscreenCanvas(m.w, m.h);
-    const data = new ImageData(m.w, m.h);
-    for (let i = 0; i < m.data.length; i++) {
-      const v = m.data[i];
-      // Ochre where detail is removed, cobalt where it is added; important in vermilion.
-      const [r, g, b] = important ? [214, 64, 40] : v < 0 ? [216, 160, 50] : [40, 86, 165];
-      data.data.set([r, g, b, Math.min(255, Math.abs(v) * 170)], i * 4);
-    }
-    tint.getContext('2d').putImageData(data, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(tint, 0, 0, cv.width, cv.height);
-  }, [original, layer.maskVersion, layer.mask, important]);
-
-  // Map a pointer to normalised image coordinates through object-fit: contain.
-  const toUV = (e) => {
-    const cv = ref.current, r = cv.getBoundingClientRect();
-    const s = Math.min(r.width / cv.width, r.height / cv.height);
-    const ox = (r.width - cv.width * s) / 2, oy = (r.height - cv.height * s) / 2;
-    return [(e.clientX - r.left - ox) / (cv.width * s), (e.clientY - r.top - oy) / (cv.height * s)];
-  };
-  const dab = (e) => {
-    const [u, v] = toUV(e);
-    layer.paint(u, v, brush.size, brush.mode === 'remove' ? (important ? 0 : -1) : 1);
-  };
-  const ring = useRing(ref);
-  // A second finger turns the stroke into a pinch: take back what it painted.
-  api.current = {
-    cancel: () => { if (drawing.current) { drawing.current = false; layer.undoMask(false); } ring.hide(); },
-  };
-  return (
-    <>
-      <canvas
-        ref={ref}
-        className="viewer-canvas brush-canvas"
-        onPointerDown={(e) => {
-          if (e.button !== 0) return;
-          drawing.current = true;
-          e.currentTarget.setPointerCapture(e.pointerId);
-          layer.beginStroke();
-          ring.track(e);
-          dab(e);
-        }}
-        onPointerMove={(e) => { ring.track(e); if (drawing.current) dab(e); }}
-        onPointerLeave={ring.hide}
-        onPointerUp={(e) => { if (drawing.current) { drawing.current = false; layer.commitMask(); } if (e.pointerType === 'touch') ring.hide(); }}
-      />
-      {ring.view(brush.size)}
-    </>
-  );
 }
 
 // LAB: the objects the segmentation model found, one colour each, at the
@@ -281,7 +213,7 @@ function DrawLayer({ engine, tool, api, onPending }) {
   );
 }
 
-// The big image: the WebGL mosaic, a stage image, or the brush layer. A faint
+// The big image: the WebGL mosaic, a stage image, or the line drawing layer. A faint
 // Eixample grid sits behind it; dropping a file shows the panot.
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
@@ -304,27 +236,16 @@ export default function Viewer({ engine, view, brush, setTool }) {
   const toolApi = useRef(null);
   const [pending, setPending] = useState(0);
   useEffect(() => { setZoom({ k: 1, x: 0, y: 0 }); }, [engine.bitmap]);
-  const showBrush = view === 'brush' && !compare;
   const showDraw = view === 'draw' && !compare;
   const useGl = view === 'final' && engine.gpu && !compare;
-  // LAB: the mosaic without the important pieces on the left, with them on the right.
-  const [split, setSplit] = useState(true);
-  const canSplit = LAB && useGl && engine.compareReady;
-  const showSplit = canSplit && split;
 
   useEffect(() => {
     if (!useGl || !host.current) return;
     host.current.appendChild(engine.glCanvas);
     return () => engine.glCanvas.remove();
-  }, [useGl, showSplit, engine.glCanvas]);
-  const compareHost = useRef(null);
-  useEffect(() => {
-    if (!showSplit || !compareHost.current) return;
-    compareHost.current.appendChild(engine.compareCanvas);
-    return () => engine.compareCanvas.remove();
-  }, [showSplit, engine.compareCanvas]);
+  }, [useGl, engine.glCanvas]);
 
-  useEffect(() => { engine.setWanted(view === 'brush' || view === 'draw' ? 'original' : view); }, [view, engine.setWanted]);
+  useEffect(() => { engine.setWanted(view === 'draw' ? 'original' : view); }, [view, engine.setWanted]);
 
   // The mosaic is redrawn at the zoomed size, so zooming in stays sharp.
   const size = useRef([0, 0]);
@@ -350,8 +271,7 @@ export default function Viewer({ engine, view, brush, setTool }) {
       const f = Math.exp(-e.deltaY * 0.0015);
       const tool = toolRef.current;
       if (tool && !e.ctrlKey) {
-        if (tool.kind === 'brush') setTool({ ...tool, size: clamp(tool.size * f, 0.005, 0.3) });
-        else setTool({ ...tool, radius: clamp((tool.radius ?? 0.02) * f, 0.004, 0.1) });
+        setTool({ ...tool, radius: clamp((tool.radius ?? 0.02) * f, 0.004, 0.1) });
         return;
       }
       const r = el.getBoundingClientRect();
@@ -413,7 +333,7 @@ export default function Viewer({ engine, view, brush, setTool }) {
   };
 
   const image = compare ? engine.images.original : engine.images[view];
-  const ready = useGl ? engine.mosaicReady : showBrush || showDraw ? !!engine.images.original : !!image;
+  const ready = useGl ? engine.mosaicReady : showDraw ? !!engine.images.original : !!image;
   const onDrop = (e) => {
     e.preventDefault();
     setDropping(false);
@@ -423,7 +343,7 @@ export default function Viewer({ engine, view, brush, setTool }) {
 
   return (
     <div
-      className={`viewer chamfer${engine.busy && !showBrush && !showDraw ? ' is-busy' : ''}`}
+      className={`viewer chamfer${engine.busy && !showDraw ? ' is-busy' : ''}`}
       onDragOver={(e) => { e.preventDefault(); setDropping(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropping(false); }}
       onDrop={onDrop}
@@ -446,14 +366,7 @@ export default function Viewer({ engine, view, brush, setTool }) {
         onPointerCancelCapture={onUp}
       >
         <div className="viewer-zoom" style={{ transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.k})` }}>
-          {showBrush ? <BrushLayer engine={engine} brush={brush} api={toolApi} />
-            : showDraw ? <DrawLayer engine={engine} tool={brush} api={toolApi} onPending={setPending} />
-            : showSplit ? (
-              <div className="lab-split">
-                <div><div className="viewer-host" ref={compareHost} /><span className="lab-tag">Sin intención</span></div>
-                <div><div className="viewer-host" ref={host} /><span className="lab-tag">Con intención</span></div>
-              </div>
-            )
+          {showDraw ? <DrawLayer engine={engine} tool={brush} api={toolApi} onPending={setPending} />
             : useGl ? <div className="viewer-host" ref={host} />
             : image && <ImageCanvas image={image} className="viewer-canvas" />}
         </div>
@@ -477,9 +390,6 @@ export default function Viewer({ engine, view, brush, setTool }) {
             <button type="button" className="link" onClick={() => toolApi.current?.back()}>Quitar punto</button>
             <button type="button" className="btn btn-dark chamfer-s" onClick={() => toolApi.current?.finish()} disabled={pending < 2}>Terminar línea</button>
           </span>
-        )}
-        {canSplit && (
-          <button type="button" className="link" onClick={() => setSplit(!split)}>{split ? 'Solo el resultado' : 'Lado a lado'}</button>
         )}
         {zoom.k > 1 && (
           <button type="button" className="link" onClick={() => setZoom({ k: 1, x: 0, y: 0 })}>

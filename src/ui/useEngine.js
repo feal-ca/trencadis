@@ -2,13 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { autoGroutColor } from '../core/color.js';
 import { createHistory } from '../core/history.js';
 import { applyMacro, applyMacroDefaults, applyStyle, MACRO_DEFAULTS, MACROS, readStyle } from '../core/macros.js';
-import { DEFAULTS, keysForStage, LAB } from '../core/params.js';
+import { DEFAULTS, keysForStage } from '../core/params.js';
 import { createRenderer } from '../gl/renderer.js';
-import { useMaskLayer } from './useMaskLayer.js';
+import { createSegSession, startPolicy } from './segSession.js';
+import { TOUCH } from './useMedia.js';
 
 const STORE = 'trencadis.params.v2';
 const MACRO_STORE = 'trencadis.macros.v1';
-// With ?debug in the URL, run timings are collected in window.__runs.
+// The answer to "Buscar las formas de la foto": 'yes' or 'no'.
+const SEG_STORE = 'trencadis.seg.v1';
+// With ?debug in the URL, run timings are collected in window.__runs and the
+// engine is reachable as window.__trencadis (for scripts).
 const DEBUG = typeof location !== 'undefined' && location.search.includes('debug');
 const RENDER_KEYS = new Set(keysForStage('render'));
 
@@ -77,10 +81,14 @@ export function useEngine() {
   useEffect(() => {
     try { localStorage.setItem(MACRO_STORE, JSON.stringify(macros)); } catch { /* ignore */ }
   }, [macros]);
-  // Undo/redo of settings: a step is recorded once changes pause for 500 ms,
-  // so dragging a slider is one step.
+  // Touched shapes: [{ id, mode: null | 'more' | 'less', points: [[u, v, 1]] }].
+  // A shape just touched has no mode until one is chosen. Their pixels live
+  // in `zonePixels`, outside the history.
+  const [zones, setZones] = useState([]);
+  // Undo/redo of settings and zones: a step is recorded once changes pause
+  // for 500 ms, so dragging a slider is one step.
   const history = useRef(null);
-  history.current ??= createHistory({ params, macros });
+  history.current ??= createHistory({ params, macros, zones });
   const [, setHistoryVersion] = useState(0);
   const pending = useRef(null);
   const flushHistory = useCallback(() => {
@@ -89,14 +97,16 @@ export function useEngine() {
     pending.current = null;
   }, []);
   useEffect(() => {
-    const state = { params, macros };
+    const state = { params, macros, zones };
     clearTimeout(pending.current?.timer);
     pending.current = { state, timer: setTimeout(() => { flushHistory(); setHistoryVersion((v) => v + 1); }, 500) };
-  }, [params, macros, flushHistory]);
+  }, [params, macros, zones, flushHistory]);
+  // Zones of an earlier photo have no pixels any more and are left out.
+  const ownZones = (list) => list.filter((z) => zonePixels.current.has(z.id));
   const travel = (dir) => {
     flushHistory();
     const s = dir < 0 ? history.current.undo() : history.current.redo();
-    if (s) { setMacros(s.macros); setParams(s.params); }
+    if (s) { setMacros(s.macros); setParams(s.params); setZones(ownZones(s.zones)); }
     setHistoryVersion((v) => v + 1);
   };
   const [images, setImages] = useState({});
@@ -135,17 +145,6 @@ export function useEngine() {
     try { return createRenderer(glCanvas); } catch { return { ok: false }; }
   }, [glCanvas]);
   const gpu = renderer.ok;
-  // LAB: a second renderer for the mosaic without the important pieces.
-  const compareCanvas = useMemo(() => {
-    const c = document.createElement('canvas');
-    c.className = 'viewer-canvas';
-    return c;
-  }, []);
-  const compareRenderer = useMemo(() => {
-    if (!LAB) return { ok: false };
-    try { return createRenderer(compareCanvas); } catch { return { ok: false }; }
-  }, [compareCanvas]);
-  const [compareReady, setCompareReady] = useState(false);
 
   const requestRender = useCallback(() => {
     if (!renderer.ok || frame.current) return;
@@ -156,22 +155,15 @@ export function useEngine() {
       const [W, H] = renderer.sizeFor(1000);
       const s = Math.min((cw * dpr) / W, (ch * dpr) / H, Math.min(4096, renderer.maxSize) / Math.max(W, H));
       renderer.render(paramsRef.current, Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)));
-      if (compareRenderer.ok) compareRenderer.render(paramsRef.current, Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)));
     });
-  }, [renderer, compareRenderer]);
+  }, [renderer]);
 
   useEffect(() => {
     const w = new Worker(new URL('../worker.js', import.meta.url), { type: 'module' });
     w.onmessage = ({ data }) => {
       if (data.id !== runId.current) return;
       if (data.type === 'progress') setBusy(data.stage);
-      else if (data.type === 'stage' && data.stage === 'compare') {
-        if (!compareRenderer.ok) return;
-        compareRenderer.setShards(data.shards.map((poly, i) => ({ poly, row: data.rows?.[i] })), data.w, data.h, paramsRef.current.seed);
-        compareRenderer.setColors(data.colors, paramsRef.current.seed);
-        setCompareReady(true);
-        requestRender();
-      } else if (data.type === 'stage') {
+      else if (data.type === 'stage') {
         setImages((prev) => {
           const next = { ...prev, ...Object.fromEntries(data.images.map((v) => [v.key, v.image])) };
           // Views of this stage that were not redrawn are out of date now.
@@ -200,7 +192,7 @@ export function useEngine() {
     };
     worker.current = w;
     return () => w.terminate();
-  }, [renderer, compareRenderer, requestRender]);
+  }, [renderer, requestRender]);
 
   // Send the photo, resized to the working resolution, whenever either changes.
   // If the browser is hiding canvas pixels, wait for the first click and retry.
@@ -243,7 +235,7 @@ export function useEngine() {
     setError(null);
     setBusy('analysis');
     sentAt.current = performance.now();
-    worker.current.postMessage({ type: 'run', id, params: p, views: wanted.current, cpuRender: !renderer.ok, compare: LAB });
+    worker.current.postMessage({ type: 'run', id, params: p, views: wanted.current, cpuRender: !renderer.ok });
   }, [renderer]);
 
   useEffect(() => {
@@ -260,51 +252,128 @@ export function useEngine() {
     return () => clearTimeout(t);
   }, [effective, bitmap, readable, renderer, post, requestRender]);
 
-  // Detail brush, values in [-1, 1]; LAB: areas marked important, in [0, 1].
   const rerun = useCallback(() => {
     sent.current = paramsRef.current;
     post(paramsRef.current);
   }, [post]);
-  const detail = useMaskLayer(worker, 'mask', rerun);
-  const important = useMaskLayer(worker, 'important', rerun);
 
-  // LAB: objects found by the segmentation model, for hileras along their
-  // outlines. It runs in its own worker whenever the photo changes.
+  // Segmentation (segSession.js): the objects of the photo, found by a model
+  // in its own worker, give rows along their outlines and cuts; touched
+  // shapes come from the same model. The worker is created on first use, so
+  // nothing is downloaded until segmentation starts.
   const segWorker = useRef(null);
-  const segRun = useRef(0);
-  const [segStatus, setSegStatus] = useState(null);
-  // A copy of the objects for the viewer to show the zones.
+  const [seg, setSeg] = useState({ phase: 'idle' });
+  // A copy of the objects found, for the viewer to draw them.
   const [segments, setSegments] = useState(null);
-  useEffect(() => {
-    if (!LAB || !bitmap || !readable) return;
-    const id = ++segRun.current;
-    worker.current?.postMessage({ type: 'segments', segments: null });
-    setSegments(null);
-    if (!segWorker.current) {
-      segWorker.current = new Worker(new URL('../seg/worker.js', import.meta.url), { type: 'module' });
-      segWorker.current.onmessage = ({ data }) => {
-        if (data.id !== segRun.current) return;
-        if (data.type === 'log') console.log('[sam]', data.text);
-        else if (data.type === 'progress') console.log('[seg]', data.phase, data.done, data.total); // temporary, removed in Task 5
-        else if (data.type === 'error') setSegStatus(`Error al buscar objetos: ${data.message}`);
-        else if (data.type === 'segments') {
-          setSegStatus(`${data.count} objetos en ${(data.ms / 1000).toFixed(1)} s`);
+  const session = useRef(null);
+  session.current ??= createSegSession({
+    policy: startPolicy({
+      touch: typeof matchMedia !== 'undefined' && matchMedia(TOUCH).matches,
+      webgpu: typeof navigator !== 'undefined' && 'gpu' in navigator,
+      stored: (() => { try { return localStorage.getItem(SEG_STORE); } catch { return null; } })(),
+    }),
+    onState: setSeg,
+    post: (msg) => {
+      if (!segWorker.current) {
+        segWorker.current = new Worker(new URL('../seg/worker.js', import.meta.url), { type: 'module' });
+        segWorker.current.onmessage = ({ data }) => {
+          if (data.type === 'log') { if (DEBUG) console.log('[sam]', data.text); return; }
+          if (!session.current.receive(data) || data.type !== 'segments') return;
           setSegments({ ...data.segments, count: data.count, labels: data.segments.labels.slice() });
           worker.current?.postMessage({ type: 'segments', segments: data.segments }, [data.segments.labels.buffer]);
           rerun();
-        }
-      };
-    }
-    setSegStatus('Buscando objetos…');
+        };
+      }
+      // ?samDevice=wasm forces the CPU (headless browsers only have a software GPU).
+      const device = new URLSearchParams(location.search).get('samDevice');
+      segWorker.current.postMessage(msg.type === 'coarse' && device ? { ...msg, device } : msg);
+    },
+  });
+  useEffect(() => () => { segWorker.current?.terminate(); segWorker.current = null; }, []);
+  const remember = (answer) => { try { localStorage.setItem(SEG_STORE, answer); } catch { /* ignore */ } };
+  useEffect(() => {
+    if (!bitmap || !readable) return;
+    worker.current?.postMessage({ type: 'segments', segments: null });
+    setSegments(null);
     // The model works at 1024 px anyway; send it the photo at that size.
     const s = Math.min(1, 1024 / Math.max(bitmap.width, bitmap.height));
     const cv = new OffscreenCanvas(Math.round(bitmap.width * s), Math.round(bitmap.height * s));
     cv.getContext('2d').drawImage(bitmap, 0, 0, cv.width, cv.height);
-    // ?samDevice=wasm forces the CPU (headless browsers only have a software GPU).
-    const device = new URLSearchParams(location.search).get('samDevice');
-    cv.convertToBlob({ type: 'image/png' }).then((blob) => segWorker.current.postMessage({ type: 'coarse', id, blob, device }));
-  }, [bitmap, readable, rerun]);
-  useEffect(() => () => segWorker.current?.terminate(), []);
+    let stale = false;
+    cv.convertToBlob({ type: 'image/png' }).then((blob) => { if (!stale) session.current.photo(blob); });
+    return () => { stale = true; };
+  }, [bitmap, readable]);
+
+  // Pixels of the touched shapes, by zone id and then by the points that
+  // gave them: { region, parts, partsLoading }. Undo and redo bring back
+  // older points, so every version is kept until the photo changes.
+  const zonePixels = useRef(new Map());
+  const [pixelsVersion, setPixelsVersion] = useState(0);
+  const zoneSeq = useRef(0);
+  const pointsKey = (points) => JSON.stringify(points);
+  const pixelsOf = (z) => zonePixels.current.get(z.id)?.get(pointsKey(z.points));
+  const keepPixels = (id, points, region) => {
+    if (!zonePixels.current.has(id)) zonePixels.current.set(id, new Map());
+    zonePixels.current.get(id).set(pointsKey(points), { region, parts: null });
+  };
+  // The zones with their pixels, for the viewer.
+  const zonesView = useMemo(
+    () => zones.map((z) => ({ ...z, region: pixelsOf(z)?.region ?? null, parts: pixelsOf(z)?.parts ?? null })),
+    [zones, pixelsVersion],
+  );
+  // The zones with a mode go to the pipeline worker; "more" zones first get
+  // their parts from the segmentation worker. Sent again only on a change.
+  const sentZones = useRef('[]');
+  useEffect(() => {
+    const list = [];
+    for (const z of zones) {
+      const px = pixelsOf(z);
+      if (!z.mode || !px) continue;
+      if (z.mode === 'more' && !px.parts && !px.partsLoading) {
+        px.partsLoading = true;
+        session.current.parts(px.region).then(
+          (parts) => { px.parts = parts; setPixelsVersion((v) => v + 1); },
+          () => { /* no parts: the zone stays without pieces with intention */ },
+        );
+      }
+      // A "more" zone changes nothing until its parts arrive.
+      if (z.mode === 'more' && !px.parts) continue;
+      list.push({ id: z.id, mode: z.mode, region: px.region, parts: z.mode === 'more' ? px.parts : null });
+    }
+    const key = JSON.stringify(list.map((z) => [z.id, z.mode, z.region.box, !!z.parts]));
+    if (key === sentZones.current || !worker.current) return;
+    sentZones.current = key;
+    worker.current.postMessage({ type: 'zones', zones: list });
+    rerun();
+  }, [zones, pixelsVersion, rerun]);
+  // A new shape where the photo was touched at (u, v); resolves to its id,
+  // or null if there is none (or segmentation was declined).
+  const pickShape = useCallback(async (u, v) => {
+    const points = [[u, v, 1]];
+    try {
+      const region = await session.current.pick(points);
+      const id = `z${++zoneSeq.current}`;
+      keepPixels(id, points, region);
+      setZones((zs) => [...zs, { id, mode: null, points }]);
+      return id;
+    } catch { return null; }
+  }, []);
+  // Another touch inside a shape grows or corrects it.
+  const zonesRef = useRef(zones);
+  zonesRef.current = zones;
+  const refineShape = useCallback(async (id, u, v) => {
+    const z = zonesRef.current.find((x) => x.id === id);
+    if (!z) return false;
+    const points = [...z.points, [u, v, 1]];
+    try {
+      const region = await session.current.pick(points);
+      keepPixels(id, points, region);
+      setZones((zs) => zs.map((x) => (x.id === id ? { ...x, points } : x)));
+      return true;
+    } catch { return false; }
+  }, []);
+  const setZoneMode = useCallback((id, mode) => setZones((zs) => zs.map((z) => (z.id === id ? { ...z, mode } : z))), []);
+  const removeZone = useCallback((id) => setZones((zs) => zs.filter((z) => z.id !== id)), []);
 
   // Hand-drawn guide lines, polylines in normalised image coordinates.
   const [guides, setGuides] = useState([]);
@@ -324,11 +393,12 @@ export function useEngine() {
       setImages({});
       setInfo(null);
       setMosaicReady(false);
-      setCompareReady(false);
-      detail.resetMask(bmp);
-      important.resetMask(bmp);
       setGuides([]);
       worker.current?.postMessage({ type: 'guides', guides: [] });
+      zonePixels.current = new Map();
+      setZones([]);
+      sentZones.current = '[]';
+      worker.current?.postMessage({ type: 'zones', zones: [] });
       setBitmap(bmp);
     } catch {
       // HEIC (iPhone photos) only opens in Safari; elsewhere it fails here.
@@ -337,7 +407,7 @@ export function useEngine() {
         ? 'Este navegador no abre fotos HEIC, el formato del iPhone. Ábrela en Safari o guárdala como JPG (en el iPhone: Ajustes › Cámara › Formatos › Más compatible).'
         : 'No se ha podido leer esa imagen. Prueba con un JPG o un PNG.');
     }
-  }, [detail.resetMask, important.resetMask]);
+  }, []);
 
   const loadSample = useCallback(async (src) => {
     const res = await fetch(src);
@@ -397,9 +467,8 @@ export function useEngine() {
     }
   }, [exportFile, download]);
 
-  return {
+  const api = {
     params, setParams, images, labels, busy, info, error, gpu, glCanvas, mosaicReady, autoGrout,
-    compareCanvas, compareReady: compareRenderer.ok && compareReady,
     hasImage: !!bitmap, bitmap,
     setParam: (key, value) => setParams((p) => {
       let next = { ...p, [key]: value };
@@ -418,7 +487,7 @@ export function useEngine() {
     estimate: info?.sMax ? info.shards * (info.sMax / params.sMax) ** 2 : null,
     // A one-click look replaces every setting; returns what restore() needs to undo it.
     setStyle: (id) => {
-      const before = { params: rawParams.current, macros: macrosRef.current };
+      const before = { params: rawParams.current, macros: macrosRef.current, zones: zonesRef.current };
       const next = applyStyle(DEFAULTS, id);
       setMacros(next.macros);
       setParams({ ...next.params, seed: rawParams.current.seed });
@@ -436,22 +505,28 @@ export function useEngine() {
     },
     // Every setting back to its default; returns what to pass to restore() to undo it.
     resetAll: () => {
-      const before = { params: rawParams.current, macros: macrosRef.current };
+      const before = { params: rawParams.current, macros: macrosRef.current, zones: zonesRef.current };
       setMacros({ values: { ...MACRO_DEFAULTS }, manual: {} });
       setParams(applyMacroDefaults(DEFAULTS));
       return before;
     },
-    restore: ({ params: p, macros: m }) => { setMacros(m); setParams(p); },
+    restore: ({ params: p, macros: m, zones: z }) => { setMacros(m); setParams(p); if (z) setZones(ownZones(z)); },
     undo: () => travel(-1),
     redo: () => travel(1),
     // A change not recorded yet can be undone too.
-    canUndo: history.current.canUndo || !history.current.matches({ params, macros }),
+    canUndo: history.current.canUndo || !history.current.matches({ params, macros, zones }),
     canRedo: history.current.canRedo,
     isDefault: Object.entries(applyMacroDefaults(DEFAULTS)).every(([k, v]) => params[k] === v)
       && !Object.values(macros.manual).some(Boolean),
     loadBlob, loadSample, setViewport, setWanted, download, share,
-    ...detail, important, segStatus, segments,
+    seg, segments,
+    segAccept: () => { remember('yes'); session.current.accept(); },
+    segDecline: () => { remember('no'); session.current.decline(); },
+    segRetry: () => session.current.retry(),
+    zones: zonesView, pickShape, refineShape, setZoneMode, removeZone,
     guides, lines, addGuide: (g) => commitGuides([...guides, g]), clearGuides: () => commitGuides([]),
     undoGuide: () => commitGuides(guides.slice(0, -1)),
   };
+  if (DEBUG) window.__trencadis = api;
+  return api;
 }

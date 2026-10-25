@@ -31,39 +31,6 @@ function AlgorithmPicker({ engine }) {
   );
 }
 
-function BrushTools({ engine, brush, setBrush }) {
-  const tool = (mode, label) => (
-    <button type="button" className={brush?.mode === mode ? 'on' : ''} aria-pressed={brush?.mode === mode}
-      onClick={() => setBrush(brush?.mode === mode ? null : { mode, size: brush?.size ?? 0.06 })}>
-      {label}
-    </button>
-  );
-  return (
-    <div className="field">
-      <div className="field-row">
-        <span>Pincel de detalle</span>
-        <InfoTip label="Pincel de detalle" text="Pinta sobre la foto para quitar detalle de zonas que no te interesan (se cubren con trozos grandes) o para añadirlo donde quieras trozos pequeños. Al soltar se recalcula." />
-      </div>
-      <div className="brush-row">
-        <div className="seg" role="group" aria-label="Pincel">
-          {tool('remove', 'Quitar detalle')}
-          {tool('add', 'Añadir detalle')}
-        </div>
-        <span className="brush-links">
-          <button type="button" className="link" onClick={() => engine.undoMask()} disabled={!engine.canUndoMask}>Deshacer</button>
-          <button type="button" className="link" onClick={engine.clearMask} disabled={engine.mask.current?.empty ?? true}>Borrar</button>
-        </span>
-      </div>
-      {brush && (
-        <label className="field-row brush-size">
-          <span>Tamaño del pincel</span>
-          <input type="range" min={10} max={200} value={Math.round(brush.size * 1000)} onChange={(e) => setBrush({ ...brush, size: e.target.value / 1000 })} />
-        </label>
-      )}
-    </div>
-  );
-}
-
 function RowTools({ engine, tool, setTool, showLines }) {
   const drawing = tool?.kind === 'draw';
   const mode = tool?.mode ?? 'free';
@@ -144,6 +111,14 @@ function RowTools({ engine, tool, setTool, showLines }) {
   );
 }
 
+// LAB (?lab): a line on how the search for objects goes.
+function segText(seg) {
+  if (seg.phase === 'done') return `${seg.found} objetos en ${(seg.ms / 1000).toFixed(1)} s`;
+  if (seg.phase === 'error') return `Error al buscar objetos: ${seg.message}`;
+  if (seg.phase === 'idle') return 'Sube una foto.';
+  return 'Buscando objetos…';
+}
+
 // LAB (?lab): hileras along the objects a segmentation model finds.
 function SegmentTools({ engine, showLines, tool, setTool }) {
   const zones = tool?.kind === 'draw' && tool.zones;
@@ -153,7 +128,7 @@ function SegmentTools({ engine, showLines, tool, setTool }) {
         <span className="rows-title">Laboratorio: objetos</span>
         <InfoTip label="Objetos" text="Un modelo de IA (SlimSAM, unos 10 MB la primera vez) busca los objetos de la foto en tu dispositivo. Sus contornos se usan como líneas de hilera, además de las tuyas y las de los contornos fuertes." />
       </div>
-      <span className="help">{engine.segStatus ?? 'Sube una foto.'}</span>
+      <span className="help">{segText(engine.seg)}</span>
       <div className="brush-row">
         <button type="button" className={`btn chamfer-s${zones ? ' btn-dark' : ''}`} aria-pressed={!!zones} disabled={!engine.segments}
           onClick={() => setTool(zones ? { ...tool, zones: false } :{ mode: 'free', snap: true, ...(tool?.kind === 'draw' ? tool : {}), kind: 'draw', zones: true })}>
@@ -173,7 +148,6 @@ function Controls({ step, engine, brush, setBrush, showLines }) {
     if (c.macro) return <Macro key={i} id={c.macro} engine={engine} />;
     if (c.param) return <Param key={i} k={c.param} engine={engine} />;
     if (c.kind === 'algorithm') return <AlgorithmPicker key={i} engine={engine} />;
-    if (c.kind === 'brush') return <BrushTools key={i} engine={engine} brush={brush?.kind === 'brush' && !brush.layer ? brush : null} setBrush={(b) => setBrush(b && { ...b, kind: 'brush' })} />;
     if (c.kind === 'rows') return <RowTools key={i} engine={engine} tool={brush} setTool={setBrush} showLines={showLines} />;
     if (c.kind === 'reseed') {
       return (
