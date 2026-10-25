@@ -79,7 +79,6 @@ function RowTools({ engine, tool, setTool, showLines }) {
         <span className="rows-title">Hileras</span>
         <InfoTip label="Hileras" text="Piezas rectangulares en fila a lo largo de una línea, como la espiral negra de los bancos de Gaudí. Ayudan a que se lean contornos, barandillas o letras sin subir el detalle de toda la imagen." />
       </div>
-      <Param k="autoGuides" engine={engine} />
       <div className="brush-row">
         <button type="button" className={`btn chamfer-s${drawing ? ' btn-dark' : ''}`} aria-pressed={drawing} onClick={() => setTool(drawing ? null : { kind: 'draw', mode: erasing ? 'free' : mode, snap })}>
           {drawing ? 'Terminar' : 'Dibujar línea'}
@@ -155,8 +154,6 @@ function SegmentTools({ engine, showLines, tool, setTool }) {
         <InfoTip label="Objetos" text="Un modelo de IA (SlimSAM, unos 10 MB la primera vez) busca los objetos de la foto en tu dispositivo. Sus contornos se usan como líneas de hilera, además de las tuyas y las de los contornos fuertes." />
       </div>
       <span className="help">{engine.segStatus ?? 'Sube una foto.'}</span>
-      <Param k="segGuides" engine={engine} />
-      <Param k="segCuts" engine={engine} />
       <div className="brush-row">
         <button type="button" className={`btn chamfer-s${zones ? ' btn-dark' : ''}`} aria-pressed={!!zones} disabled={!engine.segments}
           onClick={() => setTool(zones ? { ...tool, zones: false } :{ mode: 'free', snap: true, ...(tool?.kind === 'draw' ? tool : {}), kind: 'draw', zones: true })}>
@@ -168,46 +165,9 @@ function SegmentTools({ engine, showLines, tool, setTool }) {
   );
 }
 
-// LAB (?lab): the important brush and the settings of tiling with intention.
-function LabTools({ engine, brush, setBrush }) {
-  const imp = engine.important;
-  const active = brush?.kind === 'brush' && brush.layer === 'important' ? brush : null;
-  const tool = (mode, label) => (
-    <button type="button" className={active?.mode === mode ? 'on' : ''} aria-pressed={active?.mode === mode}
-      onClick={() => setBrush(active?.mode === mode ? null : { kind: 'brush', layer: 'important', mode, size: active?.size ?? 0.04 })}>
-      {label}
-    </button>
-  );
-  return (
-    <div className="field lab-block">
-      <div className="field-row">
-        <span className="rows-title">Laboratorio: con intención</span>
-        <InfoTip label="Con intención" text="Pinta lo importante (un ojo, un pájaro, una perla). Dentro de la marca, cada parte de la forma recibe sus propias piezas; fuera, el método de siempre las rodea. A la izquierda verás el mosaico sin esto." />
-      </div>
-      <div className="brush-row">
-        <div className="seg" role="group" aria-label="Pincel de importancia">
-          {tool('add', 'Marcar importante')}
-          {tool('remove', 'Quitar marca')}
-        </div>
-        <span className="brush-links">
-          <button type="button" className="link" onClick={() => imp.undoMask()} disabled={!imp.canUndoMask}>Deshacer</button>
-          <button type="button" className="link" onClick={imp.clearMask} disabled={imp.mask.current?.empty ?? true}>Borrar</button>
-        </span>
-      </div>
-      {active && (
-        <label className="field-row brush-size">
-          <span>Tamaño del pincel</span>
-          <input type="range" min={5} max={200} value={Math.round(active.size * 1000)} onChange={(e) => setBrush({ ...active, size: e.target.value / 1000 })} />
-        </label>
-      )}
-      {['intent', 'intentAll', 'intentDE', 'intentScale', 'intentStraight', 'intentRim'].map((k) => <Param key={k} k={k} engine={engine} />)}
-    </div>
-  );
-}
-
 function Controls({ step, engine, brush, setBrush, showLines }) {
   const lab = LAB && step.id === 'trozos'
-    ? [<SegmentTools key="seg" engine={engine} showLines={showLines} tool={brush} setTool={setBrush} />, <LabTools key="lab" engine={engine} brush={brush} setBrush={setBrush} />]
+    ? [<SegmentTools key="seg" engine={engine} showLines={showLines} tool={brush} setTool={setBrush} />]
     : [];
   return step.simple.map((c, i) => {
     if (c.macro) return <Macro key={i} id={c.macro} engine={engine} />;

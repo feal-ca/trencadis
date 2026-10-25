@@ -9,11 +9,10 @@ import { mergeSlivers, splitComponents } from './slivers.js';
 // andamento), on top of the background mosaic. A guide is a polyline in
 // working pixels.
 
-// --- automatic guides ----------------------------------------------------
+// --- guides ----------------------------------------------------------------
 
 // Gradient of the photo, with its magnitude scaled so 1 is a strong edge
-// (the 99.5th percentile). Shared by the automatic guides and the snapping
-// of drawn ones.
+// (the 99.5th percentile). Used for the snapping of drawn guides.
 export function edgeMap(img, p) {
   const { w, h } = img;
   const { gx, gy } = sobel(blur(luminance(img), w, h, Math.max(1, p.detailSigma)), w, h);
@@ -25,65 +24,6 @@ export function edgeMap(img, p) {
   const norm = new Float32Array(w * h);
   if (strong > 0) for (let i = 0; i < w * h; i++) norm[i] = mag[i] / strong;
   return { w, h, gx, gy, mag: norm, strong };
-}
-
-// Strong contours of the photo: gradient magnitude, non-maximum
-// suppression, hysteresis, then 8-connected chains, joined across small
-// gaps, smoothed and resampled. `autoGuides` in [0, 1]: 0 finds nothing,
-// 1 many and shorter contours.
-export function extractGuides(img, an, p, edges = edgeMap(img, p)) {
-  const amount = p.autoGuides ?? 0;
-  if (amount <= 0 || !(edges.strong > 0)) return [];
-  const { w, h } = img;
-  const { gx, gy, mag } = edges;
-
-  const thin = new Float32Array(w * h);
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      const i = y * w + x, m = mag[i];
-      if (m === 0) continue;
-      // Quantise the gradient direction to compare against the two neighbours across the edge.
-      const a = Math.atan2(gy[i], gx[i]);
-      const q = ((Math.round(a / (Math.PI / 4)) % 4) + 4) % 4;
-      const [dx, dy] = [[1, 0], [1, 1], [0, 1], [-1, 1]][q];
-      if (m >= mag[i + dy * w + dx] && m > mag[i - dy * w - dx]) thin[i] = m;
-    }
-  }
-
-  // Thresholds relative to the strongest edges of the image (mag is scaled
-  // so they are 1), so smooth gradients and noise never qualify.
-  const hi = 0.55 - 0.4 * amount;
-  const lo = hi * 0.5;
-  const edge = new Uint8Array(w * h);
-  const stack = [];
-  for (let i = 0; i < w * h; i++) if (thin[i] >= hi) { edge[i] = 1; stack.push(i); }
-  while (stack.length) {
-    const i = stack.pop();
-    const x = i % w, y = (i / w) | 0;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      const xx = x + dx, yy = y + dy;
-      if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
-      const j = yy * w + xx;
-      if (!edge[j] && thin[j] >= lo) { edge[j] = 1; stack.push(j); }
-    }
-  }
-
-  // Longest first, up to a total length of a few times the image perimeter.
-  const minLen = p.sMax * (2.5 - 2 * amount);
-  const budget = (1 + 5 * amount) * (w + h);
-  const chains = bridgeGaps(traceChains(edge, w, h).filter((c) => c.length > 2), Math.max(8, p.sMin))
-    .map(smoothChain)
-    .map((c) => [c, chainLength(c)])
-    .filter(([c, len]) => c.length > 1 && len >= minLen)
-    .sort((a, b) => b[1] - a[1]);
-  const out = [];
-  let used = 0;
-  for (const [c, len] of chains) {
-    if (used + len > budget) continue;
-    out.push(c);
-    used += len;
-  }
-  return out;
 }
 
 const NB = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
@@ -382,7 +322,7 @@ export function overlayPieces(baseShards, extra, w, h, an, tag = { row: true }, 
     if (now < ROW) changed.add(now);
     if (was >= 0) changed.add(was);
   }
-  const intact = baseShards.filter((_, id) => !changed.has(id)).map(({ poly, row, intent }) => ({ poly, row: !!row, intent: !!intent }));
+  const intact = baseShards.filter((_, id) => !changed.has(id)).map(({ poly, row }) => ({ poly, row: !!row }));
   const redo = new Set();
   for (let i = 0; i < w * h; i++) if ((!polys && protect.has(merged[i])) || changed.has(origin[merged[i]])) redo.add(merged[i]);
   const traced = labelsToPolygons(merged, w, h, eps, 4, redo).map(({ poly, label }) => (protect.has(label) ? { poly, row: false, ...tag } : { poly, row: false }));

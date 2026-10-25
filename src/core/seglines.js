@@ -1,6 +1,6 @@
-// LAB SPIKE (?lab): hileras along the outlines of the objects a segmentation
-// model found (src/seg/sam.js), instead of along strong edges only.
-import { bridgeGaps, chainLength, smoothChain, traceChains } from '../andamento.js';
+// Hileras along the outlines of the objects a segmentation model found
+// (src/seg/sam.js).
+import { bridgeGaps, chainLength, smoothChain, traceChains } from './andamento.js';
 
 // `seg` is { w, h, labels } with one label per object (-1: no object), at
 // any resolution. Returns polylines in working pixels (w x h): the borders

@@ -309,7 +309,7 @@ export default function Viewer({ engine, view, brush, setTool }) {
   const useGl = view === 'final' && engine.gpu && !compare;
   // LAB: the mosaic without the important pieces on the left, with them on the right.
   const [split, setSplit] = useState(true);
-  const canSplit = LAB && useGl && engine.params.intent && (engine.params.intentAll || !(engine.important.mask.current?.empty ?? true)) && engine.compareReady;
+  const canSplit = LAB && useGl && engine.compareReady;
   const showSplit = canSplit && split;
 
   useEffect(() => {

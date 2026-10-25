@@ -53,10 +53,6 @@ self.onmessage = async (e) => {
     pipe.setMask(msg.mask);
     return;
   }
-  if (msg.type === 'important') {
-    pipe.setImportant(msg.mask);
-    return;
-  }
   if (msg.type === 'segments') {
     pipe.setSegments(msg.segments);
     return;
@@ -105,10 +101,6 @@ self.onmessage = async (e) => {
             : { drawn: 0, lines: [] };
         }
         if (stage === 'color') extra.colors = Float32Array.from(value.colors);
-        if (stage === 'compare') {
-          Object.assign(extra, { shards: value.shards.map((s) => s.poly), rows: value.shards.map((s) => !!s.row), w: img.w, h: img.h });
-          extra.colors = Float32Array.from(value.colors);
-        }
         const transfer = images.map((v) => v.image.data.buffer);
         if (extra.colors) transfer.push(extra.colors.buffer);
         // `stale` lists this stage's views that were not redrawn.
@@ -118,7 +110,7 @@ self.onmessage = async (e) => {
       () => latest !== id,
       () => new Promise((r) => setTimeout(r, 0)),
       (stage) => self.postMessage({ type: 'progress', id, stage }),
-      { cpuRender: !!msg.cpuRender, compare: !!msg.compare },
+      { cpuRender: !!msg.cpuRender },
     );
     lastParams = p;
     if (res) self.postMessage({ type: 'done', id, ...res });

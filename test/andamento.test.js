@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { analyze } from '../src/core/analysis.js';
-import { extractGuides, overlayRows } from '../src/core/andamento.js';
+import { overlayRows } from '../src/core/andamento.js';
 import { toLab } from '../src/core/image.js';
 import { DEFAULTS } from '../src/core/params.js';
 import { area, bbox, centroid, pointInPolygon, rasterize } from '../src/core/polygon.js';
@@ -10,31 +10,6 @@ import { tessellate } from '../src/core/tessellate.js';
 import { discImage, flatImage, syntheticImage } from './helpers.js';
 
 const pathLength = (g) => g.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - g[i][0], p[1] - g[i][1]), 0);
-
-describe('guides', () => {
-  it('finds the outline of a disc as a long guide', () => {
-    const img = discImage();
-    const p = { ...DEFAULTS, autoGuides: 0.5 };
-    const guides = extractGuides(img, analyze(img, p), p);
-    const longest = guides.reduce((a, g) => (pathLength(g) > pathLength(a) ? g : a), []);
-    expect(pathLength(longest)).toBeGreaterThan(150);
-    const err = longest.reduce((s, [x, y]) => s + Math.abs(Math.hypot(x - 120, y - 100) - 60), 0) / longest.length;
-    expect(err).toBeLessThan(3);
-  });
-
-  it('keeps to strong contours on a busy image', () => {
-    const img = syntheticImage(800, 947);
-    const p = { ...DEFAULTS, autoGuides: 0.5 };
-    const total = extractGuides(img, analyze(img, p), p).reduce((s, g) => s + pathLength(g), 0);
-    expect(total).toBeLessThan(4 * (800 + 947));
-  });
-
-  it('autoGuides 0 finds nothing', () => {
-    const img = discImage();
-    const p = { ...DEFAULTS, autoGuides: 0 };
-    expect(extractGuides(img, analyze(img, p), p)).toEqual([]);
-  });
-});
 
 describe('rows', () => {
   const img = flatImage(300, 200);
@@ -339,12 +314,16 @@ describe('erasing lines', () => {
 
   it('the hileras skip the erased automatic outline', () => {
     const img = discImage(W, H, 100);
-    const p = { ...DEFAULTS, autoGuides: 0.5 };
-    const run = (guides) => tessellate(img, toLab(img), analyze(img, p), p, mulberry32(2), guides);
-    const before = run([]).structure;
+    const p = DEFAULTS;
+    // A disc object on a label grid a quarter of the photo's size.
+    const w = W / 4, h = H / 4, labels = new Int32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) labels[y * w + x] = Math.hypot(x + 0.5 - w / 2, y + 0.5 - h / 2) < 25 ? 1 : 0;
+    const segments = { w, h, labels };
+    const run = (guides) => tessellate(img, toLab(img), analyze(img, p), p, mulberry32(2), guides, segments).structure;
+    const before = run([]);
     expect(before.kind).toBe('guides');
     // Erase on the disc's outline, at its right-hand side.
-    const after = run([rubber(300 / W, 150 / H)]).structure;
+    const after = run([rubber(300 / W, 150 / H)]);
     expect(after.kind === 'guides' ? after.guides.length : 0).toBeLessThan(before.guides.length);
   });
 });

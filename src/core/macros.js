@@ -63,7 +63,7 @@ export const STYLES = [
   },
   {
     id: 'romano', label: 'Romano',
-    params: { algorithm: 'voronoi', lloydIters: 10, sizeRatio: 2.8, saturation: 0.85, place: 0.55, grout: 1.1, groutColor: '#9a9286', autoGuides: 0.5, rowScale: 0.9, rowLength: 1.1, colorJitter: 0.05 },
+    params: { algorithm: 'voronoi', lloydIters: 10, sizeRatio: 2.8, saturation: 0.85, place: 0.55, grout: 1.1, groutColor: '#9a9286', rowScale: 0.9, rowLength: 1.1, colorJitter: 0.05 },
     macros: { size: 0, gloss: 0.05 },
   },
   {

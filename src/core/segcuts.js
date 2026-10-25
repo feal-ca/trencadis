@@ -1,11 +1,11 @@
-// LAB SPIKE (?lab): pieces that straddle the border between two objects the
-// segmentation model found are cut in two with a straight line along that
+// Pieces that straddle the border between two objects the segmentation
+// model found are cut in two with a straight line along that
 // border, as a tiler would trim a tile to fit. Works on any method's pieces.
-import { area, rasterize, splitByLine } from '../polygon.js';
+import { area, rasterize, splitByLine } from './polygon.js';
 
 const ANGLES = 24;
 
-// `seg` is { w, h, labels } (see segguides.js); `shards` in working pixels
+// `seg` is { w, h, labels } (see seglines.js); `shards` in working pixels
 // (w x h). A piece is cut when its second object covers at least `minShare`
 // of it and the cut leaves both halves at least `minPart` sizes of the
 // smallest piece squared. Each half is checked again, up to `depth` cuts.

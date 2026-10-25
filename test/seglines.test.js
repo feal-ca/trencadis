@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { analyze } from '../../src/core/analysis.js';
-import { toLab } from '../../src/core/image.js';
-import { segmentGuides } from '../../src/core/lab/segguides.js';
-import { DEFAULTS } from '../../src/core/params.js';
-import { mulberry32 } from '../../src/core/rng.js';
-import { tessellate } from '../../src/core/tessellate.js';
-import { flatImage } from '../helpers.js';
+import { analyze } from '../src/core/analysis.js';
+import { toLab } from '../src/core/image.js';
+import { DEFAULTS } from '../src/core/params.js';
+import { mulberry32 } from '../src/core/rng.js';
+import { segmentGuides } from '../src/core/seglines.js';
+import { tessellate } from '../src/core/tessellate.js';
+import { flatImage, syntheticImage } from './helpers.js';
 
 // A disc-shaped object on a 120 x 80 label grid (a quarter of the photo's size).
 function discSegments() {
@@ -14,7 +14,7 @@ function discSegments() {
   return { w, h, labels };
 }
 
-describe('hileras along segmented objects (lab)', () => {
+describe('hileras along segmented objects', () => {
   const p = { ...DEFAULTS, sMin: 7, sMax: 20 };
 
   it('traces the outline of an object at working resolution', () => {
@@ -32,9 +32,16 @@ describe('hileras along segmented objects (lab)', () => {
   it('lays rows over a flat photo where only the model sees an object', () => {
     const img = flatImage(240, 160);
     const an = analyze(img, p);
-    const rows = (seg, q) => tessellate(img, toLab(img), an, q, mulberry32(1), null, null, seg).shards.filter((s) => s.row).length;
+    const rows = (seg, q) => tessellate(img, toLab(img), an, q, mulberry32(1), null, seg).shards.filter((s) => s.row).length;
     expect(rows(discSegments(), p)).toBeGreaterThan(10);
-    expect(rows(discSegments(), { ...p, segGuides: false })).toBe(0);
     expect(rows(null, p)).toBe(0);
+  });
+
+  it('tessellate lays rows only along segment borders', () => {
+    const img = syntheticImage(240, 160);
+    const an = analyze(img, p);
+    const kind = (seg) => tessellate(img, toLab(img), an, p, mulberry32(1), null, seg).structure.kind;
+    expect(kind(discSegments())).toBe('guides');
+    expect(kind(null)).not.toBe('guides');
   });
 });
