@@ -62,9 +62,11 @@ export function createSegSession({ post, onState = () => {}, policy = 'auto' }) 
   const rejectAll = (list, why) => { for (const r of list) r.reject(new Error(why)); };
   // A pick or parts request. Before the user agrees to segment, it asks
   // and waits for the answer; between reset() and photo() it waits for the
-  // new photo.
+  // new photo. After a failure it starts again first, as a retry would, so
+  // a dead worker is replaced and gets the photo before the request.
   const request = (type, msg) => new Promise((resolve, reject) => {
     const r = { type, msg, resolve, reject };
+    if (state.phase === 'error') start();
     if (state.phase === 'off' || state.phase === 'ask') {
       queued.push(r);
       set({ phase: 'ask' });

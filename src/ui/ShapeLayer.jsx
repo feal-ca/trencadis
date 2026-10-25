@@ -183,12 +183,14 @@ export default function ShapeLayer({ engine, api, zoom }) {
       if (set) { forget(selectedRef.current); setSelected(set.id); return; }
       setNote({ ...at, text: 'Buscando la forma…' });
       const id = await engine.pickShape(u, v);
+      if (id?.error) { setNote({ ...at, text: 'No se ha podido buscar la forma', miss: true }); return; }
       if (!id) { setNote({ ...at, text: 'Aquí no hay ninguna forma', miss: true }); return; }
       forget(selectedRef.current);
       setSelected(id);
     } finally {
       busy.current = false;
-      // The "looking" note goes even if the engine threw; "nothing here" stays its 1.5 s.
+      // The "looking" note goes even if the engine threw; "nothing here" and
+      // "could not search" stay their 1.5 s.
       setNote((n) => (n?.miss ? n : null));
     }
   };

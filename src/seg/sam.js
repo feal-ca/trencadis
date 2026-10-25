@@ -41,7 +41,9 @@ export function load(onProgress, log = () => {}) {
 }
 
 async function loadModel() {
-  if (model) return;
+  // Each half loads only if missing, so a processor that failed after the
+  // model loaded is tried again on the next call.
+  if (model && processor) return;
   const t = performance.now();
   const log = (text) => listeners.log(text);
   const progress_callback = (e) => {
@@ -50,15 +52,17 @@ async function loadModel() {
   // fp16 was fastest on WebGPU (24 s vs 44 s fp32, 121 s q8 on an Intel
   // Gen12 laptop); q8 is fastest on the CPU.
   opts.dtype ??= opts.device === 'webgpu' ? 'fp16' : 'q8';
-  try {
-    model = await SamModel.from_pretrained(MODEL, { device: opts.device, dtype: opts.dtype, progress_callback });
-  } catch (e) {
-    log(`${opts.device} failed (${e.message}), using wasm`);
-    opts.device = 'wasm';
-    opts.dtype = 'q8';
-    model = await SamModel.from_pretrained(MODEL, { device: 'wasm', dtype: opts.dtype, progress_callback });
+  if (!model) {
+    try {
+      model = await SamModel.from_pretrained(MODEL, { device: opts.device, dtype: opts.dtype, progress_callback });
+    } catch (e) {
+      log(`${opts.device} failed (${e.message}), using wasm`);
+      opts.device = 'wasm';
+      opts.dtype = 'q8';
+      model = await SamModel.from_pretrained(MODEL, { device: 'wasm', dtype: opts.dtype, progress_callback });
+    }
   }
-  processor = await AutoProcessor.from_pretrained(MODEL);
+  processor ??= await AutoProcessor.from_pretrained(MODEL);
   log(`model loaded on ${opts.device} (${opts.dtype}) in ${Math.round(performance.now() - t)} ms`);
   // Which GPU WebGPU got: a software ("fallback") adapter is slower than WASM.
   const adapter = await navigator.gpu?.requestAdapter();

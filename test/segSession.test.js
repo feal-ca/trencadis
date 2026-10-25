@@ -187,6 +187,27 @@ describe('segmentation session across photos and crashes', () => {
     expect(sent.filter((m) => m.type === 'coarse')).toHaveLength(2);
     expect(s.state.phase).toBe('download');
   });
+
+  it('a pick where there is no shape resolves to null', async () => {
+    const { s, last } = setup();
+    s.photo('a');
+    const shape = s.pick([[0.5, 0.5, 1]]);
+    s.receive({ type: 'shape', id: last('pick').id, region: null });
+    await expect(shape).resolves.toBeNull();
+  });
+
+  it('a pick after a failure starts the coarse pass again before the pick', async () => {
+    const { s, sent, last } = setup();
+    s.photo('a');
+    s.fail('the worker did not load');
+    const before = sent.length;
+    const shape = s.pick([[0.5, 0.5, 1]]);
+    expect(sent.slice(before).map((m) => m.type)).toEqual(['coarse', 'pick']);
+    expect(last('coarse').blob).toBe('a');
+    expect(s.state.phase).toBe('download');
+    s.receive({ type: 'shape', id: last('pick').id, region });
+    await expect(shape).resolves.toBe(region);
+  });
 });
 
 describe('segOverrides', () => {

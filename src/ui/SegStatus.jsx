@@ -31,7 +31,10 @@ export default function SegStatus({ engine }) {
   } else if (seg.phase === 'error') {
     text = 'No se han podido buscar las formas';
     actions = <button type="button" className="link" onClick={engine.segRetry}>Reintentar</button>;
-  } else if (seg.phase === 'done' && shown) text = `${seg.found} formas`;
+  } else if (seg.phase === 'done' && shown) {
+    const { found } = seg;
+    text = found === 1 ? '1 forma' : found ? `${found} formas` : 'No se han encontrado formas';
+  }
   if (!text) return null;
   return (
     <div className="seg-status" role="status">

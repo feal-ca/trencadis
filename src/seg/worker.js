@@ -8,7 +8,7 @@
 //      { type: 'parts', id, region }
 // Out: { type: 'progress', id, phase: 'download' | 'encode' | 'decode', done, total, found? }
 //      { type: 'segments', id, segments: { w, h, labels }, count, ms }
-//      { type: 'shape', id, region }
+//      { type: 'shape', id, region } (region null where there is no shape)
 //      { type: 'parts', id, parts }
 //      { type: 'log', id, text }
 //      { type: 'timing', id, entry: { seg: 'download' | 'encode' | 'decode' | 'pick' | 'parts', ms, device, dtype, batch, points, photo: { id, w, h }, found? (decode), waited? (pick, parts) } }
@@ -105,10 +105,10 @@ self.onmessage = async ({ data }) => {
     // A newer photo replaced this one while it was encoding.
     if (p !== photo) throw new Error('photo changed');
     if (data.type === 'pick') {
+      // No shape there is an answer, not an error: the app tells them apart.
       const region = await pickMask(data.points, image);
-      if (!region) throw new Error('no shape there');
       timing(p, id, 'pick', performance.now() - t, { waited });
-      self.postMessage({ type: 'shape', id, region }, [region.data.buffer]);
+      self.postMessage({ type: 'shape', id, region }, region ? [region.data.buffer] : []);
     } else if (data.type === 'parts') {
       const parts = await segmentParts(image, data.region);
       timing(p, id, 'parts', performance.now() - t, { waited });

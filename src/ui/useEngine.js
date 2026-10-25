@@ -338,40 +338,46 @@ export function useEngine() {
   // their parts from the segmentation worker. Sent again only on a change.
   const sentZones = useRef('[]');
   useEffect(() => {
-    const list = [];
+    const list = [], keys = [];
     for (const z of zones) {
       const px = pixelsOf(z);
       if (!z.mode || !px) continue;
-      if (z.mode === 'more' && !px.parts && !px.partsLoading) {
+      if (z.mode === 'more' && !px.parts && !px.partsLoading && !px.partsFailed) {
         px.partsLoading = true;
         session.current.parts(px.region).then(
-          (parts) => { px.parts = parts; setPixelsVersion((v) => v + 1); },
-          () => { /* no parts: the zone stays without pieces with intention */ },
+          (parts) => { px.partsLoading = false; px.parts = parts; setPixelsVersion((v) => v + 1); },
+          // No parts: the zone stays without pieces with intention until its
+          // mode is set again or segmentation finishes after a retry.
+          () => { px.partsLoading = false; px.partsFailed = true; },
         );
       }
       // A "more" zone changes nothing until its parts arrive.
       if (z.mode === 'more' && !px.parts) continue;
       list.push({ id: z.id, mode: z.mode, region: px.region, parts: z.mode === 'more' ? px.parts : null });
+      keys.push([z.id, z.mode, px.region.box, z.points, !!px.parts]);
     }
-    const key = JSON.stringify(list.map((z) => [z.id, z.mode, z.region.box, !!z.parts]));
+    // The points are in the key too: a refined shape can keep the same box.
+    const key = JSON.stringify(keys);
     if (key === sentZones.current || !worker.current) return;
     sentZones.current = key;
     worker.current.postMessage({ type: 'zones', zones: list });
     rerun();
   }, [zones, pixelsVersion, rerun]);
   // A new shape where the photo was touched at (u, v); resolves to its id,
-  // or null if there is none (or segmentation was declined).
+  // null if there is none, or { error } if the search failed (declined,
+  // model or worker error).
   const pickShape = useCallback(async (u, v) => {
     const points = [[u, v, 1]];
     const gen = photoGen.current;
+    let region;
     try {
-      const region = await session.current.pick(points);
-      if (gen !== photoGen.current) return null;
-      const id = `z${++zoneSeq.current}`;
-      keepPixels(id, points, region);
-      setZones((zs) => [...zs, { id, mode: null, points }]);
-      return id;
-    } catch { return null; }
+      region = await session.current.pick(points);
+    } catch (e) { return { error: e?.message || String(e) }; }
+    if (!region || gen !== photoGen.current) return null;
+    const id = `z${++zoneSeq.current}`;
+    keepPixels(id, points, region);
+    setZones((zs) => [...zs, { id, mode: null, points }]);
+    return id;
   }, []);
   // Another touch inside a shape grows or corrects it.
   const zonesRef = useRef(zones);
@@ -383,13 +389,29 @@ export function useEngine() {
     const gen = photoGen.current;
     try {
       const region = await session.current.pick(points);
-      if (gen !== photoGen.current) return false;
+      if (!region || gen !== photoGen.current) return false;
       keepPixels(id, points, region);
       setZones((zs) => zs.map((x) => (x.id === id ? { ...x, points } : x)));
       return true;
     } catch { return false; }
   }, []);
-  const setZoneMode = useCallback((id, mode) => setZones((zs) => zs.map((z) => (z.id === id ? { ...z, mode } : z))), []);
+  // Setting the mode again asks once more for parts that failed before.
+  const clearFailed = (id) => {
+    let any = false;
+    for (const [zid, versions] of zonePixels.current) {
+      if (id !== undefined && zid !== id) continue;
+      for (const px of versions.values()) if (px.partsFailed) { px.partsFailed = false; any = true; }
+    }
+    return any;
+  };
+  const setZoneMode = useCallback((id, mode) => {
+    clearFailed(id);
+    setZones((zs) => zs.map((z) => (z.id === id ? { ...z, mode } : z)));
+  }, []);
+  // Segmentation done (after a retry, say): failed parts are asked again.
+  useEffect(() => {
+    if (seg.phase === 'done' && clearFailed()) setPixelsVersion((v) => v + 1);
+  }, [seg.phase]);
   const removeZone = useCallback((id) => setZones((zs) => zs.filter((z) => z.id !== id)), []);
 
   // Hand-drawn guide lines, polylines in normalised image coordinates.
