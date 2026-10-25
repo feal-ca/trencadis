@@ -11,7 +11,7 @@
 //      { type: 'shape', id, region }
 //      { type: 'parts', id, parts }
 //      { type: 'log', id, text }
-//      { type: 'timing', id, entry: { seg: 'download' | 'encode' | 'decode' | 'pick' | 'parts', ms, device, batch, points } }
+//      { type: 'timing', id, entry: { seg: 'download' | 'encode' | 'decode' | 'pick' | 'parts', ms, device, dtype, batch, points, photo: { id, w, h }, found? (decode), waited? (pick, parts) } }
 //      { type: 'error', id, message }
 // A pick or parts request waits for the encoding of the photo in flight.
 import { RawImage } from '@huggingface/transformers';
@@ -23,10 +23,17 @@ opts.points = 64;
 // The photo of the last coarse pass and the promise of its encoding.
 let photo = null;
 
-// A timing for the debug page (?debug), tagged with the settings in use. A
-// pick or parts time includes the wait for the photo's encoding, if any.
-function timing(id, seg, since) {
-  const entry = { seg, ms: performance.now() - since, device: opts.device, batch: opts.batch, points: opts.points };
+// A timing for the debug page (?debug), tagged with the settings in use and
+// the photo it belongs to (the id of its coarse pass and the size of the
+// encoded image), so pasted entries can be told apart. Timings of a pass
+// that a newer photo replaced are not posted. A pick or parts time includes
+// `waited`, the wait for the photo's encoding.
+function timing(cur, id, seg, ms, extra) {
+  if (photo !== cur) return;
+  const entry = {
+    seg, ms, ...extra, device: opts.device, dtype: opts.dtype, batch: opts.batch, points: opts.points,
+    photo: { id: cur.id, w: cur.image?.width, h: cur.image?.height },
+  };
   self.postMessage({ type: 'timing', id, entry });
 }
 
@@ -47,7 +54,7 @@ async function coarse({ id, blob, device, batch, points }) {
   if (points) opts.points = points;
   const t = performance.now();
   const report = progress(id);
-  const current = { image: null, encoded: null };
+  const current = { id, image: null, encoded: null };
   let ready;
   current.encoded = new Promise((resolve, reject) => { ready = { resolve, reject }; });
   // A pick that fails along with the encoding is answered by its own error.
@@ -57,15 +64,16 @@ async function coarse({ id, blob, device, batch, points }) {
     let size = 0;
     await load(({ loaded, total }) => { size = total; report('download', loaded, total); }, (text) => self.postMessage({ type: 'log', id, text }));
     if (size) report('download', size, size);
-    timing(id, 'download', t);
+    const downloadMs = performance.now() - t;
     current.image = await RawImage.fromBlob(blob);
     // A newer photo arrived while the model loaded: stop before encoding.
     if (photo !== current) throw new Error('photo changed');
+    timing(current, id, 'download', downloadMs);
     report('encode', 0, 1);
     const tEncode = performance.now();
     await embedImage(current.image);
-    timing(id, 'encode', tEncode);
     if (photo !== current) throw new Error('photo changed');
+    timing(current, id, 'encode', performance.now() - tEncode);
     ready.resolve(current.image);
     report('encode', 1, 1);
     // A newer photo stops this pass at its next batch.
@@ -74,7 +82,7 @@ async function coarse({ id, blob, device, batch, points }) {
       if (photo !== current) throw new Error('photo changed');
       report('decode', done, total, found);
     } });
-    timing(id, 'decode', tDecode);
+    timing(current, id, 'decode', performance.now() - tDecode, { found: res.masks.length });
     const labels = partition(res);
     self.postMessage({
       type: 'segments', id, segments: { w: res.w, h: res.h, labels }, count: res.masks.length, ms: performance.now() - t,
@@ -93,16 +101,17 @@ self.onmessage = async ({ data }) => {
     if (!photo) throw new Error('no photo');
     const p = photo;
     const image = await p.encoded;
+    const waited = performance.now() - t;
     // A newer photo replaced this one while it was encoding.
     if (p !== photo) throw new Error('photo changed');
     if (data.type === 'pick') {
       const region = await pickMask(data.points, image);
       if (!region) throw new Error('no shape there');
-      timing(id, 'pick', t);
+      timing(p, id, 'pick', performance.now() - t, { waited });
       self.postMessage({ type: 'shape', id, region }, [region.data.buffer]);
     } else if (data.type === 'parts') {
       const parts = await segmentParts(image, data.region);
-      timing(id, 'parts', t);
+      timing(p, id, 'parts', performance.now() - t, { waited });
       self.postMessage({ type: 'parts', id, parts }, [parts.labels.buffer]);
     }
   } catch (e) {
