@@ -48,8 +48,11 @@ async function coarse({ id, blob, device }) {
     await load(({ loaded, total }) => { size = total; report('download', loaded, total); }, (text) => self.postMessage({ type: 'log', id, text }));
     if (size) report('download', size, size);
     current.image = await RawImage.fromBlob(blob);
+    // A newer photo arrived while the model loaded: stop before encoding.
+    if (photo !== current) throw new Error('photo changed');
     report('encode', 0, 1);
     await embedImage(current.image);
+    if (photo !== current) throw new Error('photo changed');
     ready.resolve(current.image);
     report('encode', 1, 1);
     // A newer photo stops this pass at its next batch.
@@ -77,7 +80,7 @@ self.onmessage = async ({ data }) => {
     // A newer photo replaced this one while it was encoding.
     if (p !== photo) throw new Error('photo changed');
     if (data.type === 'pick') {
-      const region = await pickMask(data.points);
+      const region = await pickMask(data.points, image);
       if (!region) throw new Error('no shape there');
       self.postMessage({ type: 'shape', id, region }, [region.data.buffer]);
     } else if (data.type === 'parts') {

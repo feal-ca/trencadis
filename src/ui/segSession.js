@@ -46,29 +46,56 @@ export function createSegSession({ post, onState = () => {}, policy = 'auto' }) 
   };
   const rejectAll = (list, why) => { for (const r of list) r.reject(new Error(why)); };
   // A pick or parts request. Before the user agrees to segment, it asks
-  // and waits for the answer.
+  // and waits for the answer; between reset() and photo() it waits for the
+  // new photo.
   const request = (type, msg) => new Promise((resolve, reject) => {
     const r = { type, msg, resolve, reject };
     if (state.phase === 'off' || state.phase === 'ask') {
       queued.push(r);
       set({ phase: 'ask' });
-    } else send(r);
+    } else if (!blob) queued.push(r);
+    else send(r);
   });
+  const dropPending = (why) => {
+    rejectAll(pending.values(), why);
+    pending.clear();
+  };
 
   return {
     get state() { return state; },
-    photo(b) {
-      blob = b;
-      rejectAll(pending.values(), 'photo changed');
-      pending.clear();
+    // Forgets the photo at once, before the next one is ready: from here on
+    // every result of the old photo is dropped and its requests rejected.
+    reset() {
+      blob = null;
+      current = ++seq;
+      dropPending('photo changed');
       rejectAll(queued, 'photo changed');
       queued = [];
-      if (policy === 'auto') start();
-      else {
+      set({ phase: 'idle' });
+    },
+    photo(b) {
+      dropPending('photo changed');
+      // Requests queued after a reset() are for this photo; others are not.
+      if (blob) {
+        rejectAll(queued, 'photo changed');
+        queued = [];
+      }
+      blob = b;
+      if (policy === 'auto') {
+        start();
+        const q = queued;
+        queued = [];
+        q.forEach(send);
+      } else {
         // Results of the previous photo are stale even when nothing starts.
         current = ++seq;
-        set({ phase: policy === 'ask' ? 'ask' : 'off' });
+        set({ phase: policy === 'ask' || queued.length ? 'ask' : 'off' });
       }
+    },
+    // The worker died (or never loaded): nothing it had will answer.
+    fail(message) {
+      dropPending(message);
+      if (blob) set({ phase: 'error', message });
     },
     accept() {
       policy = 'auto';

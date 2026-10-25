@@ -151,3 +151,40 @@ describe('segmentation session', () => {
     expect(s.state.phase).toBe('download');
   });
 });
+
+describe('segmentation session across photos and crashes', () => {
+  it('a reset drops results and picks of the previous photo before the next one arrives', async () => {
+    const { s, sent, last } = setup();
+    s.photo('a');
+    const a = last('coarse').id;
+    const old = s.pick([[0.5, 0.5, 1]]);
+    const oldPick = last('pick').id;
+    s.reset();
+    await expect(old).rejects.toThrow();
+    expect(s.receive({ type: 'segments', id: a, count: 5, ms: 10 })).toBe(false);
+    expect(s.receive({ type: 'shape', id: oldPick, region })).toBe(false);
+    expect(s.state.phase).toBe('idle');
+    // A pick before the new photo is ready waits for it.
+    const shape = s.pick([[0.3, 0.3, 1]]);
+    const before = sent.length;
+    expect(s.retry()).toBeUndefined();
+    expect(sent.length).toBe(before);
+    s.photo('b');
+    expect(sent.slice(before).map((m) => m.type)).toEqual(['coarse', 'pick']);
+    expect(last('coarse').blob).toBe('b');
+    s.receive({ type: 'shape', id: last('pick').id, region });
+    await expect(shape).resolves.toBe(region);
+  });
+
+  it('a worker that dies ends in phase error, rejects pending picks, and retry starts again', async () => {
+    const { s, sent } = setup();
+    s.photo('a');
+    const shape = s.pick([[0.5, 0.5, 1]]);
+    s.fail('the worker did not load');
+    expect(s.state).toMatchObject({ phase: 'error', message: 'the worker did not load' });
+    await expect(shape).rejects.toThrow();
+    s.retry();
+    expect(sent.filter((m) => m.type === 'coarse')).toHaveLength(2);
+    expect(s.state.phase).toBe('download');
+  });
+});

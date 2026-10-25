@@ -283,6 +283,14 @@ export function useEngine() {
           worker.current?.postMessage({ type: 'segments', segments: data.segments }, [data.segments.labels.buffer]);
           rerun();
         };
+        // The worker's code failed to load (or it crashed): drop it, so a
+        // retry starts a new one.
+        segWorker.current.onerror = (e) => {
+          e.preventDefault();
+          segWorker.current?.terminate();
+          segWorker.current = null;
+          session.current.fail('No se ha podido cargar el buscador de formas');
+        };
       }
       // ?samDevice=wasm forces the CPU (headless browsers only have a software GPU).
       const device = new URLSearchParams(location.search).get('samDevice');
@@ -310,6 +318,8 @@ export function useEngine() {
   const zonePixels = useRef(new Map());
   const [pixelsVersion, setPixelsVersion] = useState(0);
   const zoneSeq = useRef(0);
+  // Bumped on every new photo, so a touch answered late is not kept.
+  const photoGen = useRef(0);
   const pointsKey = (points) => JSON.stringify(points);
   const pixelsOf = (z) => zonePixels.current.get(z.id)?.get(pointsKey(z.points));
   const keepPixels = (id, points, region) => {
@@ -350,8 +360,10 @@ export function useEngine() {
   // or null if there is none (or segmentation was declined).
   const pickShape = useCallback(async (u, v) => {
     const points = [[u, v, 1]];
+    const gen = photoGen.current;
     try {
       const region = await session.current.pick(points);
+      if (gen !== photoGen.current) return null;
       const id = `z${++zoneSeq.current}`;
       keepPixels(id, points, region);
       setZones((zs) => [...zs, { id, mode: null, points }]);
@@ -365,8 +377,10 @@ export function useEngine() {
     const z = zonesRef.current.find((x) => x.id === id);
     if (!z) return false;
     const points = [...z.points, [u, v, 1]];
+    const gen = photoGen.current;
     try {
       const region = await session.current.pick(points);
+      if (gen !== photoGen.current) return false;
       keepPixels(id, points, region);
       setZones((zs) => zs.map((x) => (x.id === id ? { ...x, points } : x)));
       return true;
@@ -395,6 +409,9 @@ export function useEngine() {
       setMosaicReady(false);
       setGuides([]);
       worker.current?.postMessage({ type: 'guides', guides: [] });
+      // Results of the old photo still on their way are dropped from here on.
+      session.current.reset();
+      photoGen.current++;
       zonePixels.current = new Map();
       setZones([]);
       sentZones.current = '[]';

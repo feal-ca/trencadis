@@ -28,15 +28,25 @@ export const opts = {
 };
 
 let model, processor;
+// One load at a time: a call made while the model is loading waits for the
+// same load, and from then on the progress and log go to its callbacks.
+let loading = null, listeners = {};
 // `onProgress({ loaded, total })` reports the bytes of the model downloaded so
 // far. The library sizes every file of the model before it starts, so
 // `total` stays put; the processor's files are tiny and not counted.
-export async function load(onProgress, log = () => {}) {
+export function load(onProgress, log = () => {}) {
+  listeners = { onProgress, log };
+  loading ??= loadModel().catch((e) => { loading = null; throw e; });
+  return loading;
+}
+
+async function loadModel() {
   if (model) return;
   const t = performance.now();
-  const progress_callback = onProgress && ((e) => {
-    if (e.status === 'progress_total' && e.total) onProgress({ loaded: e.loaded, total: e.total });
-  });
+  const log = (text) => listeners.log(text);
+  const progress_callback = (e) => {
+    if (e.status === 'progress_total' && e.total) listeners.onProgress?.({ loaded: e.loaded, total: e.total });
+  };
   // fp16 was fastest on WebGPU (24 s vs 44 s fp32, 121 s q8 on an Intel
   // Gen12 laptop); q8 is fastest on the CPU.
   opts.dtype ??= opts.device === 'webgpu' ? 'fp16' : 'q8';
@@ -291,13 +301,13 @@ const REGION_LONG = 512;
 const PARTS_LONG = 256;
 
 // The mask the model gives for prompt points [[u, v, 1 | 0]] (normalised; 1
-// is a point on the shape, 0 one off it) on the photo of the last
-// embedImage(). Of the three candidate masks it keeps the one with the
-// highest predicted IoU. Returns the region, or null if the mask is empty.
-export async function pickMask(points) {
-  const enc = embedded;
-  if (!enc) throw new Error('no photo encoded');
-  const { image, emb, k } = enc;
+// is a point on the shape, 0 one off it) on `image`, with its kept encoding
+// (encoded again if the kept one is of another image). Of the three
+// candidate masks it keeps the one with the highest predicted IoU. Returns
+// the region, or null if the mask is empty.
+export async function pickMask(points, image) {
+  const enc = embedded?.image === image ? embedded : await embedImage(image);
+  const { emb, k } = enc;
   const input_points = new Tensor('float32', points.flatMap(([u, v]) => [u * image.width * k, v * image.height * k]), [1, 1, points.length, 2]);
   const input_labels = new Tensor('int64', points.map((p) => BigInt(p[2] ?? 1)), [1, 1, points.length]);
   const out = await model({ ...emb, input_points, input_labels });
