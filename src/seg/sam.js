@@ -1,5 +1,5 @@
-// LAB SPIKE: "segment everything" in the browser with SlimSAM. Throwaway.
-// Used by lab/segment.html and, in ?lab, by the app's segmentation worker.
+// "Segment everything" in the browser with SlimSAM.
+// Used by the app's segmentation worker and by lab/segment.html.
 //
 // SlimSAM embeds the image once; its small decoder then turns each prompt
 // point of a grid into three candidate masks. Candidates are kept when the
@@ -13,6 +13,9 @@ import { applyMacroDefaults } from '../core/macros.js';
 import { DEFAULTS, toWorkPx } from '../core/params.js';
 import { mulberry32 } from '../core/rng.js';
 import { poissonVariable } from '../core/sampling.js';
+import { partition } from './partition.js';
+
+export { partition };
 
 env.allowLocalModels = false;
 const MODEL = 'Xenova/slimsam-77-uniform';
@@ -25,21 +28,31 @@ export const opts = {
 };
 
 let model, processor;
-export async function load(log = () => {}) {
+// `onProgress({ loaded, total })` reports the bytes downloaded so far, summed
+// over every file of the model and the processor.
+export async function load(onProgress, log = () => {}) {
   if (model) return;
   const t = performance.now();
+  const files = new Map();
+  const progress_callback = onProgress && ((e) => {
+    if (e.status !== 'progress' || !e.total) return;
+    files.set(e.file, { loaded: e.loaded, total: e.total });
+    let loaded = 0, total = 0;
+    for (const f of files.values()) { loaded += f.loaded; total += f.total; }
+    onProgress({ loaded, total });
+  });
   // fp16 was fastest on WebGPU (24 s vs 44 s fp32, 121 s q8 on an Intel
   // Gen12 laptop); q8 is fastest on the CPU.
   opts.dtype ??= opts.device === 'webgpu' ? 'fp16' : 'q8';
   try {
-    model = await SamModel.from_pretrained(MODEL, { device: opts.device, dtype: opts.dtype });
+    model = await SamModel.from_pretrained(MODEL, { device: opts.device, dtype: opts.dtype, progress_callback });
   } catch (e) {
     log(`${opts.device} failed (${e.message}), using wasm`);
     opts.device = 'wasm';
     opts.dtype = 'q8';
-    model = await SamModel.from_pretrained(MODEL, { device: 'wasm', dtype: opts.dtype });
+    model = await SamModel.from_pretrained(MODEL, { device: 'wasm', dtype: opts.dtype, progress_callback });
   }
-  processor = await AutoProcessor.from_pretrained(MODEL);
+  processor = await AutoProcessor.from_pretrained(MODEL, { progress_callback });
   log(`model loaded on ${opts.device} (${opts.dtype}) in ${Math.round(performance.now() - t)} ms`);
   // Which GPU WebGPU got: a software ("fallback") adapter is slower than WASM.
   const adapter = await navigator.gpu?.requestAdapter();
@@ -81,7 +94,7 @@ function promptPoints({ an, s }, box, target, seed) {
 // `ds`, each with its display-pixel box. In a crop, masks that touch an
 // inner edge of the crop are dropped: they are cut-off pieces of something
 // larger, which the full-image pass sees whole.
-async function decodePass(image, box, points, ds, T, name) {
+async function decodePass(image, box, points, ds, T, name, onBatch) {
   let t = performance.now();
   const full = box[0] === 0 && box[1] === 0 && box[2] === image.width - 1 && box[3] === image.height - 1;
   const sub = full ? image : await image.crop(box);
@@ -157,6 +170,7 @@ async function decodePass(image, box, points, ds, T, name) {
         if (darea) cands.push({ data, box: [dx0, dy0, dx1, dy1], area: darea, score: iou * stab, pass: name });
       }
     }
+    onBatch?.(s, points.length, cands.length);
   }
   T[`${name} decoder (${used} of ${points.length} pts; model ${Math.round(modelMs)} ms)`] = performance.now() - t;
   return cands;
@@ -187,8 +201,9 @@ function nms(cands) {
 // display size, plus timings. Pass 1: the whole photo, prompt points where
 // the detail is. Pass 2: crops around the most detailed objects found,
 // embedded again at full model resolution so small parts (eyes) get enough
-// pixels.
-export async function segmentEverything(image, outLong = 600) {
+// pixels. `onBatch(done, total, found)` is called after each batch of the
+// first pass: prompt points tried, points in all, candidates kept so far.
+export async function segmentEverything(image, outLong = 600, { onBatch } = {}) {
   const T = {};
   let t = performance.now();
   const dm = detailMap(image);
@@ -196,7 +211,7 @@ export async function segmentEverything(image, outLong = 600) {
   const ds = outLong / Math.max(image.width, image.height);
   const w = Math.round(image.width * ds), h = Math.round(image.height * ds);
   const all = [0, 0, image.width - 1, image.height - 1];
-  let cands = await decodePass(image, all, promptPoints(dm, all, opts.points, 1), ds, T, 'pass 1');
+  let cands = await decodePass(image, all, promptPoints(dm, all, opts.points, 1), ds, T, 'pass 1', onBatch);
   const first = nms(cands.slice());
 
   // Crops: objects between 1 % and 30 % of the photo, densest detail
@@ -239,15 +254,3 @@ export async function segmentEverything(image, outLong = 600) {
   T.nms = performance.now() - t;
   return { w, h, masks, candidates: cands.length, crops: crops.map((b) => b.map((v) => Math.round(v * ds))), T };
 }
-
-// Partition: each pixel belongs to the smallest mask covering it (-1: none).
-export function partition({ w, h, masks }) {
-  const order = masks.map((m, i) => i).sort((a, b) => masks[b].area - masks[a].area);
-  const label = new Int32Array(w * h).fill(-1);
-  for (const i of order) {
-    const d = masks[i].data;
-    for (let k = 0; k < w * h; k++) if (d[k]) label[k] = i;
-  }
-  return label;
-}
-

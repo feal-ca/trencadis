@@ -1,7 +1,7 @@
 // LAB SPIKE: test page for src/lab/sam.js: does "segment everything" run
 // fast enough in the browser, and does it find what matters?
 import { RawImage } from '@huggingface/transformers';
-import { load, opts, partition, segmentEverything } from '../src/lab/sam.js';
+import { load, opts, partition, segmentEverything } from '../src/seg/sam.js';
 
 const q = new URLSearchParams(location.search);
 for (const k of ['points', 'cropPoints', 'crops', 'iou', 'stability', 'nms', 'batch']) if (q.has(k)) opts[k] = Number(q.get(k));
@@ -55,7 +55,7 @@ function hsl(hd, s, l) {
 
 async function run(src) {
   $('log').textContent = '';
-  await load(log);
+  await load(undefined, log);
   const image = await RawImage.read(src);
   log(`image ${image.width} x ${image.height}, ${opts.points} points + ${opts.crops} crops x ${opts.cropPoints}`);
   const t = performance.now();

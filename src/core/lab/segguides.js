@@ -1,5 +1,5 @@
 // LAB SPIKE (?lab): hileras along the outlines of the objects a segmentation
-// model found (src/lab/sam.js), instead of along strong edges only.
+// model found (src/seg/sam.js), instead of along strong edges only.
 import { bridgeGaps, chainLength, smoothChain, traceChains } from '../andamento.js';
 
 // `seg` is { w, h, labels } with one label per object (-1: no object), at

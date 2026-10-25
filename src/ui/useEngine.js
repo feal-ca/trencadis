@@ -281,10 +281,11 @@ export function useEngine() {
     worker.current?.postMessage({ type: 'segments', segments: null });
     setSegments(null);
     if (!segWorker.current) {
-      segWorker.current = new Worker(new URL('../lab/segment-worker.js', import.meta.url), { type: 'module' });
+      segWorker.current = new Worker(new URL('../seg/worker.js', import.meta.url), { type: 'module' });
       segWorker.current.onmessage = ({ data }) => {
         if (data.id !== segRun.current) return;
         if (data.type === 'log') console.log('[sam]', data.text);
+        else if (data.type === 'progress') console.log('[seg]', data.phase, data.done, data.total); // temporary, removed in Task 5
         else if (data.type === 'error') setSegStatus(`Error al buscar objetos: ${data.message}`);
         else if (data.type === 'segments') {
           setSegStatus(`${data.count} objetos en ${(data.ms / 1000).toFixed(1)} s`);
@@ -301,7 +302,7 @@ export function useEngine() {
     cv.getContext('2d').drawImage(bitmap, 0, 0, cv.width, cv.height);
     // ?samDevice=wasm forces the CPU (headless browsers only have a software GPU).
     const device = new URLSearchParams(location.search).get('samDevice');
-    cv.convertToBlob({ type: 'image/png' }).then((blob) => segWorker.current.postMessage({ id, blob, device }));
+    cv.convertToBlob({ type: 'image/png' }).then((blob) => segWorker.current.postMessage({ type: 'coarse', id, blob, device }));
   }, [bitmap, readable, rerun]);
   useEffect(() => () => segWorker.current?.terminate(), []);
 
