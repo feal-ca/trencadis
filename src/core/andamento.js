@@ -352,7 +352,11 @@ export function overlayPieces(baseShards, extra, w, h, an, tag = { row: true }, 
     const l = merged[i];
     if ((isNew.has(l) && (!polys || grown.has(l))) || changed.has(origin[l])) redo.add(l);
   }
-  const traced = labelsToPolygons(merged, w, h, eps, 4, redo).map(({ poly, label }) => (isNew.has(label) ? { poly, row: false, ...tag } : { poly, row: false }));
+  // A re-traced background piece keeps its origin's row flag, so rows the
+  // focus overlay trims stay rows.
+  const traced = labelsToPolygons(merged, w, h, eps, 4, redo).map(({ poly, label }) => (isNew.has(label)
+    ? { poly, row: false, ...tag }
+    : { poly, row: !!baseShards[origin[label]]?.row }));
   const grownNew = new Set([...grown].map((l) => origin[l] - ROW));
   const given = polys ? polys.filter((_, k) => !grownNew.has(k)).map((poly) => ({ poly, row: false, ...tag })) : [];
   return intact.concat(traced, given);

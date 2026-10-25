@@ -4,7 +4,7 @@ import { focusShards, focusSize, overlayFocus, partMap } from '../src/core/focus
 import { toLab } from '../src/core/image.js';
 import { applyMacroDefaults } from '../src/core/macros.js';
 import { ALGORITHMS, DEFAULTS, toWorkPx } from '../src/core/params.js';
-import { bbox, rasterize } from '../src/core/polygon.js';
+import { bbox, centroid, rasterize } from '../src/core/polygon.js';
 import { mulberry32 } from '../src/core/rng.js';
 import { regionWidths } from '../src/core/slivers.js';
 import { tessellate } from '../src/core/tessellate.js';
@@ -147,6 +147,31 @@ describe('pieces with intention inside a touched shape', () => {
     const labels = new Int32Array(W * H).fill(-1);
     redone.forEach(({ poly }, id) => rasterize(poly, W, H, (x, y) => { labels[y * W + x] = id; }));
     for (const width of regionWidths(labels, W, H).values()) expect(width).toBeGreaterThanOrEqual(0.25 * p.sMax);
+  });
+
+  it.each(ALGORITHMS.map((a) => a.value))('rows trimmed by a "more" zone stay rows (%s)', (algorithm) => {
+    const p = { ...base, algorithm };
+    // A drawn guide across the middle of the image, through the zone.
+    const guides = [[[0.05, 0.5], [0.95, 0.5]]];
+    const zones = [{ mode: 'more', parts: syntheticParts() }];
+    const rowsOnly = tessellate(img, lab, an, p, mulberry32(1), guides).shards;
+    const out = tessellate(img, lab, an, p, mulberry32(1), guides, null, zones).shards;
+    expect(out.some((s) => s.intent)).toBe(true);
+    // The pixels the rows cover without the zone.
+    const rowMask = new Uint8Array(W * H);
+    rowsOnly.filter((s) => s.row).forEach(({ poly }) => rasterize(poly, W, H, (x, y) => { rowMask[y * W + x] = 1; }));
+    const [bx0, by0, bx1, by1] = [BOX[0] * W, BOX[1] * H, BOX[2] * W, BOX[3] * H];
+    // Pieces centred outside the zone box and lying mostly on those rows.
+    const onRows = out.filter(({ poly, intent }) => {
+      if (intent) return false;
+      const [cx, cy] = centroid(poly);
+      if (cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1) return false;
+      let n = 0, on = 0;
+      rasterize(poly, W, H, (x, y) => { n++; on += rowMask[y * W + x]; });
+      return on > n / 2;
+    });
+    expect(onRows.length).toBeGreaterThan(0);
+    for (const s of onRows) expect(s.row).toBe(true);
   });
 
   it('focusSize never goes below sMin', () => {
