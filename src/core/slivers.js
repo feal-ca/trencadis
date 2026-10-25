@@ -24,10 +24,12 @@ export function regionWidths(labels, w, h) {
 
 // Regions narrower than minWidth × s(x) join the neighbour they share the
 // longest border with. Labels in opts.protect never merge or absorb others;
-// with opts.only, only those labels are candidates.
+// with opts.only, only those labels are candidates; with opts.group (a group
+// id per label), a region only joins a neighbour of its own group.
 // Returns a new label map.
 export function mergeSlivers(labels, w, h, size, minWidth, opts = {}) {
   const protect = opts.protect ?? new Set();
+  const group = opts.group ?? null;
   if (minWidth <= 0) return labels;
   const widths = regionWidths(labels, w, h);
   const sizeSum = new Map(), count = new Map();
@@ -47,7 +49,7 @@ export function mergeSlivers(labels, w, h, size, minWidth, opts = {}) {
   // Shared border length between each thin region and its neighbours.
   const shared = new Map();
   const touch = (a, b) => {
-    if (a === b || a < 0 || b < 0 || !thin.has(a) || protect.has(b)) return;
+    if (a === b || a < 0 || b < 0 || !thin.has(a) || protect.has(b) || (group && group[a] !== group[b])) return;
     const m = shared.get(a) ?? new Map();
     m.set(b, (m.get(b) ?? 0) + 1);
     shared.set(a, m);

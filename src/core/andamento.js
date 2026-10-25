@@ -282,7 +282,9 @@ export function overlayRows(baseShards, guides, w, h, p, an) {
 // small fragments merged into neighbours; untouched ones keep their polygon.
 // `tag` is spread into the new pieces ({ row: true } for rows). With `polys`
 // (one per extra label) those are used as they are instead of being traced.
-export function overlayPieces(baseShards, extra, w, h, an, tag = { row: true }, eps = 0.8, polys = null) {
+// With `onlyCut`, fragments merge only into other cut pieces or into the new
+// pieces, so background pieces the overlay does not cut never change.
+export function overlayPieces(baseShards, extra, w, h, an, tag = { row: true }, eps = 0.8, polys = null, { onlyCut = false } = {}) {
   const labels = new Int32Array(w * h).fill(-1);
   const order = baseShards.map((s, id) => [area(s.poly), id]).sort((a, b) => b[0] - a[0]);
   for (const [, id] of order) rasterize(baseShards[id].poly, w, h, (x, y) => { labels[y * w + x] = id; });
@@ -292,41 +294,63 @@ export function overlayPieces(baseShards, extra, w, h, an, tag = { row: true }, 
   for (let i = 0; i < w * h; i++) if (extra[i] >= 0) labels[i] = ROW + extra[i];
 
   const { labels: parts, origin } = splitComponents(labels, w, h);
-  // Base pieces that ended up in more than one part were cut by a row.
-  const partsPerBase = new Map();
-  origin.forEach((old) => partsPerBase.set(old, (partsPerBase.get(old) ?? 0) + 1));
-  const splitIds = new Set([...partsPerBase].filter(([, n]) => n > 1).map(([old]) => old));
+  // Base pieces that ended up in more parts than they had on their own were
+  // cut by a row (overlapping base polygons can leave a piece in two parts
+  // before anything is laid on top).
+  const count = (list) => {
+    const m = new Map();
+    list.forEach((old) => m.set(old, (m.get(old) ?? 0) + 1));
+    return m;
+  };
+  const partsBefore = count(splitComponents(baseOf, w, h).origin);
+  const splitIds = new Set([...count(origin)].filter(([old, n]) => old < ROW && n > (partsBefore.get(old) ?? 0)).map(([old]) => old));
   fillUnlabeled(parts, w, h);
-  const protect = new Set();
-  origin.forEach((old, id) => { if (old >= ROW) protect.add(id); });
+  const isNew = new Set();
+  origin.forEach((old, id) => { if (old >= ROW) isNew.add(id); });
   // Only background fragments that touch a row may merge: the rest of the
   // mosaic stays as the background method made it.
   const touching = new Set();
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x, l = parts[i];
-      if (protect.has(l)) continue;
-      if ((x + 1 < w && protect.has(parts[i + 1])) || (x > 0 && protect.has(parts[i - 1]))
-        || (y + 1 < h && protect.has(parts[i + w])) || (y > 0 && protect.has(parts[i - w]))) touching.add(l);
+      if (isNew.has(l)) continue;
+      if ((x + 1 < w && isNew.has(parts[i + 1])) || (x > 0 && isNew.has(parts[i - 1]))
+        || (y + 1 < h && isNew.has(parts[i + w])) || (y > 0 && isNew.has(parts[i - w]))) touching.add(l);
     }
   }
-  const merged = mergeSlivers(parts, w, h, an.size, 0.25, { protect, only: touching });
+  let merged;
+  if (onlyCut) {
+    // Uncut background pieces neither merge nor absorb; new pieces may absorb.
+    const keep = new Set();
+    origin.forEach((old, id) => { if (old < ROW && !splitIds.has(old)) keep.add(id); });
+    const only = new Set([...touching].filter((l) => !keep.has(l)));
+    merged = mergeSlivers(parts, w, h, an.size, 0.25, { protect: keep, only });
+  } else {
+    merged = mergeSlivers(parts, w, h, an.size, 0.25, { protect: isNew, only: touching });
+  }
 
   // Background pieces whose pixels are exactly what they were keep their
   // original, crisper polygon. A base piece changed if it lost pixels (to a
-  // row or to a neighbour) or gained some (absorbed a fragment).
+  // row or to a neighbour) or gained some (absorbed a fragment). A new piece
+  // that absorbed a fragment is traced instead of using its given polygon.
   const changed = new Set(splitIds);
+  const grown = new Set();
   for (let i = 0; i < w * h; i++) {
     const now = origin[merged[i]], was = baseOf[i];
     if (now === was) continue;
-    if (now < ROW) changed.add(now);
+    if (now < ROW && was >= 0) changed.add(now);
     if (was >= 0) changed.add(was);
+    if (now >= ROW && parts[i] !== merged[i]) grown.add(merged[i]);
   }
   const intact = baseShards.filter((_, id) => !changed.has(id)).map(({ poly, row }) => ({ poly, row: !!row }));
   const redo = new Set();
-  for (let i = 0; i < w * h; i++) if ((!polys && protect.has(merged[i])) || changed.has(origin[merged[i]])) redo.add(merged[i]);
-  const traced = labelsToPolygons(merged, w, h, eps, 4, redo).map(({ poly, label }) => (protect.has(label) ? { poly, row: false, ...tag } : { poly, row: false }));
-  const given = polys ? polys.map((poly) => ({ poly, row: false, ...tag })) : [];
+  for (let i = 0; i < w * h; i++) {
+    const l = merged[i];
+    if ((isNew.has(l) && (!polys || grown.has(l))) || changed.has(origin[l])) redo.add(l);
+  }
+  const traced = labelsToPolygons(merged, w, h, eps, 4, redo).map(({ poly, label }) => (isNew.has(label) ? { poly, row: false, ...tag } : { poly, row: false }));
+  const grownNew = new Set([...grown].map((l) => origin[l] - ROW));
+  const given = polys ? polys.filter((_, k) => !grownNew.has(k)).map((poly) => ({ poly, row: false, ...tag })) : [];
   return intact.concat(traced, given);
 }
 

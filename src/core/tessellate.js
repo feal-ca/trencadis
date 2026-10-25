@@ -38,7 +38,9 @@ function tessellateRows(img, lab, an, p, rng, guides, segments) {
   };
 }
 
-function tessellateBase(img, lab, an, p, rng) {
+// The chosen method alone, without rows or cuts. Also fills the parts of a
+// touched shape (focus.js), with a size field bounded by their thickness.
+export function tessellateBase(img, lab, an, p, rng) {
   const { w, h } = an;
   const iso = (s) => labelIsotropic(s, w, h);
   switch (p.algorithm) {

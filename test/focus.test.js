@@ -1,0 +1,153 @@
+import { describe, expect, it } from 'vitest';
+import { analyze } from '../src/core/analysis.js';
+import { focusShards, focusSize, overlayFocus, partMap } from '../src/core/focus.js';
+import { toLab } from '../src/core/image.js';
+import { applyMacroDefaults } from '../src/core/macros.js';
+import { ALGORITHMS, DEFAULTS, toWorkPx } from '../src/core/params.js';
+import { bbox, rasterize } from '../src/core/polygon.js';
+import { mulberry32 } from '../src/core/rng.js';
+import { tessellate } from '../src/core/tessellate.js';
+import { flatImage } from './helpers.js';
+
+const W = 240, H = 160;
+const BOX = [0.25, 0.25, 0.75, 0.75];
+// The zone in working pixels: x 60..180, y 40..120 (120 x 80).
+const X0 = BOX[0] * W, Y0 = BOX[1] * H;
+// Parts in zone pixels (the crop has the zone's resolution): a large
+// rectangle, a 4 px bar along its lower side and an isolated 3 x 3 square.
+const RECT = [2, 2, 114, 56], BAR = [2, 56, 114, 60], SQUARE = [50, 70, 53, 73];
+const RECT_PART = 0, BAR_PART = 1, SQUARE_PART = 2;
+
+function syntheticParts() {
+  const w = 120, h = 80, labels = new Int32Array(w * h).fill(-1);
+  const fill = ([x0, y0, x1, y1], l) => {
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) labels[y * w + x] = l;
+  };
+  fill(RECT, RECT_PART);
+  fill(BAR, BAR_PART);
+  fill(SQUARE, SQUARE_PART);
+  return { box: BOX, w, h, labels, count: 3 };
+}
+
+// The part of every working pixel (-1 outside), straight from the rectangles.
+function truth() {
+  const t = new Int32Array(W * H).fill(-1);
+  [[RECT, RECT_PART], [BAR, BAR_PART], [SQUARE, SQUARE_PART]].forEach(([[x0, y0, x1, y1], l]) => {
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) t[(y + Y0) * W + x + X0] = l;
+  });
+  return t;
+}
+
+// Pixel count of each part inside a piece.
+function partCounts(poly, parts) {
+  const c = new Map();
+  rasterize(poly, W, H, (x, y) => {
+    const l = parts[y * W + x];
+    c.set(l, (c.get(l) ?? 0) + 1);
+  });
+  return c;
+}
+
+// Width across the narrowest direction of a polygon (rotated bounding box).
+function shortAxis(poly) {
+  let best = Infinity;
+  for (let k = 0; k < 90; k++) {
+    const t = (k / 90) * Math.PI, nx = Math.cos(t), ny = Math.sin(t);
+    let lo = Infinity, hi = -Infinity;
+    for (const [x, y] of poly) {
+      const d = x * nx + y * ny;
+      if (d < lo) lo = d;
+      if (d > hi) hi = d;
+    }
+    best = Math.min(best, hi - lo);
+  }
+  return best;
+}
+
+const img = flatImage(W, H);
+const lab = toLab(img);
+const base = toWorkPx(applyMacroDefaults(DEFAULTS));
+const an = analyze(img, base);
+const parts = truth();
+
+describe('pieces with intention inside a touched shape', () => {
+  const run = (algorithm) => {
+    const p = { ...base, algorithm };
+    return { p, shards: focusShards(img, lab, an, p, mulberry32(3), [syntheticParts()]) };
+  };
+
+  it.each(ALGORITHMS.map((a) => a.value))('no piece crosses a part border (%s)', (algorithm) => {
+    const { shards } = run(algorithm);
+    expect(shards.length).toBeGreaterThan(0);
+    let minority = 0, total = 0;
+    for (const { poly, intent } of shards) {
+      expect(intent).toBe(true);
+      const counts = [...partCounts(poly, parts).values()];
+      const n = counts.reduce((s, v) => s + v, 0);
+      minority += n - Math.max(...counts);
+      total += n;
+    }
+    expect(minority).toBeLessThanOrEqual(0.03 * total);
+  });
+
+  it.each(ALGORITHMS.map((a) => a.value))('the thin bar gets pieces no wider than itself (%s)', (algorithm) => {
+    const { shards } = run(algorithm);
+    const inBar = shards.filter(({ poly }) => {
+      const c = partCounts(poly, parts);
+      const n = [...c.values()].reduce((s, v) => s + v, 0);
+      return (c.get(BAR_PART) ?? 0) > n / 2;
+    });
+    expect(inBar.length).toBeGreaterThan(0);
+    for (const { poly } of inBar) expect(shortAxis(poly)).toBeLessThanOrEqual(6);
+  });
+
+  it.each(ALGORITHMS.map((a) => a.value))('a part smaller than a minimum piece is one piece (%s)', (algorithm) => {
+    const { shards } = run(algorithm);
+    const covering = shards.filter(({ poly }) => (partCounts(poly, parts).get(SQUARE_PART) ?? 0) >= 0.8 * 9);
+    expect(covering).toHaveLength(1);
+  });
+
+  it.each(ALGORITHMS.map((a) => a.value))('a large part is split into several pieces (%s)', (algorithm) => {
+    const { p, shards } = run(algorithm);
+    expect(Math.max(RECT[2] - RECT[0], RECT[3] - RECT[1])).toBeGreaterThanOrEqual(3 * p.sMax);
+    const inRect = shards.filter(({ poly }) => {
+      const c = partCounts(poly, parts);
+      const n = [...c.values()].reduce((s, v) => s + v, 0);
+      return (c.get(RECT_PART) ?? 0) > n / 2;
+    });
+    expect(inRect.length).toBeGreaterThan(1);
+  });
+
+  it.each(ALGORITHMS.map((a) => a.value))('overlayFocus leaves pieces outside the zone untouched (%s)', (algorithm) => {
+    const p = { ...base, algorithm };
+    const background = tessellate(img, lab, an, p, mulberry32(1)).shards;
+    const out = overlayFocus(background, img, lab, an, p, mulberry32(3), [syntheticParts()]);
+    expect(out.some((s) => s.intent)).toBe(true);
+    const key = (poly) => JSON.stringify(poly);
+    const result = new Set(out.map((s) => key(s.poly)));
+    const [bx0, by0, bx1, by1] = [BOX[0] * W, BOX[1] * H, BOX[2] * W, BOX[3] * H];
+    const outside = background.filter(({ poly }) => {
+      const [x0, y0, x1, y1] = bbox(poly);
+      return x1 < bx0 || x0 > bx1 || y1 < by0 || y0 > by1;
+    });
+    expect(outside.length).toBeGreaterThan(0);
+    for (const { poly } of outside) expect(result.has(key(poly))).toBe(true);
+    expect(overlayFocus(background, img, lab, an, p, mulberry32(3), [])).toBe(background);
+  });
+
+  it('focusSize never goes below sMin', () => {
+    const { labels, count } = partMap(syntheticParts(), W, H, base.simplify);
+    const size = focusSize(an, labels, count, base.sMin);
+    let lowest = Infinity, inside = 0;
+    for (let i = 0; i < size.length; i++) {
+      if (size[i] < lowest) lowest = size[i];
+      if (labels[i] >= 0) inside++;
+    }
+    expect(inside).toBeGreaterThan(0);
+    expect(lowest).toBeGreaterThanOrEqual(base.sMin);
+    // The bar is thinner than sMin, so its size is sMin exactly.
+    const barPixel = (Y0 + 58) * W + X0 + 50;
+    expect(labels[barPixel]).toBe(BAR_PART);
+    expect(size[barPixel]).toBeCloseTo(base.sMin, 5);
+  });
+});
