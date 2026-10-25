@@ -202,7 +202,6 @@ export const PARAM = Object.fromEntries(ALL_PARAMS.map((q) => [q.key, q]));
 export const DEFAULTS = Object.fromEntries(ALL_PARAMS.map((q) => [q.key, q.def]));
 // Hidden parameters keep their default: they duplicate another control
 // ("Tamaño de los trozos", "Otra versión") or have no clear visible effect.
-export const LAB = typeof location !== 'undefined' && new URLSearchParams(location.search).has('lab');
 export const isVisible = (q, p) => !q.hidden && (q.show ?? any)(p);
 
 export const STAGE_ORDER = ['analysis', 'tessellation', 'color', 'render'];

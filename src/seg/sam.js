@@ -1,5 +1,5 @@
 // "Segment everything" in the browser with SlimSAM.
-// Used by the app's segmentation worker and by lab/segment.html.
+// Used by the app's segmentation worker.
 //
 // SlimSAM embeds the image once; its small decoder then turns each prompt
 // point of a grid into three candidate masks. Candidates are kept when the
@@ -19,7 +19,7 @@ export { partition };
 
 env.allowLocalModels = false;
 const MODEL = 'Xenova/slimsam-77-uniform';
-// Settings; the lab page overrides them from its URL.
+// Segmentation settings.
 export const opts = {
   points: 256, cropPoints: 160, crops: 2, iou: 0.86, stability: 0.9, nms: 0.7,
   skip: true, batch: 32,

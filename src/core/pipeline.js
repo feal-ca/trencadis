@@ -41,7 +41,7 @@ export function createPipeline() {
       guides = next;
       guidesVersion++;
     },
-    // LAB: objects from the segmentation model, { w, h, labels }, or null.
+    // Objects from the segmentation model, { w, h, labels }, or null.
     setSegments(next) {
       segments = next;
       segmentsVersion++;
