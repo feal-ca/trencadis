@@ -343,7 +343,7 @@ export default function Viewer({ engine, view, brush, setTool }) {
 
   return (
     <div
-      className={`viewer chamfer${engine.busy && !showDraw ? ' is-busy' : ''}`}
+      className={`viewer chamfer${engine.busy && !showDraw ? ' is-busy' : ''}${brush ? ` tool-${brush.kind}` : ''}`}
       onDragOver={(e) => { e.preventDefault(); setDropping(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropping(false); }}
       onDrop={onDrop}

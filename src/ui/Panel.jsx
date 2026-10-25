@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { macroKeys, STYLES } from '../core/macros.js';
-import { ALGORITHMS, isVisible, LAB, PARAM } from '../core/params.js';
+import { ALGORITHMS, isVisible, PARAM } from '../core/params.js';
 import { InfoTip, Macro, Param } from './Param.jsx';
 import { ALGORITHM_INFO, ROW_PARAMS, STEPS } from './steps.js';
 import { TOUCH, useMedia } from './useMedia.js';
@@ -11,7 +11,8 @@ function AlgorithmPicker({ engine }) {
   const primary = ['fracture', 'cracks'];
   const shown = open ? ALGORITHMS : ALGORITHMS.filter((a) => primary.includes(a.value) || a.value === current);
   return (
-    <div className="algos">
+    <div className="algos" role="group" aria-label="Tipo de trozos">
+      <span className="group-title">Tipo de trozos</span>
       {shown.map((a) => (
         <button
           key={a.value}
@@ -37,7 +38,6 @@ function RowTools({ engine, tool, setTool, showLines }) {
   const snap = tool?.snap ?? true;
   const radius = tool?.radius ?? 0.02;
   const set = (patch) => setTool({ ...tool, kind: 'draw', mode, snap, radius, ...patch });
-  const erasing = mode === 'erase';
   const touch = useMedia(TOUCH);
   const zoomHelp = touch ? 'Con dos dedos amplías y mueves la imagen.' : 'La rueda cambia el círculo de enganche y Ctrl + rueda amplía.';
   return (
@@ -47,32 +47,16 @@ function RowTools({ engine, tool, setTool, showLines }) {
         <InfoTip label="Hileras" text="Piezas rectangulares en fila a lo largo de una línea, como la espiral negra de los bancos de Gaudí. Ayudan a que se lean contornos, barandillas o letras sin subir el detalle de toda la imagen." />
       </div>
       <div className="brush-row">
-        <button type="button" className={`btn chamfer-s${drawing ? ' btn-dark' : ''}`} aria-pressed={drawing} onClick={() => setTool(drawing ? null : { kind: 'draw', mode: erasing ? 'free' : mode, snap })}>
-          {drawing ? 'Terminar' : 'Dibujar línea'}
+        <button type="button" className={`btn chamfer-s${drawing ? ' btn-dark' : ''}`} aria-pressed={drawing} onClick={() => setTool(drawing ? null : { kind: 'draw', mode, snap })}>
+          {drawing ? 'Terminar' : 'Dibujar hileras'}
         </button>
         <button type="button" className="link" onClick={showLines} disabled={!engine.lines.lines.length}>Ver las líneas</button>
-        <button type="button" className={`btn chamfer-s${drawing && erasing ? ' btn-dark' : ''}`} aria-pressed={drawing && erasing}
-          onClick={() => setTool(drawing && erasing ? null : { ...tool, kind: 'draw', mode: 'erase', radius })} disabled={!engine.lines.lines.length && !(drawing && erasing)}>
-          Borrar líneas
-        </button>
         <button type="button" className="link" onClick={engine.undoGuide} disabled={!engine.guides.length}>Deshacer</button>
         <button type="button" className="link" onClick={engine.clearGuides} disabled={!engine.guides.length}>
           Deshacer todo{engine.guides.length ? ` (${engine.guides.length})` : ''}
         </button>
       </div>
-      {drawing && erasing && (
-        <div className="draw-options">
-          <label className="field-row brush-size">
-            <span>Tamaño del borrador</span>
-            <input type="range" min={4} max={100} value={Math.round(radius * 1000)} onChange={(e) => set({ radius: e.target.value / 1000 })} />
-          </label>
-          <span className="help">
-            Haz clic sobre una línea, o pasa por encima de varias, y se quitan enteras: las tuyas y las automáticas. «Deshacer» las devuelve.
-            {touch ? ' Con dos dedos amplías y mueves la imagen.' : ' La rueda cambia el tamaño del borrador.'}
-          </span>
-        </div>
-      )}
-      {drawing && !erasing && (
+      {drawing && (
         <div className="draw-options">
           <div className="seg" role="group" aria-label="Forma de dibujar">
             <button type="button" className={mode === 'free' ? 'on' : ''} aria-pressed={mode === 'free'} onClick={() => set({ mode: 'free' })}>A mano</button>
@@ -97,7 +81,7 @@ function RowTools({ engine, tool, setTool, showLines }) {
               : touch
                 ? 'Toca cada vértice y pulsa «Terminar línea» bajo la imagen; «Quitar punto» borra el último. ' + zoomHelp
                 : 'Haz clic en cada vértice; doble clic o Intro para terminar, Retroceso quita el último punto y Esc cancela. ' + zoomHelp}
-            {' '}En azul, las líneas que salen de los contornos de la foto; si acabas cerca de una, tu línea se une a ella.
+            {' '}En azul, las líneas que salen de los contornos de la foto; si acabas cerca de una, tu línea se une a ella. Mantén pulsado sobre una línea para quitarla.
           </span>
         </div>
       )}
@@ -111,44 +95,34 @@ function RowTools({ engine, tool, setTool, showLines }) {
   );
 }
 
-// LAB (?lab): a line on how the search for objects goes.
-function segText(seg) {
-  if (seg.phase === 'done') return `${seg.found} objetos en ${(seg.ms / 1000).toFixed(1)} s`;
-  if (seg.phase === 'error') return `Error al buscar objetos: ${seg.message}`;
-  if (seg.phase === 'idle') return 'Sube una foto.';
-  return 'Buscando objetos…';
-}
-
-// LAB (?lab): hileras along the objects a segmentation model finds.
-function SegmentTools({ engine, showLines, tool, setTool }) {
-  const zones = tool?.kind === 'draw' && tool.zones;
+// Picks shapes the segmentation found. The menu that follows each touch
+// (more detail, less detail, remove) lives on the viewer.
+function ShapeTools({ engine, tool, setTool }) {
+  const on = tool?.kind === 'shape';
+  const count = engine.zones.filter((z) => z.mode).length;
   return (
-    <div className="field lab-block">
-      <div className="field-row">
-        <span className="rows-title">Laboratorio: objetos</span>
-        <InfoTip label="Objetos" text="Un modelo de IA (SlimSAM, unos 10 MB la primera vez) busca los objetos de la foto en tu dispositivo. Sus contornos se usan como líneas de hilera, además de las tuyas y las de los contornos fuertes." />
-      </div>
-      <span className="help">{segText(engine.seg)}</span>
+    <div className="field shape-block">
       <div className="brush-row">
-        <button type="button" className={`btn chamfer-s${zones ? ' btn-dark' : ''}`} aria-pressed={!!zones} disabled={!engine.segments}
-          onClick={() => setTool(zones ? { ...tool, zones: false } :{ mode: 'free', snap: true, ...(tool?.kind === 'draw' ? tool : {}), kind: 'draw', zones: true })}>
-          {zones ? 'Ocultar las zonas' : 'Ver las zonas'}
+        <button type="button" className={`btn chamfer-s${on ? ' btn-dark' : ''}`} aria-pressed={on} onClick={() => setTool(on ? null : { kind: 'shape' })}>
+          Tocar una forma
         </button>
-        <button type="button" className="link" onClick={showLines} disabled={!engine.lines.lines.length}>Ver las líneas</button>
+        {engine.seg.phase === 'off' && <button type="button" className="link" onClick={engine.segAccept}>Buscar formas</button>}
       </div>
+      {count > 0 && (
+        <span className="shape-count">
+          {count} {count === 1 ? 'zona' : 'zonas'} ·{' '}
+          <button type="button" className="link" onClick={() => engine.zones.forEach((z) => engine.removeZone(z.id))}>Quitar todas</button>
+        </span>
+      )}
+      <span className="help">Toca un ojo, una cara o un pájaro. Elige más o menos detalle en el menú que aparece.</span>
     </div>
   );
 }
 
-function Controls({ step, engine, brush, setBrush, showLines }) {
-  const lab = LAB && step.id === 'trozos'
-    ? [<SegmentTools key="seg" engine={engine} showLines={showLines} tool={brush} setTool={setBrush} />]
-    : [];
-  return step.simple.map((c, i) => {
+function Controls({ step, engine }) {
+  return step.more.map((c, i) => {
     if (c.macro) return <Macro key={i} id={c.macro} engine={engine} />;
     if (c.param) return <Param key={i} k={c.param} engine={engine} />;
-    if (c.kind === 'algorithm') return <AlgorithmPicker key={i} engine={engine} />;
-    if (c.kind === 'rows') return <RowTools key={i} engine={engine} tool={brush} setTool={setBrush} showLines={showLines} />;
     if (c.kind === 'reseed') {
       return (
         <button key={i} type="button" className="btn chamfer-s reseed" onClick={() => engine.setParam('seed', (engine.params.seed % 999) + 1)}>
@@ -157,18 +131,22 @@ function Controls({ step, engine, brush, setBrush, showLines }) {
       );
     }
     return null;
-  }).concat(lab);
+  });
 }
 
-function Section({ step, index, engine, open, onOpen, peek, onPeek, brush, setBrush, showLines }) {
+// The macros on top of the panel. Their parameters stay out of the advanced
+// lists of the sections; "Ajustar a mano" shows them next to the control.
+const TOP_MACROS = ['size', 'fidelity', 'gloss'];
+
+function Section({ step, index, engine, open, onOpen, peek, onPeek }) {
   const algo = engine.params.algorithm;
   const text = step.id === 'trozos' ? ALGORITHM_INFO[algo].explanation : step.explanation;
   const formula = step.id === 'trozos' ? ALGORITHM_INFO[algo].formula : step.formula;
   const summary = step.id === 'trozos' ? ALGORITHMS.find((a) => a.value === algo).label : step.summary?.(engine.params);
-  // Parameters a simple control on screen already moves only appear through
+  // Parameters a control on top of the panel already moves only appear through
   // its "Ajustar a mano"; the CPU antialiasing only matters without a GPU, and
-  // the size ratio only through the simple size control.
-  const covered = new Set(step.simple.filter((c) => c.macro).flatMap((c) => macroKeys(c.macro, engine.params)));
+  // the size ratio only through the size control.
+  const covered = new Set(TOP_MACROS.flatMap((id) => macroKeys(id, engine.params)));
   const advanced = step.advanced.filter((k) => isVisible(PARAM[k], engine.params) && !covered.has(k) && !(k === 'supersample' && engine.gpu)
     && !(k === 'sizeRatio' && engine.macros.manual.size));
   const canPeek = step.views.length > 0;
@@ -196,11 +174,11 @@ function Section({ step, index, engine, open, onOpen, peek, onPeek, brush, setBr
             {formula && <pre className="formula-pre">{formula}</pre>}
           </details>
           <div className="fields">
-            <Controls step={step} engine={engine} brush={brush} setBrush={setBrush} showLines={showLines} />
+            <Controls step={step} engine={engine} />
           </div>
           {advanced.length > 0 && (
             <details className="more">
-              <summary>Más ajustes</summary>
+              <summary>Ajustes avanzados</summary>
               <div className="fields">
                 {advanced.map((k) => <Param key={k} k={k} engine={engine} />)}
               </div>
@@ -288,24 +266,40 @@ function ResetAll({ engine }) {
 
 // `withExport` false: the phone sheet shows the export row in its own footer.
 export default function Panel({ engine, open, setOpen, peek, setPeek, brush, setBrush, withExport = true }) {
+  const pickTool = (b) => { setBrush(b); if (b) setPeek(null); };
   return (
     <>
       <Styles engine={engine} />
-      {STEPS.map((step, i) => (
-        <Section
-          key={step.id}
-          step={step}
-          index={i}
-          engine={engine}
-          open={open === step.id}
-          onOpen={() => { setOpen(open === step.id ? null : step.id); setBrush(null); }}
-          peek={peek?.step === step.id}
-          onPeek={() => setPeek(peek?.step === step.id ? null : { step: step.id, view: step.views[0].key })}
-          brush={brush}
-          setBrush={(b) => { setBrush(b); if (b) setPeek(null); }}
-          showLines={() => { setBrush(null); setPeek({ step: 'trozos', view: 'structure' }); }}
-        />
-      ))}
+      <AlgorithmPicker engine={engine} />
+      <Macro id="size" engine={engine} />
+      <Macro id="fidelity" engine={engine} />
+      <div className="fields panel-group">
+        <span className="group-title">Colores</span>
+        <Param k="palette" engine={engine} />
+        <Param k="saturation" engine={engine} />
+      </div>
+      <div className="fields panel-group">
+        <span className="group-title">Acabado</span>
+        <Param k="groutColor" engine={engine} />
+        <Macro id="gloss" engine={engine} />
+      </div>
+      <ShapeTools engine={engine} tool={brush} setTool={pickTool} />
+      <RowTools engine={engine} tool={brush} setTool={pickTool} showLines={() => { setBrush(null); setPeek({ step: 'trozos', view: 'structure' }); }} />
+      <details className="more more-all">
+        <summary>Más ajustes</summary>
+        {STEPS.map((step, i) => (
+          <Section
+            key={step.id}
+            step={step}
+            index={i}
+            engine={engine}
+            open={open === step.id}
+            onOpen={() => { setOpen(open === step.id ? null : step.id); setBrush(null); }}
+            peek={peek?.step === step.id}
+            onPeek={() => setPeek(peek?.step === step.id ? null : { step: step.id, view: step.views[0].key })}
+          />
+        ))}
+      </details>
       <ResetAll engine={engine} />
       {withExport && <Export engine={engine} />}
     </>

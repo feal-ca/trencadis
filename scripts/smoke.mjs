@@ -34,9 +34,17 @@ try {
     await ready();
   });
   await step('switch method', async () => {
-    await page.locator('.section-title b', { hasText: /^Trozos$/ }).click();
     await page.locator('.algo', { hasText: 'Grietas' }).click();
     await page.waitForTimeout(300);
+    await ready();
+  });
+  await step('shape tool', async () => {
+    const button = page.locator('button', { hasText: 'Tocar una forma' });
+    await button.click();
+    await page.waitForSelector('.viewer.tool-shape');
+    // Toggle it off again so the next steps see the mosaic.
+    await button.click();
+    await page.waitForSelector('.viewer:not(.tool-shape)');
     await ready();
   });
   await step('upload', async () => {

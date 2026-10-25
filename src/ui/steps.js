@@ -1,5 +1,5 @@
 // The guided flow. Each step names the stage images it can show, the controls
-// of simple mode and the parameters of advanced mode. Copy is plain on purpose.
+// that only show under "Más ajustes" and the advanced parameters. Copy is plain on purpose.
 
 export const ROW_PARAMS = ['rowScale', 'rowLength', 'rowCount', 'rowColor', 'rowContrast', 'rowGrout'];
 
@@ -46,14 +46,14 @@ export const STEPS = [
   {
     id: 'detalle',
     title: 'Detalle',
-    explanation: 'Se mide cuánto detalle hay en cada zona: bordes, texturas, cambios bruscos. Con eso se decide el tamaño de los trozos, pequeños donde hay detalle y grandes en las zonas lisas. También se calcula hacia dónde van los bordes, para que los cortes puedan seguirlos. Con el pincel puedes quitar detalle de zonas que no te interesan o añadirlo donde quieras más trozos.',
-    formula: 'D(x) = |L − desenfoque(L, σ)|, suavizado y normalizado a [0, 1]\nignorar texturas: D × (1 − k + k · (1 − manchas)),  manchas = det(Hessiano) / |∇L|²\npincel: D × (1 + m) si m < 0;  D + (1 − D) · m si m > 0\ns(x) = s_max − (s_max − s_min) · D(x)^γ',
+    explanation: 'Se mide cuánto detalle hay en cada zona: bordes, texturas, cambios bruscos. Con eso se decide el tamaño de los trozos, pequeños donde hay detalle y grandes en las zonas lisas. También se calcula hacia dónde van los bordes, para que los cortes puedan seguirlos. Con «Tocar una forma» puedes quitar detalle de zonas que no te interesan o añadirlo donde quieras más trozos.',
+    formula: 'D(x) = |L − desenfoque(L, σ)|, suavizado y normalizado a [0, 1]\nignorar texturas: D × (1 − k + k · (1 − manchas)),  manchas = det(Hessiano) / |∇L|²\nzonas con menos detalle: D × (1 + m)\ns(x) = s_max − (s_max − s_min) · D(x)^γ',
     views: [
       { key: 'size', label: 'Tamaño de trozo' },
       { key: 'detail', label: 'Detalle' },
       { key: 'orientation', label: 'Dirección de los bordes' },
     ],
-    simple: [{ macro: 'size' }, { param: 'ignoreTexture' }],
+    more: [{ param: 'ignoreTexture' }],
     advanced: ['sizeRatio', 'gamma', 'detailSigma', 'detailSmooth', 'tensorSigma', 'workLong'],
     summary: (p) => `Trozos de ${Math.round(p.sMin)} a ${Math.round(p.sMax)} px`,
   },
@@ -64,7 +64,7 @@ export const STEPS = [
       { key: 'tessellation', label: 'Contornos' },
       { key: 'structure', label: 'Estructura' },
     ],
-    simple: [{ kind: 'algorithm' }, { macro: 'fidelity' }, { kind: 'reseed' }, { kind: 'rows' }],
+    more: [{ kind: 'reseed' }],
     advanced: ['tileSize', 'spacing', 'lloydIters', 'lloydWeighted', 'anisotropy', 'kappa', 'temperature', 'candidates', 'edgeAlign', 'cutJitter', 'angleNoise', 'sliver', 'hybridSpacing', 'hybridCuts', 'hybridCutProb', 'compactness', 'slicIters', 'crackDensity', 'crackGap', 'crackActive', 'crackAngleNoise', 'crackCurl', 'crackFollow', 'minWidth', 'simplify'],
   },
   {
@@ -76,7 +76,7 @@ export const STEPS = [
       { key: 'flat', label: 'Color por trozo' },
       { key: 'palette', label: 'Con paleta y variación' },
     ],
-    simple: [{ param: 'colorMode' }, { param: 'palette' }, { param: 'saturation' }],
+    more: [{ param: 'colorMode' }],
     advanced: ['lightness', 'paletteK', 'paletteMix', 'colorJitter'],
   },
   {
@@ -85,7 +85,7 @@ export const STEPS = [
     explanation: 'Se dibuja el mosaico: el mortero entre trozos, un bisel en cada borde y una inclinación distinta en cada trozo, para que la luz brille de forma desigual, como en el esmalte de verdad. La colocación a mano gira y mueve un poco cada pieza, para que los cortes no queden alineados. Todo esto se calcula en la tarjeta gráfica y responde al momento.',
     formula: 'junta: píxeles a menos de ancho / 2 del borde\ncolocación: giro ≤ 6°, desplazamiento ≤ 1,2 px, encogido ≤ 6 %\nluz = (ambiente + difusa) · color + brillo · (n · h)^dureza   (Blinn-Phong)',
     views: [],
-    simple: [{ param: 'grout' }, { param: 'groutColor' }, { param: 'place' }, { macro: 'gloss' }, { param: 'lightAz' }],
+    more: [{ param: 'grout' }, { param: 'place' }, { param: 'lightAz' }],
     advanced: ['groutShadow', 'bevel', 'bevelStrength', 'lightEl', 'ambient', 'glazeNoise', 'outLong', 'supersample'],
     summary: (p) => `Junta de ${String(p.grout).replace('.', ',')} px`,
   },
