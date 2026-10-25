@@ -42,10 +42,12 @@ try {
     const button = page.locator('button', { hasText: 'Tocar una forma' });
     await button.click();
     await page.waitForSelector('.viewer.tool-shape');
-    // Toggle it off again so the next steps see the mosaic.
+    // The mosaic stays on screen with the tool on.
+    await ready();
+    const count = await status();
+    if (!/trozos/.test(count)) throw new Error(`status with the shape tool on: ${count}`);
     await button.click();
     await page.waitForSelector('.viewer:not(.tool-shape)');
-    await ready();
   });
   await step('upload', async () => {
     await page.locator('input[type=file]').setInputFiles('public/samples/barcas.webp');

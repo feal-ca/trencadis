@@ -52,8 +52,8 @@ export default function App() {
     return () => window.removeEventListener('paste', onPaste);
   }, [engine.loadBlob]);
 
-  // `brush` is the active tool: guide drawing.
-  const view = brush ? brush.kind : peek?.view ?? 'final';
+  // `brush` is the active tool: guide drawing, or picking shapes on the mosaic.
+  const view = brush ? (brush.kind === 'shape' ? 'final' : brush.kind) : peek?.view ?? 'final';
   const peekStep = peek && STEPS.find((s) => s.id === peek.step);
 
   const panel = (

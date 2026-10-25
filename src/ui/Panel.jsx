@@ -32,7 +32,7 @@ function AlgorithmPicker({ engine }) {
   );
 }
 
-function RowTools({ engine, tool, setTool, showLines }) {
+function RowTools({ engine, tool, setTool, showLines, linesShown }) {
   const drawing = tool?.kind === 'draw';
   const mode = tool?.mode ?? 'free';
   const snap = tool?.snap ?? true;
@@ -50,7 +50,7 @@ function RowTools({ engine, tool, setTool, showLines }) {
         <button type="button" className={`btn chamfer-s${drawing ? ' btn-dark' : ''}`} aria-pressed={drawing} onClick={() => setTool(drawing ? null : { kind: 'draw', mode, snap })}>
           {drawing ? 'Terminar' : 'Dibujar hileras'}
         </button>
-        <button type="button" className="link" onClick={showLines} disabled={!engine.lines.lines.length}>Ver las líneas</button>
+        <button type="button" className="link" onClick={showLines} disabled={!engine.lines.lines.length && !linesShown}>{linesShown ? 'Ocultar las líneas' : 'Ver las líneas'}</button>
         <button type="button" className="link" onClick={engine.undoGuide} disabled={!engine.guides.length}>Deshacer</button>
         <button type="button" className="link" onClick={engine.clearGuides} disabled={!engine.guides.length}>
           Deshacer todo{engine.guides.length ? ` (${engine.guides.length})` : ''}
@@ -284,7 +284,8 @@ export default function Panel({ engine, open, setOpen, peek, setPeek, brush, set
         <Macro id="gloss" engine={engine} />
       </div>
       <ShapeTools engine={engine} tool={brush} setTool={pickTool} />
-      <RowTools engine={engine} tool={brush} setTool={pickTool} showLines={() => { setBrush(null); setPeek({ step: 'trozos', view: 'structure' }); }} />
+      <RowTools engine={engine} tool={brush} setTool={pickTool} linesShown={peek?.view === 'structure'}
+        showLines={() => { setBrush(null); setPeek(peek?.view === 'structure' ? null : { step: 'trozos', view: 'structure' }); }} />
       <details className="more more-all">
         <summary>Más ajustes</summary>
         {STEPS.map((step, i) => (
