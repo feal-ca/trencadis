@@ -1,4 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { inside as onRegion, regionAt, regionBox } from './shapeMask.js';
+
+// Whether the normalised point (u, v) falls on a shape's pixels.
+const inside = (z, u, v) => !!z.region && onRegion(z.region, u, v);
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
@@ -43,24 +47,6 @@ function paint(img, at, { line, fill = null, r = 1, dash = 0, box = null }) {
     }
   }
 }
-
-// A touched shape's pixels (`region`: { box, w, h, data }) as a label
-// function over a W x H overlay: 0 inside, -1 outside.
-function regionAt(region, W, H) {
-  const [u0, v0, u1, v1] = region.box;
-  const sx = region.w / ((u1 - u0) * W), sy = region.h / ((v1 - v0) * H);
-  const ox = u0 * W, oy = v0 * H;
-  return (x, y) => {
-    const i = Math.floor((x + 0.5 - ox) * sx), j = Math.floor((y + 0.5 - oy) * sy);
-    return i >= 0 && j >= 0 && i < region.w && j < region.h && region.data[j * region.w + i] ? 0 : -1;
-  };
-}
-const regionBox = (region, W, H, r) => {
-  const [u0, v0, u1, v1] = region.box;
-  return [Math.floor(u0 * W) - r, Math.floor(v0 * H) - r, Math.ceil(u1 * W) + r, Math.ceil(v1 * H) + r];
-};
-// Whether the normalised point (u, v) falls on a shape's pixels.
-const inside = (z, u, v) => !!z.region && regionAt(z.region, 1, 1)(u, v) === 0;
 
 const OCHRE = [227, 163, 59];
 const WHITE = [255, 255, 255, 255];
@@ -190,7 +176,6 @@ export default function ShapeLayer({ engine, api, zoom }) {
       if (current && inside(current, u, v)) {
         setNote({ ...at, text: 'Ajustando la forma…' });
         await engine.refineShape(current.id, u, v);
-        setNote(null);
         return;
       }
       // A shape already set, touched again, is selected to change it.
@@ -199,11 +184,12 @@ export default function ShapeLayer({ engine, api, zoom }) {
       setNote({ ...at, text: 'Buscando la forma…' });
       const id = await engine.pickShape(u, v);
       if (!id) { setNote({ ...at, text: 'Aquí no hay ninguna forma', miss: true }); return; }
-      setNote(null);
       forget(selectedRef.current);
       setSelected(id);
     } finally {
       busy.current = false;
+      // The "looking" note goes even if the engine threw; "nothing here" stays its 1.5 s.
+      setNote((n) => (n?.miss ? n : null));
     }
   };
   api.current = { cancel: () => { tap.current = null; } };

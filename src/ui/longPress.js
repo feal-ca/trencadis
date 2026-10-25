@@ -4,7 +4,8 @@
 
 // `onFire(x, y)` is called once when a single pointer has stayed down for
 // `delay` ms without moving more than `slop` px from where it went down. A
-// second pointer (a pinch) or cancel() calls the press off. up(id) returns
+// second pointer (a pinch) or cancel() calls the press off; cancel() also
+// forgets the pointers down. up(id) returns
 // 'fired' if the press fired, so the layer neither draws nor adds a vertex.
 export function createLongPress({ delay = 450, slop = 6, onFire }) {
   const down = new Set();
@@ -26,8 +27,11 @@ export function createLongPress({ delay = 450, slop = 6, onFire }) {
       press = null;
       return fired ? 'fired' : null;
     },
+    // Forgets every pointer too: after a pinch the viewer keeps the ups
+    // from the layer, so they would otherwise stay down for good.
     cancel() {
-      if (press) press.live = false;
+      down.clear();
+      press = null;
     },
     tick(t) {
       if (!press?.live || press.fired || t - press.t < delay) return;

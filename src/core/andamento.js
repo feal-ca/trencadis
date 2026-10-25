@@ -366,7 +366,15 @@ export function overlayPieces(baseShards, extra, w, h, an, tag = { row: true }, 
 export function eraseGuides(list, w, h, edges = null, p = {}) {
   const L = Math.max(w, h);
   const strokes = (list ?? []).map((g, i) => g.erase && { i, r: g.radius * L, pts: g.erase.map(([u, v]) => [u * w, v * h]) });
-  const touches = (line, s) => line.some(([x, y]) => s.pts.some(([ex, ey]) => (x - ex) ** 2 + (y - ey) ** 2 <= s.r * s.r));
+  // Measured to the line's segments, so a line with far-apart vertices is
+  // touched along its whole length.
+  const near = (line, ex, ey, r) => line.some(([ax, ay], i) => {
+    const [bx, by] = line[i + 1] ?? line[i];
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    const k = l2 ? Math.min(1, Math.max(0, ((ex - ax) * dx + (ey - ay) * dy) / l2)) : 0;
+    return (ex - ax - k * dx) ** 2 + (ey - ay - k * dy) ** 2 <= r * r;
+  });
+  const touches = (line, s) => s.pts.some(([ex, ey]) => near(line, ex, ey, s.r));
   const after = (i) => strokes.filter((s) => s && s.i > i);
   const drawn = (list ?? []).flatMap((g, i) => {
     if (g.erase) return [];

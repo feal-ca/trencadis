@@ -146,8 +146,10 @@ function DrawLayer({ engine, tool, api, onPending }) {
     if (!cv) return;
     const uv = toUV({ clientX: x, clientY: y });
     const hit = nearestLine(engine.lines.lines, uv[0], uv[1], cv.width / cv.height, radius);
+    // With no line near, the press was only a pause: the stroke goes on.
+    if (!hit) return;
     if (mode === 'points') { if (added.current) { added.current = false; back(); } } else stroke.current = null;
-    target.current = hit && { ...hit, uv };
+    target.current = { ...hit, uv };
     redraw();
   };
   const press = useRef(null);
@@ -157,15 +159,14 @@ function DrawLayer({ engine, tool, api, onPending }) {
     clearTimeout(timer.current);
     timer.current = setTimeout(() => press.current.tick(performance.now()), 460);
   };
-  // Letting go after a long press removes the red line; true if the press
-  // had fired, so the pointer up does nothing else.
+  // Letting go after a long press removes the red line; true if it did, so
+  // the pointer up does nothing else.
   const pressUp = (e) => {
     clearTimeout(timer.current);
-    if (press.current.up(e.pointerId) !== 'fired') return false;
     const t = target.current;
     target.current = null;
-    if (t) engine.addGuide({ erase: [t.uv], radius: t.dist + 0.002 });
-    else redraw();
+    if (press.current.up(e.pointerId) !== 'fired' || !t) return false;
+    engine.addGuide({ erase: [t.uv], radius: t.dist + 0.002 });
     return true;
   };
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -233,7 +234,7 @@ function DrawLayer({ engine, tool, api, onPending }) {
     };
   return (
     <>
-      <canvas ref={ref} className="viewer-canvas brush-canvas" onPointerLeave={ring.hide} onContextMenu={(e) => e.preventDefault()} {...handlers} />
+      <canvas ref={ref} className="viewer-canvas brush-canvas" onPointerLeave={ring.hide} onPointerCancel={() => api.current.cancel()} onContextMenu={(e) => e.preventDefault()} {...handlers} />
       {tool?.snap !== false && ring.view(radius)}
     </>
   );

@@ -49,6 +49,18 @@ describe('createLongPress', () => {
     expect(fired).toEqual([]);
   });
 
+  it('a pinch whose ups never arrive does not block the next press', () => {
+    // The viewer swallows the second finger and the ups while pinching and
+    // calls cancel(); the layer never hears up(1).
+    const { lp, fired } = setup();
+    lp.down(1, 100, 50, 0);
+    lp.cancel();
+    lp.down(5, 100, 50, 1000);
+    lp.tick(1500);
+    expect(fired).toEqual([[100, 50]]);
+    expect(lp.up(5)).toBe('fired');
+  });
+
   it('up after firing reports fired', () => {
     const { lp } = setup();
     lp.down(1, 100, 50, 0);

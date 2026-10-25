@@ -312,6 +312,15 @@ describe('erasing lines', () => {
     expect(keep(side)).toBe(true);
   });
 
+  it('touches a line between two far vertices, by its segment', () => {
+    // A long press 5 px from the middle of a 260 px segment, with a radius of
+    // that distance plus a little, as the pencil sends it.
+    const side = [[20, 20], [20, 280]];
+    const press = { erase: [[25 / W, 150 / H]], radius: 5 / 400 + 0.002 };
+    expect(eraseGuides([press], W, H).keep(side)).toBe(false);
+    expect(eraseGuides([{ ...press, radius: 4 / 400 }], W, H).keep(side)).toBe(true);
+  });
+
   it('the hileras skip the erased automatic outline', () => {
     const img = discImage(W, H, 100);
     const p = DEFAULTS;
