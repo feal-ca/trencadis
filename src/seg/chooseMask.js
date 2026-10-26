@@ -1,8 +1,9 @@
 // Which of the model's candidate masks a touch takes, from their predicted
 // IoUs, their areas and the number of prompt points. The confident masks are
 // the non-empty ones within MARGIN of the best IoU among non-empty masks;
-// sorted by area, the first touch takes the smallest and each point added by
-// refining takes the next larger one, stopping at the largest. It depends on
+// sorted by area, the first touch takes the smallest and with n points it
+// takes the n-th smallest, stopping at the largest. The candidates are those
+// of the current prompt, so a refined mask is not always larger. It depends on
 // the points alone, so a zone re-derived from its stored points gets the same
 // mask. Ties in area keep the model's order. Returns the mask's index, or -1
 // when every mask is empty.

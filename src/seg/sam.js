@@ -309,10 +309,11 @@ const PARTS_LONG = 256;
 // The mask the model gives for prompt points [[u, v, 1 | 0]] (normalised; 1
 // is a point on the shape, 0 one off it) on `image`, with its kept encoding
 // (encoded again if the kept one is of another image). Of the three
-// candidate masks it keeps the smallest confident one for one point, and a
-// larger one for each point added (chooseMask.js), so a tap on an iris gives
-// the iris and touching it again grows it to the eye. Returns the region, or
-// null if every mask is empty.
+// candidate masks it keeps the smallest confident one for one point, and for
+// each point added a larger confident mask of the new prompt (chooseMask.js),
+// so a tap on an iris gives the iris and touching it again usually grows it.
+// The new prompt has its own candidates, so the growth is not guaranteed.
+// Returns the region, or null if every mask is empty.
 export async function pickMask(points, image) {
   const enc = embedded?.image === image ? embedded : await embedImage(image);
   const { emb, k } = enc;
