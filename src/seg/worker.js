@@ -17,9 +17,6 @@
 import { RawImage } from '@huggingface/transformers';
 import { embedImage, load, opts, partition, pickMask, segmentEverything, segmentParts } from './sam.js';
 
-opts.crops = 0;
-opts.points = 64;
-
 // The photo of the last coarse pass and the promise of its encoding.
 let photo = null;
 

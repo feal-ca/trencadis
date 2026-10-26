@@ -1,6 +1,5 @@
 // "Segment everything" in the browser with SlimSAM.
 // Used by the app's segmentation worker.
-//
 // SlimSAM embeds the image once; its small decoder then turns each prompt
 // point of a grid into three candidate masks. Candidates are kept when the
 // model is confident (predicted IoU) and the mask is stable (it barely
@@ -20,9 +19,11 @@ export { partition };
 
 env.allowLocalModels = false;
 const MODEL = 'Xenova/slimsam-77-uniform';
-// Segmentation settings.
+// Segmentation settings. The coarse pass asks about 64 prompt points in
+// batches of 32, with no zoomed crops (crops: 0; cropPoints is the points
+// per crop when there are crops).
 export const opts = {
-  points: 256, cropPoints: 160, crops: 2, iou: 0.86, stability: 0.9, nms: 0.7,
+  points: 64, cropPoints: 160, crops: 0, iou: 0.86, stability: 0.9, nms: 0.7,
   skip: true, batch: 32,
   device: typeof navigator !== 'undefined' && 'gpu' in navigator ? 'webgpu' : 'wasm',
   dtype: undefined,
@@ -242,9 +243,9 @@ function nms(cands) {
 
 // Returns { w, h, masks: [{ data: Uint8Array(w*h), area, score }] } at the
 // display size, plus timings. Pass 1: the whole photo, prompt points where
-// the detail is. Pass 2: crops around the most detailed objects found,
-// embedded again at full model resolution so small parts (eyes) get enough
-// pixels. `onBatch(done, total, found)` is called after each batch of the
+// the detail is. Pass 2 (only with opts.crops > 0): crops around the most
+// detailed objects found, embedded again at full model resolution so small
+// parts (eyes) get enough pixels. `onBatch(done, total, found)` is called after each batch of the
 // first pass: prompt points tried, points in all, candidates kept so far.
 export async function segmentEverything(image, outLong = 600, { onBatch } = {}) {
   const T = {};
