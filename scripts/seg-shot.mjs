@@ -70,6 +70,7 @@ try {
   await page.waitForTimeout(500);
   const before = out.replace(/\.png$/, '-before.png');
   await page.screenshot({ path: before, clip: await clip() });
+  const piecesBefore = await page.evaluate(() => window.__trencadis.estimate);
 
   const runs = await page.evaluate(() => window.__runs?.length ?? 0);
   const id = await page.evaluate(([a, b]) => window.__trencadis.pickShape(a, b), [+u, +v]);
@@ -83,6 +84,7 @@ try {
   await page.waitForFunction((n) => (window.__runs?.length ?? 0) > n && !window.__trencadis.busy, runs, { timeout: 120000 });
   await page.waitForTimeout(500);
   await page.screenshot({ path: out, clip: await clip() });
+  console.log('pieces in the whole mosaic', piecesBefore, '->', await page.evaluate(() => window.__trencadis.estimate));
   await page.screenshot({ path: out.replace(/\.png$/, '-full.png') });
   // The segmentation timings that ?debug collects next to the pipeline runs.
   for (const e of await page.evaluate(() => (window.__runs ?? []).filter((r) => r.seg))) console.log('[timing]', JSON.stringify(e));

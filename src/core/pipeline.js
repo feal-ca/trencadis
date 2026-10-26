@@ -31,7 +31,7 @@ export function createPipeline() {
     },
     hasImage: () => !!full,
     // Touched shapes (zones.js), or null. "Less" zones calm the detail map;
-    // "more" zones get pieces with intention.
+    // "more" zones raise it and also get pieces with intention.
     setZones(next) {
       zones = next?.length ? next : null;
       zonesVersion++;
