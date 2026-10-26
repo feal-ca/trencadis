@@ -13,6 +13,7 @@ import { applyMacroDefaults } from '../core/macros.js';
 import { DEFAULTS, toWorkPx } from '../core/params.js';
 import { mulberry32 } from '../core/rng.js';
 import { poissonVariable } from '../core/sampling.js';
+import { chooseMask } from './chooseMask.js';
 import { partition } from './partition.js';
 
 export { partition };
@@ -307,8 +308,10 @@ const PARTS_LONG = 256;
 // The mask the model gives for prompt points [[u, v, 1 | 0]] (normalised; 1
 // is a point on the shape, 0 one off it) on `image`, with its kept encoding
 // (encoded again if the kept one is of another image). Of the three
-// candidate masks it keeps the one with the highest predicted IoU. Returns
-// the region, or null if the mask is empty.
+// candidate masks it keeps the smallest confident one for one point, and a
+// larger one for each point added (chooseMask.js), so a tap on an iris gives
+// the iris and touching it again grows it to the eye. Returns the region, or
+// null if every mask is empty.
 export async function pickMask(points, image) {
   const enc = embedded?.image === image ? embedded : await embedImage(image);
   const { emb, k } = enc;
@@ -316,12 +319,12 @@ export async function pickMask(points, image) {
   const input_labels = new Tensor('int64', points.map((p) => BigInt(p[2] ?? 1)), [1, 1, points.length]);
   const out = await model({ ...emb, input_points, input_labels });
   const [, , nm, H, W] = out.pred_masks.dims;
-  const ious = out.iou_scores.data;
-  let best = 0;
-  for (let m = 1; m < nm; m++) if (ious[m] > ious[best]) best = m;
-  const off = best * H * W, logits = out.pred_masks.data;
-  const { area, box } = maskStats(logits, off, W, enc.mw, enc.mh);
-  if (!area) return null;
+  const logits = out.pred_masks.data;
+  const stats = Array.from({ length: nm }, (_, m) => maskStats(logits, m * H * W, W, enc.mw, enc.mh));
+  const best = chooseMask(out.iou_scores.data, stats.map((st) => st.area), points.length);
+  if (best < 0) return null;
+  const off = best * H * W;
+  const { box } = stats[best];
   const ds = REGION_LONG / Math.max(image.width, image.height);
   const W0 = Math.round(image.width * ds), H0 = Math.round(image.height * ds);
   const up = upsample(logits, off, W, enc, box, [0, 0], ds, W0, H0);
