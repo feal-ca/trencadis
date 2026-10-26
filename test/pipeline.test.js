@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPipeline } from '../src/core/pipeline.js';
-import { ALGORITHMS, DEFAULTS } from '../src/core/params.js';
+import { ALGORITHMS, DEFAULTS, toWorkPx } from '../src/core/params.js';
 import { area } from '../src/core/polygon.js';
 import { syntheticImage } from './helpers.js';
 
@@ -98,10 +98,16 @@ describe('zones', () => {
   });
 
   it('zones survive a change of working resolution and method', async () => {
+    // Intent pieces stay on the zone at every resolution. They may reach past
+    // its box only by the background slivers the overlay lets them absorb
+    // (overlayPieces merges fragments narrower than 0.25 of the size field,
+    // which is at most sMax), plus a pixel of tracing.
     const check = (shards, w, h) => {
       const intent = shards.filter((s) => s.intent);
       expect(intent.length).toBeGreaterThan(0);
-      expect(intent.every((s) => inside(s, w, h))).toBe(true);
+      const m = 0.25 * toWorkPx({ ...DEFAULTS, workLong: w }).sMax + 1;
+      const [x0, y0, x1, y1] = [BOX[0] * w - m, BOX[1] * h - m, BOX[2] * w + m, BOX[3] * h + m];
+      for (const s of intent) for (const [x, y] of s.poly) expect(x >= x0 && x <= x1 && y >= y0 && y <= y1).toBe(true);
     };
     const pipe = createPipeline();
     pipe.setZones([moreZone]);

@@ -20,7 +20,9 @@ El usuario quiere un solo flujo, fuera del `?lab` y con bastantes menos controle
 
 ### Tamaño de las piezas en una forma con más detalle
 
-Decisión mía, a partir de lo que pidió el usuario ("si el segmento es más pequeño, sus tiles también"). Cada parte se parte en piezas cuyo tamaño es el menor de dos: el tamaño normal de trozo en esa zona (el del mapa de detalle, que escala con "Tamaño de los trozos") y el grosor de la propia parte. Así una parte estrecha (un párpado) lleva piezas de su anchura, una parte grande (el blanco del ojo) se divide en varias piezas y el control de tamaño sigue funcionando dentro de las formas refinadas. Una parte más pequeña que una pieza mínima (`sMin`) es una sola pieza.
+Decisión mía, a partir de lo que pidió el usuario ("si el segmento es más pequeño, sus tiles también"). Cada parte se parte en piezas cuyo tamaño es el menor de dos: el tamaño normal de trozo en esa zona (el del mapa de detalle, que escala con "Tamaño de los trozos") y la mitad del grosor de la propia parte. Así una parte siempre se divide en varias piezas a lo ancho, una parte grande (el blanco del ojo) lleva varias piezas y el control de tamaño sigue funcionando dentro de las formas refinadas. El suelo es la mitad de la pieza mínima (`sMin / 2`): dentro de una forma con más detalle las piezas pueden ser más pequeñas que en el resto del mosaico.
+
+Nota del 26 de octubre de 2026: el suelo de la mitad de la pieza mínima y el tope de la mitad del grosor de la parte los decidió el usuario. Antes el suelo era `sMin` y el tope el grosor entero, y en un ojo de Vermeer las piezas salían igual de grandes que sin tocarlo.
 
 ### Lo que puede perderse en la pasada gruesa
 

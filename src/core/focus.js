@@ -1,6 +1,7 @@
 // "Más detalle" on a touched shape: the parts the segmentation model found
-// inside it are filled with the chosen method, with pieces no larger than
-// each part is thick, and every border between parts is a piece edge.
+// inside it are filled with the chosen method, with pieces about half as
+// large as each part is thick (down to sMin / 2), and every border between
+// parts is a piece edge.
 import { overlayPieces } from './andamento.js';
 import { area, rasterize } from './polygon.js';
 import { labelsToPolygons } from './polygonize.js';
@@ -40,15 +41,18 @@ export function partMap(parts, w, h, eps) {
   return { labels, count: parts.count };
 }
 
-// The size field inside the parts: the usual piece size, but no larger than
-// the part is thick, and never below sMin (a part smaller than a minimum
-// piece stays whole). Outside the parts the field is unchanged.
-export function focusSize(an, labels, count, sMin) {
+// The size field inside the parts: about half the part's thickness, so a
+// part always splits into several pieces across, never above the usual
+// piece size there and never below half the minimum piece (sMin / 2, the
+// floor the user chose on 2026-10-26: "more" may go below sMin). Outside the
+// parts the field is unchanged.
+export function focusSize(an, labels, count, p) {
   const widths = regionWidths(labels, an.w, an.h);
+  const floor = p.sMin / 2;
   const size = Float32Array.from(an.size);
   for (let i = 0; i < size.length; i++) {
     const l = labels[i];
-    if (l >= 0) size[i] = Math.max(sMin, Math.min(an.size[i], widths.get(l)));
+    if (l >= 0) size[i] = Math.max(floor, Math.min(an.size[i], widths.get(l) / 2));
   }
   return size;
 }
@@ -84,9 +88,11 @@ export function focusShards(img, lab, an, p, rng, partsList) {
   if (!count || !parts.some((l) => l >= 0)) return null;
 
   const wan = { ...win.fields(an), w, h };
-  const size = focusSize(wan, parts, count, p.sMin);
+  const size = focusSize(wan, parts, count, p);
   const wimg = { w, h, rgb: win.crop(img.rgb, 3) };
-  const { shards } = tessellateBase(wimg, win.crop(lab, 3), { ...wan, size }, p, rng);
+  // The methods follow the size field; only the hybrid's forced cuts stop at
+  // a size of p.sMin, so they get the same lower floor.
+  const { shards } = tessellateBase(wimg, win.crop(lab, 3), { ...wan, size }, { ...p, sMin: p.sMin / 2 }, rng);
   // Every pixel gets the piece it falls in (larger pieces first, so smaller
   // ones stay on top); pixels no polygon reached take a neighbour's.
   const pieces = new Int32Array(w * h).fill(-1);

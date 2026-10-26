@@ -174,19 +174,41 @@ describe('pieces with intention inside a touched shape', () => {
     for (const s of onRows) expect(s.row).toBe(true);
   });
 
-  it('focusSize never goes below sMin', () => {
+  it('focusSize: half the part width, at most the analysis size, at least sMin / 2', () => {
     const { labels, count } = partMap(syntheticParts(), W, H, base.simplify);
-    const size = focusSize(an, labels, count, base.sMin);
+    const widths = regionWidths(labels, W, H);
+    const size = focusSize(an, labels, count, base);
     let lowest = Infinity, inside = 0;
     for (let i = 0; i < size.length; i++) {
+      if (labels[i] < 0) {
+        expect(size[i]).toBe(an.size[i]);
+        continue;
+      }
+      inside++;
       if (size[i] < lowest) lowest = size[i];
-      if (labels[i] >= 0) inside++;
+      expect(size[i]).toBeCloseTo(Math.max(base.sMin / 2, Math.min(an.size[i], widths.get(labels[i]) / 2)), 5);
     }
     expect(inside).toBeGreaterThan(0);
-    expect(lowest).toBeGreaterThanOrEqual(base.sMin);
-    // The bar is thinner than sMin, so its size is sMin exactly.
+    expect(lowest).toBeGreaterThanOrEqual(base.sMin / 2 - 1e-6);
+    // The wide rectangle: pieces about half its thickness, smaller than the
+    // flat photo's analysis size.
+    const rectPixel = (Y0 + 30) * W + X0 + 50;
+    expect(labels[rectPixel]).toBe(RECT_PART);
+    expect(size[rectPixel]).toBeCloseTo(widths.get(RECT_PART) / 2, 5);
+    expect(size[rectPixel]).toBeLessThan(an.size[rectPixel]);
+    // The bar is 4 px thick: half of that is below sMin / 2, so it gets
+    // sMin / 2, below the usual minimum piece.
     const barPixel = (Y0 + 58) * W + X0 + 50;
     expect(labels[barPixel]).toBe(BAR_PART);
-    expect(size[barPixel]).toBeCloseTo(base.sMin, 5);
+    expect(size[barPixel]).toBeCloseTo(base.sMin / 2, 5);
+    expect(size[barPixel]).toBeLessThan(base.sMin);
+  });
+
+  it('focusSize never goes above the analysis size', () => {
+    const { labels, count } = partMap(syntheticParts(), W, H, base.simplify);
+    const small = { ...an, size: new Float32Array(an.size.length).fill(base.sMin) };
+    const size = focusSize(small, labels, count, base);
+    const rectPixel = (Y0 + 30) * W + X0 + 50;
+    expect(size[rectPixel]).toBeCloseTo(base.sMin, 5);
   });
 });
