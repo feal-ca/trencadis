@@ -7,6 +7,7 @@ export default [
   js.configs.recommended,
   {
     files: ['src/**/*.{js,jsx}'],
+    ignores: ['src/worker.js', 'src/seg/**'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
@@ -22,8 +23,9 @@ export default [
     },
   },
   {
+    // Workers have no window or document, so lint catches them.
     files: ['src/worker.js', 'src/seg/**/*.js'],
-    languageOptions: { globals: globals.worker },
+    languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: globals.worker },
   },
   {
     files: ['scripts/**/*.mjs', 'test/**/*.js', '*.config.js'],

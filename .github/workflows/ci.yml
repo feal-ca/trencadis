@@ -5,6 +5,11 @@ on:
   push:
     branches-ignore: ['main']
   workflow_call:
+    inputs:
+      seg_shot:
+        description: Run the segmentation job (deploy.yml turns it off so it does not wait for it)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -43,9 +48,10 @@ jobs:
           npm run smoke
 
   # Runs the segmentation model (downloaded from Hugging Face) on WASM. It
-  # depends on the network and takes a while, so a failure here does not fail
-  # the workflow that deploy.yml waits for.
+  # depends on the network and takes a while, so deploy.yml skips it with
+  # seg_shot: false, and a failure here does not fail the workflow.
   seg-shot:
+    if: ${{ inputs.seg_shot != false }}
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 15

@@ -17,6 +17,8 @@ concurrency:
 jobs:
   test:
     uses: ./.github/workflows/ci.yml
+    with:
+      seg_shot: false
 
   deploy:
     needs: test

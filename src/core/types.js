@@ -35,6 +35,7 @@
  * @typedef {object} Zone
  * @property {string} id
  * @property {'more' | 'less' | null} mode Null until the user picks one.
+ * @property {number[][]} points The touches that made the shape, each [u, v, 1] (normalised).
  * @property {Region | null} region
  * @property {Parts | null} parts Set for the "more" mode once the model has cut the shape.
  */
