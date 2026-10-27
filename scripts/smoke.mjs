@@ -16,7 +16,14 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+// While a request is aborted on purpose, the browser's log of that very
+// request is expected; anything else is still an error.
+let abortedUrl = null;
+page.on('console', (m) => {
+  if (m.type() !== 'error') return;
+  if (abortedUrl && m.location().url.endsWith(abortedUrl)) return;
+  errors.push(m.text());
+});
 
 // The keys of the engine's API (window.__trencadis, on with ?debug): a refactor
 // of useEngine must keep them all. A task that adds one adds it here.
@@ -82,15 +89,16 @@ try {
     if (name !== 'barcas') throw new Error(`photoName after the drop: ${name}`);
   });
   await step('sample offline', async () => {
-    const seen = errors.length;
+    abortedUrl = '/samples/vangogh.webp';
     await page.route('**/samples/vangogh.webp', (r) => r.abort());
     await page.locator('button.link', { hasText: 'Van Gogh' }).click();
     await page.waitForSelector('.status .err');
     const msg = await page.locator('.status .err').textContent();
     if (!/No se ha podido cargar el ejemplo/.test(msg)) throw new Error(`error text: ${msg}`);
+    // Let the browser's console event for the aborted request arrive while it is still ignored.
+    await page.waitForTimeout(300);
+    abortedUrl = null;
     await page.unroute('**/samples/vangogh.webp');
-    // The aborted request is logged by the browser; that one is expected.
-    errors.splice(seen, errors.length, ...errors.slice(seen).filter((m) => !/ERR_FAILED/.test(m)));
   });
   await step('download', async () => {
     const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('.download').click()]);
