@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 
 // Saving and sharing the mosaic at export size.
-export function useExport({ renderer, effectiveRef, images, requestRender }) {
+export function useExport({ photoName, renderer, effectiveRef, images, requestRender }) {
   // The mosaic at export size, as PNG or JPG.
   const exportFile = useCallback(async (format = 'png') => {
     const p = effectiveRef.current;
@@ -17,8 +17,8 @@ export function useExport({ renderer, effectiveRef, images, requestRender }) {
       cv.getContext('2d').putImageData(images.final, 0, 0);
       blob = await new Promise((r) => cv.toBlob(r, type, 0.9));
     }
-    return blob && new File([blob], `trencadis-${p.algorithm}-${p.seed}.${format}`, { type });
-  }, [renderer, images.final, requestRender]);
+    return blob && new File([blob], `trencadis-${photoName}-${p.algorithm}-${p.seed}.${format}`, { type });
+  }, [photoName, renderer, images.final, requestRender]);
 
   const download = useCallback(async (format) => {
     const file = await exportFile(format);

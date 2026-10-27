@@ -4,6 +4,7 @@ import Sheet from './Sheet.jsx';
 import { STEPS } from './steps.js';
 import { SAMPLES, useEngine } from './useEngine.js';
 import { MOBILE, useMedia } from './useMedia.js';
+import { useWindowDrop } from './useWindowDrop.js';
 import Viewer from './Viewer.jsx';
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
   const [peek, setPeek] = useState(null);
   const [brush, setBrush] = useState(null);
   const input = useRef(null);
+  const dropping = useWindowDrop(engine.loadBlob);
   // Phones: the steps live in a bottom sheet and the image fills the rest.
   const mobile = useMedia(MOBILE);
   const [snap, setSnap] = useState('half');
@@ -92,7 +94,7 @@ export default function App() {
       </header>
       <main className="work">
         <div className="work-main">
-          <Viewer engine={engine} view={view} brush={brush} setTool={setBrush} />
+          <Viewer engine={engine} dropping={dropping} view={view} brush={brush} setTool={setBrush} />
           {peekStep && peekStep.views.length > 1 && (
             <div className="views" role="tablist" aria-label="Vista">
               {peekStep.views.map((v) => (

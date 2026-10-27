@@ -1,4 +1,5 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { decodePhoto, isImage, photoName as nameOf } from './photo.js';
 import { useExport } from './engine/useExport.js';
 import { useGuides } from './engine/useGuides.js';
 import { useHistory } from './engine/useHistory.js';
@@ -33,23 +34,27 @@ export function useEngine() {
     state: { params, macros, zones: zones.zones },
     apply: (s) => { settings.restore(s); zones.restoreZones(s.zones); },
   });
+  // The photo's name goes into the downloaded file's name.
+  const [photoName, setPhotoName] = useState('foto');
   const exporter = useExport({
-    renderer: pipeline.renderer, effectiveRef: pipeline.effectiveRef, images, requestRender: pipeline.requestRender,
+    photoName, renderer: pipeline.renderer, effectiveRef: pipeline.effectiveRef, images, requestRender: pipeline.requestRender,
   });
 
   const { setBitmap, setError, resetResults } = pipeline;
   const { session } = segmentation;
   const { resetZones } = zones;
   const { resetGuides } = guides;
-  const loadBlob = useCallback(async (blob) => {
+  const loadBlob = useCallback(async (blob, name) => {
+    if (!isImage(blob)) { setError('Ese archivo no es una imagen. Prueba con un JPG o un PNG.'); return; }
     try {
-      const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+      const bmp = await decodePhoto(blob);
       resetResults();
       resetGuides();
       // Results of the old photo still on their way are dropped from here on.
       session.current.reset();
       photoGen.current++;
       resetZones();
+      setPhotoName(name ?? nameOf(blob));
       setBitmap(bmp);
     } catch {
       // HEIC (iPhone photos) only opens in Safari; elsewhere it fails here.
@@ -61,15 +66,21 @@ export function useEngine() {
   }, []);
 
   const loadSample = useCallback(async (src) => {
-    const res = await fetch(src);
-    await loadBlob(await res.blob());
+    try {
+      const res = await fetch(src);
+      if (!res.ok) throw new Error(res.statusText);
+      const label = SAMPLES.find((s) => s.src === src)?.label ?? '';
+      await loadBlob(await res.blob(), nameOf({ name: label.toLowerCase() }));
+    } catch {
+      setError('No se ha podido cargar el ejemplo. Comprueba la conexión y vuelve a probar.');
+    }
   }, [loadBlob]);
 
   const api = {
     params, setParams: settings.setParams, images, labels: pipeline.labels, busy: pipeline.busy, info,
     error: pipeline.error, gpu: pipeline.gpu, glCanvas: pipeline.glCanvas, mosaicReady: pipeline.mosaicReady,
     autoGrout: settings.autoGrout,
-    hasImage: !!bitmap, bitmap,
+    hasImage: !!bitmap, bitmap, photoName,
     setParam: settings.setParam,
     style: settings.style,
     // Pieces expected at the current size: with a fixed size ratio every piece

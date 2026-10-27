@@ -240,12 +240,11 @@ function DrawLayer({ engine, tool, api, onPending }) {
 // The big image: the WebGL mosaic, a stage image, or the line drawing layer,
 // with the outline of the shapes found and the touched shapes over it, and
 // the shape search's progress at the bottom. A faint Eixample grid sits
-// behind it; dropping a file shows the panot.
-export default function Viewer({ engine, view, brush, setTool }) {
+// behind it; a file dragged over the window shows the panot.
+export default function Viewer({ engine, dropping, view, brush, setTool }) {
   const box = useRef(null);
   const host = useRef(null);
   const [compare, setCompare] = useState(false);
-  const [dropping, setDropping] = useState(false);
   // Zoom: scale k and translation (x, y) of the image inside the box.
   const [zoom, setZoom] = useState({ k: 1, x: 0, y: 0 });
   const zoomRef = useRef(zoom);
@@ -359,19 +358,10 @@ export default function Viewer({ engine, view, brush, setTool }) {
 
   const image = compare ? engine.images.original : engine.images[view];
   const ready = useGl ? engine.mosaicReady : showDraw ? !!engine.images.original : !!image;
-  const onDrop = (e) => {
-    e.preventDefault();
-    setDropping(false);
-    const f = e.dataTransfer.files?.[0];
-    if (f) engine.loadBlob(f);
-  };
 
   return (
     <div
       className={`viewer chamfer${engine.busy && !showDraw ? ' is-busy' : ''}${brush ? ` tool-${brush.kind}` : ''}`}
-      onDragOver={(e) => { e.preventDefault(); setDropping(true); }}
-      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropping(false); }}
-      onDrop={onDrop}
     >
       <svg className="eixample" aria-hidden="true">
         <defs>
