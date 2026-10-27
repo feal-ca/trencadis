@@ -320,11 +320,17 @@ export default function Viewer({ engine, dropping, view, brush, setTool, onShape
   const keys = useRef(null);
   const holding = useRef(false);
   keys.current = (e) => {
+    // Letting go always ends a hold, whatever has the focus by then.
+    if (e.type === 'keyup' && e.key === ' ' && holding.current) {
+      holding.current = false;
+      setCompare(false);
+      return;
+    }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target.closest?.('input, select, textarea, [contenteditable]')) return;
     if (e.key === ' ') {
       // A focused button takes the space bar for itself.
-      if (e.target.closest?.('button, a, summary') || (e.type !== 'keydown' && !holding.current)) return;
+      if (e.type !== 'keydown' || e.target.closest?.('button, a, summary')) return;
       e.preventDefault();
       holding.current = e.type === 'keydown';
       setCompare(holding.current);
@@ -340,7 +346,14 @@ export default function Viewer({ engine, dropping, view, brush, setTool, onShape
     const on = (e) => keys.current(e);
     window.addEventListener('keydown', on);
     window.addEventListener('keyup', on);
-    return () => { window.removeEventListener('keydown', on); window.removeEventListener('keyup', on); };
+    // The key may come up in another window.
+    const off = () => { if (holding.current) { holding.current = false; setCompare(false); } };
+    window.addEventListener('blur', off);
+    return () => {
+      window.removeEventListener('keydown', on);
+      window.removeEventListener('keyup', on);
+      window.removeEventListener('blur', off);
+    };
   }, []);
 
   // Dragging pans when zoomed in: left button or one finger without a tool,

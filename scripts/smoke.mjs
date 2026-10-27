@@ -238,6 +238,47 @@ try {
     await page.locator('select.out-size').selectOption('2000');
     await ready();
   });
+  await step('share encodes in the background', async () => {
+    // A browser that can share files: the file is encoded once the mosaic is
+    // still, without the visible canvas ever leaving its size, and the share
+    // uses it. It must be the pixels a download gives.
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const sp = await ctx.newPage();
+    await sp.addInitScript(() => {
+      navigator.canShare = () => true;
+      navigator.share = async ({ files }) => { window.__shared = files; };
+      window.__sizes = new Set();
+      const sample = () => {
+        const c = document.querySelector('canvas.viewer-canvas');
+        if (c) window.__sizes.add(`${c.width}x${c.height}`);
+        requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    });
+    sp.on('pageerror', (e) => errors.push(e.message));
+    sp.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    try {
+      await sp.goto('http://localhost:5191/?debug');
+      await idle(sp);
+      await sp.waitForFunction(() => window.__shareStats?.background >= 1, null, { timeout: 60000 });
+      const [dl] = await Promise.all([sp.waitForEvent('download', { timeout: 60000 }), sp.locator('.download').click()]);
+      const png = Buffer.concat(await (await dl.createReadStream()).toArray());
+      await sp.evaluate(() => { window.__sizes.clear(); });
+      await sp.getByRole('button', { name: 'Compartir' }).click();
+      await sp.waitForFunction(() => window.__shared, null, { timeout: 60000 });
+      const shared = await sp.evaluate(async () => {
+        const f = window.__shared[0];
+        return { name: f.name, type: f.type, stats: window.__shareStats, bytes: [...new Uint8Array(await f.arrayBuffer())] };
+      });
+      if (shared.stats.cached !== 1 || shared.stats.atShare) throw new Error(`share did not use the cached file: ${JSON.stringify(shared.stats)}`);
+      if (!/^trencadis-.+\.png$/.test(shared.name) || shared.type !== 'image/png') throw new Error(`shared file: ${shared.name} ${shared.type}`);
+      if (!Buffer.from(shared.bytes).equals(png)) throw new Error(`the shared file differs from the download (${shared.bytes.length} vs ${png.length} bytes)`);
+      const sizes = await sp.evaluate(() => [...window.__sizes]);
+      if (sizes.length > 1) throw new Error(`the visible canvas changed size: ${sizes.join(' ')}`);
+    } finally {
+      await ctx.close();
+    }
+  });
   await step('webgl lost', async () => {
     // The status bar overlays the bottom of the canvas, so it is left out.
     const shot = async () => {

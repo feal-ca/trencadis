@@ -62,6 +62,8 @@ export function createRenderer(canvas, { onLost, onRestored } = {}) {
   let targets = null, fieldDirty = true, placed = null;
   // The last arguments of setShards and setColors, to upload again after a restore.
   let lastShards = null, lastColors = null;
+  // What the last render drew (unscaled params and size), to draw it again.
+  let shown = null;
 
   const makeTargets = (W, H) => {
     if (targets) for (const t of [targets.id, targets.a, targets.b]) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fb); }
@@ -165,6 +167,7 @@ export function createRenderer(canvas, { onLost, onRestored } = {}) {
       return [Math.max(1, Math.round(work[0] * s)), Math.max(1, Math.round(work[1] * s))];
     },
     render(p, W, H) {
+      shown = { p, W, H };
       p = toWorkPx(p);
       if (!api.ok || !colorTex) return;
       if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
@@ -199,11 +202,20 @@ export function createRenderer(canvas, { onLost, onRestored } = {}) {
       gl.uniform3f(loc.uLight, Math.cos(el) * Math.cos(az), -Math.cos(el) * Math.sin(az), Math.sin(el));
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     },
-    // Render at export size and encode. The caller re-renders at display size.
-    toBlob(p, long, type = 'image/png', quality) {
+    // The mosaic at export size as ImageData, top row first. The canvas goes
+    // back to what it showed before the task ends, so no frame is painted at
+    // export size.
+    pixels(p, long) {
+      const back = shown;
       const [W, H] = api.sizeFor(long);
       api.render(p, W, H);
-      return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+      const raw = new Uint8ClampedArray(W * H * 4);
+      gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, raw);
+      if (back) api.render(back.p, back.W, back.H);
+      // readPixels starts at the bottom row.
+      const out = new Uint8ClampedArray(raw.length);
+      for (let y = 0; y < H; y++) out.set(raw.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
+      return new ImageData(out, W, H);
     },
   };
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); api.ok = false; onLost?.(); });

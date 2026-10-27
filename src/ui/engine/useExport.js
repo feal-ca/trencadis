@@ -23,7 +23,7 @@ function initialFormat() {
 // Saving and sharing the mosaic at export size. `settings` is what a finished
 // mosaic depends on: the effective parameters, the run's result and whether a
 // run is in flight.
-export function useExport({ photoName, renderer, effectiveRef, requestRender, requestCpuExport, awaitFull, setError, settings }) {
+export function useExport({ photoName, renderer, effectiveRef, requestCpuExport, awaitFull, setError, settings }) {
   const [format, setFormatState] = useState(initialFormat);
   const formatRef = useRef(format);
   formatRef.current = format;
@@ -39,21 +39,17 @@ export function useExport({ photoName, renderer, effectiveRef, requestRender, re
     if (DEBUG) (window.__exports ??= []).push({ runs: window.__runs?.length, draft: !!window.__runs?.at(-1)?.draft });
     const p = effectiveRef.current;
     const type = format === 'jpg' ? 'image/jpeg' : 'image/png';
-    let blob;
-    if (renderer.ok) {
-      blob = await renderer.toBlob(p, p.outLong, type, 0.9);
-      requestRender();
-    } else {
-      // No GPU: the worker draws the download apart from what is on screen.
-      const image = await requestCpuExport();
-      const cv = document.createElement('canvas');
-      cv.width = image.width;
-      cv.height = image.height;
-      cv.getContext('2d').putImageData(image, 0, 0);
-      blob = await new Promise((r) => cv.toBlob(r, type, 0.9));
-    }
+    // On the GPU the pixels are read back in one task, with the screen frame
+    // drawn again before it ends; without one the worker draws the download
+    // apart from what is on screen.
+    const image = renderer.ok ? renderer.pixels(p, p.outLong) : await requestCpuExport();
+    const cv = document.createElement('canvas');
+    cv.width = image.width;
+    cv.height = image.height;
+    cv.getContext('2d').putImageData(image, 0, 0);
+    const blob = await new Promise((r) => cv.toBlob(r, type, 0.9));
     return blob && new File([blob], `trencadis-${photoName}-${p.algorithm}-${p.seed}.${format}`, { type });
-  }, [photoName, renderer, requestRender, requestCpuExport, awaitFull]);
+  }, [photoName, renderer, requestCpuExport, awaitFull]);
 
   // The export can fail without a GPU (the worker may have nothing to draw, or
   // run out of memory); the error goes to the status line like the others.
@@ -66,30 +62,42 @@ export function useExport({ photoName, renderer, effectiveRef, requestRender, re
     }
   }, [exportFile, setError]);
 
-  // The share file, encoded in the background once the mosaic has stood still.
-  // `version` changes with anything it depends on, so a file made for an
-  // earlier version is never used.
-  const version = useRef(0);
-  const prepared = useRef(null);
+  // The share file, encoded in the background once the mosaic has stood still
+  // and the tab is in view. It is keyed by what decides the output (photo,
+  // settings, the run's result, format), so a file made for anything else is
+  // never used and the same key is never encoded twice.
   const { effective, info, busy, mosaicReady } = settings;
+  const infoIds = useRef(new WeakMap());
+  const infoCount = useRef(0);
+  if (info && !infoIds.current.has(info)) infoIds.current.set(info, ++infoCount.current);
+  const key = `${photoName}|${info ? infoIds.current.get(info) : ''}|${format}|${JSON.stringify(effective)}`;
+  const current = useRef({ key, busy });
+  current.current = { key, busy };
+  const prepared = useRef(null);
+  const [hidden, setHidden] = useState(() => typeof document !== 'undefined' && document.hidden);
   useEffect(() => {
-    const mine = ++version.current;
-    prepared.current = null;
-    if (!CAN_SHARE || !mosaicReady || busy) return;
+    const on = () => setHidden(document.hidden);
+    document.addEventListener('visibilitychange', on);
+    return () => document.removeEventListener('visibilitychange', on);
+  }, []);
+  useEffect(() => {
+    if (!CAN_SHARE || !mosaicReady || busy || hidden || prepared.current?.key === key) return;
     let idle = 0;
+    let stale = false;
     const timer = setTimeout(() => {
       idle = whenIdle(async () => {
         try {
           // Never a draft: wait for the full run if one is pending.
           await awaitFull();
-          if (version.current !== mine) return;
+          if (stale) return;
           const file = await exportFile(format);
-          if (file && version.current === mine) prepared.current = { format, file };
+          if (DEBUG) window.__shareStats = { ...window.__shareStats, background: (window.__shareStats?.background ?? 0) + 1 };
+          if (file && !stale) prepared.current = { key, file };
         } catch { /* the share will encode it again and report the failure */ }
       });
     }, SETTLE_MS);
-    return () => { clearTimeout(timer); cancelIdle(idle); };
-  }, [effective, info, busy, mosaicReady, format, exportFile, awaitFull]);
+    return () => { stale = true; clearTimeout(timer); cancelIdle(idle); };
+  }, [key, busy, mosaicReady, hidden, format, exportFile, awaitFull]);
 
   const download = useCallback(async (f = formatRef.current) => {
     const file = await exportOrReport(f);
@@ -106,7 +114,9 @@ export function useExport({ photoName, renderer, effectiveRef, requestRender, re
   // long enough for the tap to stop counting as a user gesture.
   const share = useCallback(async (f = formatRef.current) => {
     // The file made while idle, if it is still for these settings.
-    const ready = prepared.current?.format === f ? prepared.current.file : null;
+    const { key: now, busy: running } = current.current;
+    const ready = !running && f === formatRef.current && prepared.current?.key === now ? prepared.current.file : null;
+    if (DEBUG) window.__shareStats = { ...window.__shareStats, [ready ? 'cached' : 'atShare']: (window.__shareStats?.[ready ? 'cached' : 'atShare'] ?? 0) + 1 };
     const file = ready ?? await exportOrReport(f);
     if (!file) return;
     try {

@@ -46,7 +46,7 @@ export function useEngine() {
   const [photoName, setPhotoName] = useState('foto');
   const exporter = useExport({
     photoName, renderer: pipeline.renderer, effectiveRef: pipeline.effectiveRef,
-    requestRender: pipeline.requestRender, requestCpuExport: pipeline.requestCpuExport, awaitFull: pipeline.awaitFull,
+    requestCpuExport: pipeline.requestCpuExport, awaitFull: pipeline.awaitFull,
     setError: pipeline.setError,
     settings: { effective, info, busy: pipeline.busy, mosaicReady: pipeline.mosaicReady },
   });
