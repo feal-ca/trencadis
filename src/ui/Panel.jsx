@@ -216,6 +216,16 @@ export function Export({ engine }) {
           Compartir
         </button>
       )}
+      <label className="sign">
+        <input type="checkbox" checked={engine.sign} onChange={(e) => engine.setSign(e.target.checked)} />
+        Firmar la imagen
+      </label>
+      {engine.kofi && (
+        <p className="kofi-note">
+          <a className="link" href="https://ko-fi.com/fealca" target="_blank" rel="noopener">¿Te gusta? Invítame a un café</a>
+          <button type="button" className="link" onClick={engine.closeKofi} aria-label="Cerrar">×</button>
+        </p>
+      )}
     </div>
   );
 }

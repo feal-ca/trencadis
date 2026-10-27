@@ -37,10 +37,10 @@ page.on('request', (r) => { if (/(^|\.)(hf\.co|huggingface\.co|jsdelivr\.net)$/.
 
 // The keys of the engine's API (window.__trencadis, on with ?debug): a refactor
 // of useEngine must keep them all. A task that adds one adds it here.
-const API_KEYS = ('addGuide autoGrout bitmap busy canRedo canUndo clearGuides download dragEnd dragStart error estimate format glCanvas gpu '
-  + 'guides hasImage images info isDefault labels lines loadBlob loadSample macros mosaicReady params photoName pickShape redo '
+const API_KEYS = ('addGuide autoGrout bitmap busy canRedo canUndo clearGuides closeKofi download dragEnd dragStart error estimate format glCanvas gpu '
+  + 'guides hasImage images info isDefault kofi labels lines loadBlob loadSample macros mosaicReady params photoName pickShape redo '
   + 'refineShape removeZone reseed resetAll restore seg segAccept segDecline segRetry segments setFormat setMacro setManual setParam '
-  + 'setParams setStyle setViewport setWanted setZoneMode share style undo undoGuide zones').split(' ');
+  + 'setParams setSign setStyle setViewport setWanted setZoneMode share sign style undo undoGuide zones').split(' ');
 
 const idle = (pg) => pg.waitForFunction(
   () => !document.querySelector('.is-busy') && !document.querySelector('.download[disabled]'),
@@ -86,6 +86,13 @@ try {
     await page.waitForFunction(() => window.__trencadis.seg.phase === 'done', null, { timeout: 30000 });
     const seg = await page.evaluate(() => window.__trencadis.seg);
     if (!seg.preset) throw new Error(`seg state of the sample: ${JSON.stringify(seg)}`);
+  });
+  await step('about', async () => {
+    await page.locator('.about-link').click();
+    const text = await page.locator('dialog[open]').textContent();
+    if (!/Hugging Face/.test(text)) throw new Error('the About dialog says nothing about Hugging Face');
+    await page.keyboard.press('Escape');
+    if (await page.locator('dialog[open]').count()) throw new Error('Esc did not close the About dialog');
   });
   await step('switch method', async () => {
     await page.locator('.algo', { hasText: 'Grietas' }).click();
@@ -206,6 +213,28 @@ try {
     if (!dl.suggestedFilename().startsWith('trencadis-barcas-')) throw new Error(`file name: ${dl.suggestedFilename()}`);
     const size = (await (await dl.createReadStream()).toArray()).reduce((s, b) => s + b.length, 0);
     if (size < 50000) throw new Error(`download is only ${size} bytes`);
+  });
+  await step('kofi once', async () => {
+    // The first download of this browser (the drag step's) left the note up; closing it works.
+    await page.waitForSelector('.kofi-note a[href="https://ko-fi.com/fealca"]', { timeout: 5000 });
+    await page.locator('.kofi-note button').click();
+    if (await page.locator('.kofi-note').count()) throw new Error('the Ko-fi note stayed after ×');
+    // A later download, even on a fresh page of the same browser, does not bring it back.
+    // A copy of this browser's storage, as a reload would find it.
+    const reloaded = await browser.newContext({ storageState: await page.context().storageState(), viewport: { width: 1280, height: 800 } });
+    const again = await reloaded.newPage();
+    again.on('pageerror', (e) => errors.push(e.message));
+    again.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    try {
+      await again.goto('http://localhost:5191/?debug');
+      await idle(again);
+      const [dl] = await Promise.all([again.waitForEvent('download', { timeout: 60000 }), again.locator('.download').click()]);
+      await dl.path();
+      await again.waitForTimeout(500);
+      if (await again.locator('.kofi-note').count()) throw new Error('the Ko-fi note came back after a reload');
+    } finally {
+      await reloaded.close();
+    }
   });
   await step('keys', async () => {
     // With the focus on the page, R is another version.

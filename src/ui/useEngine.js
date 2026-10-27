@@ -144,6 +144,7 @@ export function useEngine() {
     loadBlob: pickBlob, loadSample: pickSample, setViewport: pipeline.setViewport, setWanted: pipeline.setWanted,
     dragStart: pipeline.dragStart, dragEnd: pipeline.dragEnd,
     download: exporter.download, share: exporter.share, format: exporter.format, setFormat: exporter.setFormat,
+    sign: exporter.sign, setSign: exporter.setSign, kofi: exporter.kofi, closeKofi: exporter.closeKofi,
     reseed: () => settings.setParams((p) => ({ ...p, seed: (p.seed % 999) + 1 })),
     seg: segmentation.seg, segments: segmentation.segments,
     segAccept: segmentation.segAccept, segDecline: segmentation.segDecline, segRetry: segmentation.segRetry,

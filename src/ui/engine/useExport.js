@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TOUCH } from '../useMedia.js';
+import { drawSignature } from '../signature.js';
 import { DEBUG } from './usePipeline.js';
 
 const FORMAT_STORE = 'trencadis.format.v1';
+const SIGN_STORE = 'trencadis.sign.v1';
+const KOFI_STORE = 'trencadis.kofi.v1';
 // Web Share with files: phones mostly, and Safari/Edge on desktop.
 export const CAN_SHARE = typeof navigator !== 'undefined' && !!navigator.canShare
   && navigator.canShare({ files: [new File([''], 'x.png', { type: 'image/png' })] });
@@ -20,6 +23,16 @@ function initialFormat() {
   return typeof matchMedia !== 'undefined' && matchMedia(TOUCH).matches ? 'jpg' : 'png';
 }
 
+// The signature is on unless the user turned it off.
+function initialSign() {
+  try { return localStorage.getItem(SIGN_STORE) !== 'off'; } catch { return true; }
+}
+
+// The Ko-fi note appears once per browser, after the first successful download or share.
+function kofiSeen() {
+  try { return localStorage.getItem(KOFI_STORE) === 'shown'; } catch { return false; }
+}
+
 // Saving and sharing the mosaic at export size. `settings` is what a finished
 // mosaic depends on: the effective parameters, the run's result and whether a
 // run is in flight.
@@ -32,7 +45,27 @@ export function useExport({ photoName, renderer, effectiveRef, requestCpuExport,
     try { localStorage.setItem(FORMAT_STORE, f); } catch { /* storage unavailable */ }
   }, []);
 
-  // The mosaic at export size, as PNG or JPG.
+  const [sign, setSignState] = useState(initialSign);
+  const signRef = useRef(sign);
+  signRef.current = sign;
+  const setSign = useCallback((on) => {
+    setSignState(on);
+    try { localStorage.setItem(SIGN_STORE, on ? 'on' : 'off'); } catch { /* storage unavailable */ }
+  }, []);
+
+  // The Ko-fi note: shown after the first successful download or share, then never again.
+  const [kofi, setKofi] = useState(false);
+  const thanked = useRef(kofiSeen());
+  const offerKofi = useCallback(() => {
+    if (thanked.current) return;
+    thanked.current = true;
+    try { localStorage.setItem(KOFI_STORE, 'shown'); } catch { /* storage unavailable */ }
+    setKofi(true);
+  }, []);
+  const closeKofi = useCallback(() => setKofi(false), []);
+
+  // The mosaic at export size, as PNG or JPG, signed if asked. This is the one
+  // encode step, so downloads, shares and the cached share file agree.
   const exportFile = useCallback(async (format = formatRef.current) => {
     // The GPU may still hold a draft; a download is always the full mosaic.
     await awaitFull();
@@ -46,7 +79,9 @@ export function useExport({ photoName, renderer, effectiveRef, requestCpuExport,
     const cv = document.createElement('canvas');
     cv.width = image.width;
     cv.height = image.height;
-    cv.getContext('2d').putImageData(image, 0, 0);
+    const ctx = cv.getContext('2d');
+    ctx.putImageData(image, 0, 0);
+    if (signRef.current) await drawSignature(ctx, cv.width, cv.height);
     const blob = await new Promise((r) => cv.toBlob(r, type, 0.9));
     return blob && new File([blob], `trencadis-${photoName}-${p.algorithm}-${p.seed}.${format}`, { type });
   }, [photoName, renderer, requestCpuExport, awaitFull]);
@@ -70,7 +105,7 @@ export function useExport({ photoName, renderer, effectiveRef, requestCpuExport,
   const infoIds = useRef(new WeakMap());
   const infoCount = useRef(0);
   if (info && !infoIds.current.has(info)) infoIds.current.set(info, ++infoCount.current);
-  const key = `${photoName}|${info ? infoIds.current.get(info) : ''}|${format}|${JSON.stringify(effective)}`;
+  const key = `${photoName}|${info ? infoIds.current.get(info) : ''}|${format}|${sign}|${JSON.stringify(effective)}`;
   const current = useRef({ key, busy });
   current.current = { key, busy };
   const prepared = useRef(null);
@@ -107,7 +142,8 @@ export function useExport({ photoName, renderer, effectiveRef, requestCpuExport,
     a.download = file.name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  }, [exportOrReport]);
+    offerKofi();
+  }, [exportOrReport, offerKofi]);
 
   // Web Share with the image as a file (phones: save to Photos, send, post).
   // Falls back to a download if the browser refuses, e.g. when encoding took
@@ -121,10 +157,11 @@ export function useExport({ photoName, renderer, effectiveRef, requestCpuExport,
     if (!file) return;
     try {
       await navigator.share({ files: [file], title: 'Trencadís' });
+      offerKofi();
     } catch (e) {
       if (e.name !== 'AbortError') download(f);
     }
-  }, [exportOrReport, download]);
+  }, [exportOrReport, download, offerKofi]);
 
-  return { download, share, format, setFormat };
+  return { download, share, format, setFormat, sign, setSign, kofi, closeKofi };
 }

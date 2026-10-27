@@ -1,3 +1,4 @@
+import About from './About.jsx';
 import { SAMPLES } from './useEngine.js';
 
 // The samples and the Ko-fi link: in the header on a desktop, at the end of the
@@ -14,6 +15,7 @@ export default function Extras({ engine }) {
           </span>
         ))}
       </span>
+      <About />
       <a className="kofi link" href="https://ko-fi.com/fealca" target="_blank" rel="noopener">Invítame a un café</a>
     </>
   );

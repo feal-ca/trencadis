@@ -344,3 +344,17 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
   position: absolute; z-index: 4; pointer-events: none; padding: 5px 10px; border-radius: 6px; white-space: nowrap;
   background: rgba(20, 18, 16, 0.78); color: #fff; font-size: 0.82rem;
 }
+
+/* About dialog, signature checkbox and the Ko-fi note after the first download. */
+.about-link { white-space: nowrap; }
+.about { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: auto; padding: 16px 20px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--panel); color: var(--ink); font-size: 0.9rem; line-height: 1.45; }
+.about::backdrop { background: rgba(0, 0, 0, 0.45); }
+.about-head { display: flex; align-items: center; justify-content: space-between; }
+.about h2 { margin: 0; font-family: Gloock, Georgia, serif; font-weight: 400; font-size: 1.3rem; }
+.about h3 { margin: 14px 0 4px; font-size: 0.95rem; }
+.about ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 4px; }
+.about a { color: inherit; }
+.about-head .link { font-size: 1.4rem; text-decoration: none; line-height: 1; }
+.export .sign { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--soft); cursor: pointer; }
+.kofi-note { flex-basis: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; font-size: 0.88rem; }
+.kofi-note .link:last-child { font-size: 1.2rem; text-decoration: none; line-height: 1; }

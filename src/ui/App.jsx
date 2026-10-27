@@ -42,7 +42,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat) return;
-      if (e.target.closest?.('input, select, textarea, [contenteditable]')) return;
+      if (e.target.closest?.('input, select, textarea, [contenteditable], dialog')) return;
       const key = e.key.toLowerCase();
       if (key === 'r' && engine.hasImage) engine.reseed();
       else if (key === 'd' && engine.mosaicReady) engine.download(engine.format);
