@@ -3,7 +3,7 @@ import { analyze } from '../src/core/analysis.js';
 import { toLab } from '../src/core/image.js';
 import { DEFAULTS } from '../src/core/params.js';
 import { mulberry32 } from '../src/core/rng.js';
-import { segmentGuides } from '../src/core/seglines.js';
+import { resampleLabels, segmentGuides } from '../src/core/seglines.js';
 import { tessellate } from '../src/core/tessellate.js';
 import { flatImage, syntheticImage } from './helpers.js';
 
@@ -43,5 +43,15 @@ describe('hileras along segmented objects', () => {
     const kind = (seg) => tessellate(img, toLab(img), an, p, mulberry32(1), null, seg).structure.kind;
     expect(kind(discSegments())).toBe('guides');
     expect(kind(null)).not.toBe('guides');
+  });
+});
+
+describe('resampleLabels', () => {
+  it('repeats each label in blocks', () => {
+    const labels = Int32Array.from([0, 1, 2, 3, 4, 5, 6, 7]);
+    const out = resampleLabels({ w: 4, h: 2, labels }, 8, 4);
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 8; x++) expect(out[y * 8 + x]).toBe(labels[(y >> 1) * 4 + (x >> 1)]);
+    }
   });
 });

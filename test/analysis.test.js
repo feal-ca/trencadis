@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyze } from '../src/core/analysis.js';
+import { analyze, analyzeMaps, withSize } from '../src/core/analysis.js';
 import { DEFAULTS } from '../src/core/params.js';
 import { syntheticImage } from './helpers.js';
 
@@ -76,5 +76,15 @@ describe('detail stays finite', () => {
     const mask = { w: 64, h: 48, data: new Float32Array(64 * 48).fill(-1) };
     const an = analyze(img, { ...DEFAULTS, exactAnalysis: true }, mask);
     expect(an.size.every(Number.isFinite)).toBe(true);
+  });
+
+  it('analyze equals withSize of analyzeMaps', () => {
+    // The second image goes through the half-resolution path.
+    for (const img of [syntheticImage(240, 160), syntheticImage(400, 320)]) {
+      const whole = analyze(img, DEFAULTS);
+      const parts = withSize(analyzeMaps(img, DEFAULTS), DEFAULTS);
+      expect(Object.keys(parts).sort()).toEqual(Object.keys(whole).sort());
+      for (const k of ['detail', 'size', 'theta', 'coherence']) expect(parts[k]).toEqual(whole[k]);
+    }
   });
 });

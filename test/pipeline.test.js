@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPipeline } from '../src/core/pipeline.js';
+import { applyMacro } from '../src/core/macros.js';
 import { ALGORITHMS, DEFAULTS, toWorkPx } from '../src/core/params.js';
 import { area } from '../src/core/polygon.js';
 import { syntheticImage } from './helpers.js';
@@ -33,6 +34,30 @@ describe('pipeline', () => {
     const fresh = [];
     await pipe.run({ ...p, grout: 3 }, (name, _v, recomputed) => recomputed && fresh.push(name));
     expect(fresh).toEqual(['render']);
+  });
+});
+
+describe('stage caches', () => {
+  it('a size change keeps the maps', async () => {
+    const pipe = createPipeline();
+    pipe.setImage(syntheticImage());
+    const p = { ...DEFAULTS, outLong: 300, supersample: 1 };
+    const first = await pipe.run(p, () => {});
+    expect(first.timings.maps).toBeDefined();
+    const second = await pipe.run(applyMacro(p, 'size', 0.55), () => {});
+    expect(second.timings.maps).toBeUndefined();
+    expect(second.timings.analysis).toBeDefined();
+  });
+
+  it('going back to a previous method reuses its tessellation', async () => {
+    const pipe = createPipeline();
+    pipe.setImage(syntheticImage());
+    const p = { ...DEFAULTS, outLong: 300, supersample: 1 };
+    const recomputed = {};
+    for (const algorithm of ['fracture', 'voronoi', 'fracture']) {
+      await pipe.run({ ...p, algorithm }, (name, _v, fresh) => { recomputed[name] = fresh; });
+    }
+    expect(recomputed.tessellation).toBe(false);
   });
 });
 

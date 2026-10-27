@@ -2,9 +2,9 @@ import { blur, luminance, normalizePercentile, sobel } from './image.js';
 
 // Stage 0: the maps every tessellation reads.
 //   detail    D(x) in [0,1], local high-frequency energy
-//   size      s(x), desired shard diameter in working pixels
 //   theta     edge tangent direction (radians, mod pi) from the structure tensor
 //   coherence how strongly oriented the neighbourhood is, in [0,1]
+//   size      s(x), desired shard diameter in working pixels (withSize)
 //
 // The maps are smooth (every blur has sigma >= 1), so large images are
 // analysed at half resolution and interpolated back; p.exactAnalysis skips that.
@@ -12,11 +12,16 @@ import { blur, luminance, normalizePercentile, sobel } from './image.js';
 // `mask` is the detail brush, { w, h, data } in [-1, 1] at any resolution:
 // negative removes detail, positive adds it.
 export function analyze(img, p, mask = null) {
+  return withSize(analyzeMaps(img, p, mask), p);
+}
+
+// Everything but `size`, which only needs sMin, sMax and gamma on top.
+export function analyzeMaps(img, p, mask = null) {
   if (!p.exactAnalysis && img.w * img.h > 120000) {
     const half = analyzeLuminance(halveField(luminance(img), img.w, img.h), Math.ceil(img.w / 2), Math.ceil(img.h / 2), {
       ...p, detailSigma: p.detailSigma / 2, detailSmooth: p.detailSmooth / 2, tensorSigma: p.tensorSigma / 2, prefilter: 0.5,
     }, mask);
-    return upsample(half, img.w, img.h, p);
+    return upsample(half, img.w, img.h);
   }
   return analyzeLuminance(luminance(img), img.w, img.h, p, mask);
 }
@@ -98,10 +103,11 @@ function analyzeLuminance(L, w, h, p, mask) {
   }
 
   for (let i = 0; i < w * h; i++) detail[i] = detail[i] > 0 ? (detail[i] < 1 ? detail[i] : 1) : 0;
-  const size = sizeFromDetail(detail, p);
 
-  return { w, h, detail, size, theta, coherence };
+  return { w, h, detail, theta, coherence };
 }
+
+export const withSize = (maps, p) => ({ ...maps, size: sizeFromDetail(maps.detail, p) });
 
 // Detail is clamped to [0, 1] first: blurs built on running sums leave
 // rounding noise like -3e-19, and a negative number to a fractional power
@@ -135,9 +141,9 @@ function halveField(f, w, h) {
 
 // Bilinear upsampling of the half-size maps. The orientation is interpolated
 // as the doubled-angle vector (cos 2θ, sin 2θ), since θ and θ+π are the same.
-function upsample(an, w, h, p) {
+function upsample(an, w, h) {
   const { w: sw, h: sh } = an;
-  const detail = new Float32Array(w * h), size = new Float32Array(w * h);
+  const detail = new Float32Array(w * h);
   const theta = new Float32Array(w * h), coherence = new Float32Array(w * h);
   const c2 = new Float32Array(sw * sh), s2 = new Float32Array(sw * sh);
   for (let i = 0; i < sw * sh; i++) { c2[i] = Math.cos(2 * an.theta[i]); s2[i] = Math.sin(2 * an.theta[i]); }
@@ -158,6 +164,5 @@ function upsample(an, w, h, p) {
       theta[i] = 0.5 * Math.atan2(ss, cc);
     }
   }
-  size.set(sizeFromDetail(detail, p));
-  return { w, h, detail, size, theta, coherence };
+  return { w, h, detail, theta, coherence };
 }

@@ -205,6 +205,9 @@ export const DEFAULTS = Object.fromEntries(ALL_PARAMS.map((q) => [q.key, q.def])
 export const isVisible = (q, p) => !q.hidden && (q.show ?? any)(p);
 
 export const STAGE_ORDER = ['analysis', 'tessellation', 'color', 'render'];
+// The settings the maps (blurs and structure tensor) depend on; the other
+// analysis settings only shape the size field built from them.
+export const MAP_KEYS = ['workLong', 'ignoreTexture', 'detailSigma', 'detailSmooth', 'tensorSigma'];
 export const keysForStage = (stage) => ALL_PARAMS.filter((q) => q.stage === stage).map((q) => q.key);
 
 // Pixel lengths in the settings are pixels of an 800 px wide photo, so the
