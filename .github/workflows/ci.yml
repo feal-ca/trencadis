@@ -51,7 +51,9 @@ jobs:
   # depends on the network and takes a while, so deploy.yml skips it with
   # seg_shot: false, and a failure here does not fail the workflow.
   seg-shot:
-    if: ${{ inputs.seg_shot != false }}
+    # inputs is empty on push and pull_request, and null == false in expressions,
+    # so the comparison goes through toJSON to tell them apart.
+    if: ${{ toJSON(inputs.seg_shot) != 'false' }}
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 15
