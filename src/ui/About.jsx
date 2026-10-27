@@ -8,7 +8,11 @@ export default function About() {
   return (
     <>
       <button type="button" className="link about-link" onClick={() => dialog.current.showModal()}>Acerca de</button>
-      <dialog ref={dialog} className="about" aria-labelledby="about-title" onClick={(e) => { if (e.target === dialog.current) dialog.current.close(); }}>
+      <dialog ref={dialog} className="about" aria-labelledby="about-title" onClick={(e) => {
+        // Only a click outside the box (on the backdrop), not on its padding.
+        const r = dialog.current.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dialog.current.close();
+      }}>
         <div className="about-head">
           <h2 id="about-title">Acerca de Trencadís</h2>
           <button type="button" className="link" onClick={() => dialog.current.close()} aria-label="Cerrar">×</button>
