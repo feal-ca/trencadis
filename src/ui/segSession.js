@@ -31,12 +31,17 @@ export function segOverrides(search) {
 // `post(msg)` sends a message to the worker and `onState(state)` is called
 // with every new state, where
 //   state = { phase: 'idle' | 'ask' | 'off' | 'download' | 'encode' | 'decode' | 'done' | 'error',
-//             done?, total?, found?, ms?, message? }.
+//             done?, total?, found?, ms?, message?, preset? }.
+// A photo can come with its segments already computed (`preset`, from
+// photo()): then the coarse pass never runs, and the model is only loaded
+// (to 'encode' the photo) when a pick or parts request needs it.
 // Messages from the worker go to `receive(msg)`, which returns false for the
 // ones it drops (those of a previous photo).
 export function createSegSession({ post, onState = () => {}, policy = 'auto' }) {
   let state = { phase: 'idle' };
-  let blob = null;
+  // The photo (ImageData), its precomputed segments if any, and whether the
+  // worker has been sent the photo to encode or segment.
+  let image = null, preset = null, started = false;
   // Every message to the worker gets a new id; `current` is the id of the
   // coarse pass of the current photo, and anything older is stale.
   let seq = 0, current = 0;
@@ -49,10 +54,11 @@ export function createSegSession({ post, onState = () => {}, policy = 'auto' }) 
 
   const set = (s) => { state = s; onState(s); };
   const start = () => {
-    if (!blob) return;
+    if (!image) return;
     current = ++seq;
+    started = true;
     set(loaded ? { phase: 'encode', done: 0, total: 1 } : { phase: 'download', done: 0, total: 0 });
-    post({ type: 'coarse', id: current, blob });
+    post({ type: preset ? 'encode' : 'coarse', id: current, image });
   };
   const send = (r) => {
     const id = ++seq;
@@ -67,11 +73,14 @@ export function createSegSession({ post, onState = () => {}, policy = 'auto' }) 
   const request = (type, msg) => new Promise((resolve, reject) => {
     const r = { type, msg, resolve, reject };
     if (state.phase === 'error') start();
-    if (state.phase === 'off' || state.phase === 'ask') {
+    if (state.phase === 'off' || state.phase === 'ask' || (preset && !started && policy !== 'auto')) {
       queued.push(r);
       set({ phase: 'ask' });
-    } else if (!blob) queued.push(r);
-    else send(r);
+    } else if (!image) queued.push(r);
+    else {
+      if (preset && !started) start();
+      send(r);
+    }
   });
   const dropPending = (why) => {
     rejectAll(pending.values(), why);
@@ -83,22 +92,34 @@ export function createSegSession({ post, onState = () => {}, policy = 'auto' }) 
     // Forgets the photo at once, before the next one is ready: from here on
     // every result of the old photo is dropped and its requests rejected.
     reset() {
-      blob = null;
+      image = preset = null;
+      started = false;
       current = ++seq;
       dropPending('photo changed');
       rejectAll(queued, 'photo changed');
       queued = [];
       set({ phase: 'idle' });
     },
-    photo(b) {
+    // `segments` ({ w, h, labels, count }) are those of a sample that brings
+    // them precomputed.
+    photo(img, { segments = null } = {}) {
       dropPending('photo changed');
       // Requests queued after a reset() are for this photo; others are not.
-      if (blob) {
+      if (image) {
         rejectAll(queued, 'photo changed');
         queued = [];
       }
-      blob = b;
-      if (policy === 'auto') {
+      image = img;
+      preset = segments;
+      started = false;
+      if (preset) {
+        // Results of the previous photo are stale even when nothing is sent.
+        current = ++seq;
+        set({ phase: 'done', found: preset.count, preset: true });
+        if (queued.length) {
+          if (policy === 'auto') { start(); queued.forEach(send); queued = []; } else set({ phase: 'ask' });
+        }
+      } else if (policy === 'auto') {
         start();
         const q = queued;
         queued = [];
@@ -112,7 +133,7 @@ export function createSegSession({ post, onState = () => {}, policy = 'auto' }) 
     // The worker died (or never loaded): nothing it had will answer.
     fail(message) {
       dropPending(message);
-      if (blob) set({ phase: 'error', message });
+      if (image) set({ phase: 'error', message });
     },
     accept() {
       policy = 'auto';
@@ -146,6 +167,9 @@ export function createSegSession({ post, onState = () => {}, policy = 'auto' }) 
       if (msg.type === 'progress') {
         if (msg.phase !== 'download') loaded = true;
         set({ phase: msg.phase, done: msg.done, total: msg.total, found: msg.found });
+      } else if (msg.type === 'encoded') {
+        loaded = true;
+        set({ phase: 'done', found: preset?.count, preset: true });
       } else if (msg.type === 'segments') {
         loaded = true;
         set({ phase: 'done', found: msg.count, ms: msg.ms });

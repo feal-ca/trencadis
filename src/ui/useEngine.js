@@ -9,9 +9,9 @@ import { useSettings } from './engine/useSettings.js';
 import { useZones } from './engine/useZones.js';
 
 export const SAMPLES = [
-  { src: './samples/vermeer.webp', label: 'Vermeer' },
-  { src: './samples/vangogh.webp', label: 'Van Gogh' },
-  { src: './samples/barcas.webp', label: 'Barcas' },
+  { src: './samples/vermeer.webp', label: 'Vermeer', seg: './samples/vermeer.seg.png' },
+  { src: './samples/vangogh.webp', label: 'Van Gogh', seg: './samples/vangogh.seg.png' },
+  { src: './samples/barcas.webp', label: 'Barcas', seg: './samples/barcas.seg.png' },
 ];
 
 // Puts the engine's hooks together (src/ui/engine/): settings, the pipeline
@@ -22,7 +22,9 @@ export function useEngine() {
   const { params, macros, effective } = settings;
   const pipeline = usePipeline(effective, settings.setAutoGrout);
   const { worker, bitmap, readable, info, images } = pipeline;
-  const segmentation = useSegmentation({ bitmap, readable, worker, rerun: pipeline.rerun });
+  // Where the segments of the current photo are known already (a sample's).
+  const [preset, setPreset] = useState(null);
+  const segmentation = useSegmentation({ bitmap, readable, preset, worker, rerun: pipeline.rerun });
   // Bumped on every new photo; the touched shapes (and, later, the lines) use
   // it to drop answers that arrive late.
   const photoGen = useRef(0);
@@ -46,7 +48,7 @@ export function useEngine() {
   const { session } = segmentation;
   const { resetZones } = zones;
   const { resetGuides } = guides;
-  const loadBlob = useCallback(async (blob, name) => {
+  const loadBlob = useCallback(async (blob, name, seg = null) => {
     if (!isImage(blob)) { setError('Ese archivo no es una imagen. Prueba con un JPG o un PNG.'); return; }
     try {
       const bmp = await decodePhoto(blob);
@@ -57,6 +59,7 @@ export function useEngine() {
       photoGen.current++;
       resetZones();
       setPhotoName(name ?? nameOf(blob));
+      setPreset(seg);
       setBitmap(bmp);
     } catch {
       // HEIC (iPhone photos) only opens in Safari; elsewhere it fails here.
@@ -71,8 +74,8 @@ export function useEngine() {
     try {
       const res = await fetch(src);
       if (!res.ok) throw new Error(res.statusText);
-      const label = SAMPLES.find((s) => s.src === src)?.label ?? '';
-      await loadBlob(await res.blob(), nameOf({ name: label.toLowerCase() }));
+      const sample = SAMPLES.find((s) => s.src === src);
+      await loadBlob(await res.blob(), nameOf({ name: (sample?.label ?? '').toLowerCase() }), sample?.seg);
     } catch {
       setError('No se ha podido cargar el ejemplo. Comprueba la conexión y vuelve a probar.');
     }

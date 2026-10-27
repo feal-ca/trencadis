@@ -26,28 +26,21 @@ const secs = () => `${((Date.now() - t0) / 1000).toFixed(1)} s`;
 let ok = false;
 try {
   await page.goto('http://localhost:5193/?debug&samDevice=wasm');
+  // The sample comes with its shapes; uploading the photo starts afresh.
+  await page.waitForFunction(() => window.__trencadis?.mosaicReady, null, { timeout: 120000 });
+  await page.evaluate(() => { window.__segStates = []; });
   await page.locator('input[type=file]').setInputFiles(photo);
-  await page.waitForFunction(() => window.__trencadis?.seg.phase !== 'idle' && window.__trencadis.mosaicReady, null, { timeout: 120000 });
-  // Every state of the session, as the engine reports it.
-  await page.evaluate(() => {
-    window.__segLog = [];
-    let last = null;
-    const look = () => {
-      const s = window.__trencadis.seg;
-      if (s !== last) { last = s; window.__segLog.push(s); }
-    };
-    look();
-    setInterval(look, 20);
-  });
-  if (await page.evaluate(() => window.__trencadis.seg.phase === 'ask')) {
+  await page.waitForFunction(() => window.__segStates.some((s) => ['ask', 'download'].includes(s.phase)) && window.__trencadis.mosaicReady, null, { timeout: 120000 });
+  if (await page.evaluate(() => window.__segStates.at(-1).phase === 'ask')) {
     console.log('policy asks; accepting');
     await page.evaluate(() => window.__trencadis.segAccept());
   }
-  await page.waitForFunction(() => ['done', 'error'].includes(window.__trencadis.seg.phase), null, { timeout: 900000 });
-  const log = await page.evaluate(() => window.__segLog);
+  await page.waitForFunction(() => ['done', 'error'].includes(window.__segStates.at(-1).phase), null, { timeout: 900000 });
+  // Every state of the session, as the engine reports it (not as it was drawn).
+  const log = await page.evaluate(() => window.__segStates);
+  const end = log.at(-1);
   const counts = {};
   for (const s of log) counts[s.phase] = (counts[s.phase] ?? 0) + 1;
-  const end = log.at(-1);
   console.log(`seg ${end.phase} at ${secs()}:`, JSON.stringify(end), 'states per phase', JSON.stringify(counts));
   const lastDecode = log.filter((s) => s.phase === 'decode').at(-1);
   if (lastDecode) console.log('last decode progress', lastDecode.done, '/', lastDecode.total);

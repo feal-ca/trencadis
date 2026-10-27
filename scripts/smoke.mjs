@@ -14,6 +14,10 @@ const browser = await chromium.launch({
   args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+// This Chromium exposes navigator.gpu even without a GPU, which would make
+// segmentation start by itself on an uploaded photo; hiding it gives the
+// 'ask' policy of browsers without WebGPU.
+await page.addInitScript(() => { delete Navigator.prototype.gpu; });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 // While a request is aborted on purpose, the browser's log of that very
@@ -24,6 +28,12 @@ page.on('console', (m) => {
   if (abortedUrl && m.location().url.endsWith(abortedUrl)) return;
   errors.push(m.text());
 });
+
+// Requests to the model's hosts (Hugging Face) and the ONNX runtime's
+// (jsDelivr): the sample and a photo uploaded here, with segmentation asking
+// first (no WebGPU in headless), must make none.
+const modelRequests = [];
+page.on('request', (r) => { if (/(^|\.)(hf\.co|huggingface\.co|jsdelivr\.net)$/.test(new URL(r.url()).hostname)) modelRequests.push(r.url()); });
 
 // The keys of the engine's API (window.__trencadis, on with ?debug): a refactor
 // of useEngine must keep them all. A task that adds one adds it here.
@@ -52,6 +62,10 @@ try {
     if (JSON.stringify(keys) !== JSON.stringify(API_KEYS)) {
       throw new Error(`engine API changed: ${keys.join(' ')}`);
     }
+    // The first sample comes with its shapes: done, without the model.
+    await page.waitForFunction(() => window.__trencadis.seg.phase === 'done', null, { timeout: 30000 });
+    const seg = await page.evaluate(() => window.__trencadis.seg);
+    if (!seg.preset) throw new Error(`seg state of the sample: ${JSON.stringify(seg)}`);
   });
   await step('switch method', async () => {
     await page.locator('.algo', { hasText: 'Grietas' }).click();
@@ -73,6 +87,7 @@ try {
     await page.locator('input[type=file]').setInputFiles('public/samples/barcas.webp');
     await page.waitForTimeout(300);
     await ready();
+    if (modelRequests.length) throw new Error(`requests to the model before any pick: ${modelRequests.join(' ')}`);
   });
   await step('drop on the panel', async () => {
     const b64 = readFileSync('public/samples/barcas.webp').toString('base64');

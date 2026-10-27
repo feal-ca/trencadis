@@ -3,16 +3,21 @@
 // crops, enough for the outlines of the big objects. Then the touches on the
 // photo: a shape from the kept encoding, and the parts inside a shape.
 //
-// In:  { type: 'coarse', id, blob, device?, batch?, points? }
+// In:  { type: 'coarse', id, image, device?, batch?, points? }
+//      { type: 'encode', id, image, device? }
 //      { type: 'pick', id, points: [[u, v, 1 | 0]] }
 //      { type: 'parts', id, region }
 // Out: { type: 'progress', id, phase: 'download' | 'encode' | 'decode', done, total, found? }
+//      { type: 'encoded', id }
 //      { type: 'segments', id, segments: { w, h, labels }, count, ms }
 //      { type: 'shape', id, region } (region null where there is no shape)
 //      { type: 'parts', id, parts }
 //      { type: 'log', id, text }
 //      { type: 'timing', id, entry: { seg: 'download' | 'encode' | 'decode' | 'pick' | 'parts', ms, device, dtype, batch, points, photo: { id, w, h }, found? (decode), waited? (pick, parts) } }
 //      { type: 'error', id, message }
+// `image` is an ImageData, the photo at a long side of up to 1024 px. `encode`
+// is the coarse pass without the segmenting, for photos whose segments are
+// already known: it loads the model and encodes the photo for the touches.
 // A pick or parts request waits for the encoding of the photo in flight.
 import { RawImage } from '@huggingface/transformers';
 import { embedImage, load, opts, partition, pickMask, segmentEverything, segmentParts } from './sam.js';
@@ -45,12 +50,14 @@ function progress(id) {
   };
 }
 
-async function coarse({ id, blob, device, batch, points }) {
+// Loads the model and encodes the photo, reporting download and encode
+// progress. Returns the pass `current` (the photo for the touches), or null
+// when a newer photo replaced this one on the way.
+async function loadAndEncode({ id, image, device, batch, points }, report) {
   if (device) opts.device = device;
   if (batch) opts.batch = batch;
   if (points) opts.points = points;
   const t = performance.now();
-  const report = progress(id);
   const current = { id, image: null, encoded: null };
   let ready;
   current.encoded = new Promise((resolve, reject) => { ready = { resolve, reject }; });
@@ -62,7 +69,7 @@ async function coarse({ id, blob, device, batch, points }) {
     await load(({ loaded, total }) => { size = total; report('download', loaded, total); }, (text) => self.postMessage({ type: 'log', id, text }));
     if (size) report('download', size, size);
     const downloadMs = performance.now() - t;
-    current.image = await RawImage.fromBlob(blob);
+    current.image = new RawImage(image.data, image.width, image.height, 4).rgb();
     // A newer photo arrived while the model loaded: stop before encoding.
     if (photo !== current) throw new Error('photo changed');
     timing(current, id, 'download', downloadMs);
@@ -73,6 +80,19 @@ async function coarse({ id, blob, device, batch, points }) {
     timing(current, id, 'encode', performance.now() - tEncode);
     ready.resolve(current.image);
     report('encode', 1, 1);
+    return current;
+  } catch (e) {
+    ready.reject(e);
+    throw e;
+  }
+}
+
+async function coarse(msg) {
+  const { id } = msg;
+  const t = performance.now();
+  const report = progress(id);
+  try {
+    const current = await loadAndEncode(msg, report);
     // A newer photo stops this pass at its next batch.
     const tDecode = performance.now();
     const res = await segmentEverything(current.image, 512, { onBatch: (done, total, found) => {
@@ -85,13 +105,22 @@ async function coarse({ id, blob, device, batch, points }) {
       type: 'segments', id, segments: { w: res.w, h: res.h, labels }, count: res.masks.length, ms: performance.now() - t,
     }, [labels.buffer]);
   } catch (e) {
-    ready.reject(e);
     self.postMessage({ type: 'error', id, message: e?.message || String(e) });
+  }
+}
+
+async function encodeOnly(msg) {
+  try {
+    await loadAndEncode(msg, progress(msg.id));
+    self.postMessage({ type: 'encoded', id: msg.id });
+  } catch (e) {
+    self.postMessage({ type: 'error', id: msg.id, message: e?.message || String(e) });
   }
 }
 
 self.onmessage = async ({ data }) => {
   if (data.type === 'coarse') return coarse(data);
+  if (data.type === 'encode') return encodeOnly(data);
   const { id } = data;
   const t = performance.now();
   try {

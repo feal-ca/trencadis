@@ -35,7 +35,7 @@ describe('segmentation session', () => {
   it('starts the coarse pass on a photo when the policy is auto', () => {
     const { s, sent } = setup('auto');
     s.photo('a');
-    expect(sent).toEqual([{ type: 'coarse', id: expect.any(Number), blob: 'a' }]);
+    expect(sent).toEqual([{ type: 'coarse', id: expect.any(Number), image: 'a' }]);
     expect(s.state.phase).toBe('download');
   });
 
@@ -138,7 +138,7 @@ describe('segmentation session', () => {
     const coarse = sent.filter((m) => m.type === 'coarse');
     expect(coarse).toHaveLength(2);
     expect(coarse[1].id).toBeGreaterThan(first);
-    expect(coarse[1].blob).toBe('a');
+    expect(coarse[1].image).toBe('a');
     expect(s.state.phase).not.toBe('error');
   });
 
@@ -171,7 +171,7 @@ describe('segmentation session across photos and crashes', () => {
     expect(sent.length).toBe(before);
     s.photo('b');
     expect(sent.slice(before).map((m) => m.type)).toEqual(['coarse', 'pick']);
-    expect(last('coarse').blob).toBe('b');
+    expect(last('coarse').image).toBe('b');
     s.receive({ type: 'shape', id: last('pick').id, region });
     await expect(shape).resolves.toBe(region);
   });
@@ -203,10 +203,58 @@ describe('segmentation session across photos and crashes', () => {
     const before = sent.length;
     const shape = s.pick([[0.5, 0.5, 1]]);
     expect(sent.slice(before).map((m) => m.type)).toEqual(['coarse', 'pick']);
-    expect(last('coarse').blob).toBe('a');
+    expect(last('coarse').image).toBe('a');
     expect(s.state.phase).toBe('download');
     s.receive({ type: 'shape', id: last('pick').id, region });
     await expect(shape).resolves.toBe(region);
+  });
+});
+
+describe('segmentation session with precomputed shapes', () => {
+  const segments = { w: 2, h: 2, labels: new Int32Array([0, 0, 1, -1]), count: 2 };
+
+  it('a photo with preset segments posts nothing and is done', () => {
+    const { s, sent } = setup('auto');
+    s.photo('a', { segments });
+    expect(sent).toEqual([]);
+    expect(s.state).toEqual({ phase: 'done', found: 2, preset: true });
+  });
+
+  it('a pick on a preset photo with policy auto posts encode and then the pick', async () => {
+    const { s, sent, last } = setup('auto');
+    s.photo('a', { segments });
+    const shape = s.pick([[0.5, 0.5, 1]]);
+    expect(sent.map((m) => m.type)).toEqual(['encode', 'pick']);
+    expect(sent[0]).toMatchObject({ image: 'a' });
+    s.receive({ type: 'shape', id: last('pick').id, region });
+    await expect(shape).resolves.toBe(region);
+    // A second pick does not encode again.
+    s.pick([[0.4, 0.4, 1]]);
+    expect(sent.map((m) => m.type)).toEqual(['encode', 'pick', 'pick']);
+  });
+
+  it('a pick on a preset photo with policy ask asks first, and after accept posts encode and the pick', async () => {
+    const { s, sent, last } = setup('ask');
+    s.photo('a', { segments });
+    expect(s.state.phase).toBe('done');
+    const shape = s.pick([[0.5, 0.5, 1]]);
+    expect(s.state.phase).toBe('ask');
+    expect(sent).toEqual([]);
+    s.accept();
+    expect(sent.map((m) => m.type)).toEqual(['encode', 'pick']);
+    s.receive({ type: 'shape', id: last('pick').id, region });
+    await expect(shape).resolves.toBe(region);
+  });
+
+  it('encoded brings back the done state of the preset', () => {
+    const { s, last } = setup('auto');
+    s.photo('a', { segments });
+    s.pick([[0.5, 0.5, 1]]);
+    const id = last('encode').id;
+    s.receive({ type: 'progress', id, phase: 'download', done: 1, total: 4 });
+    expect(s.state.phase).toBe('download');
+    expect(s.receive({ type: 'encoded', id })).toBe(true);
+    expect(s.state).toEqual({ phase: 'done', found: 2, preset: true });
   });
 });
 
