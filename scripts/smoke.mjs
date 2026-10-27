@@ -17,6 +17,13 @@ const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 
+// The keys of the engine's API (window.__trencadis, on with ?debug): a refactor
+// of useEngine must keep them all. A task that adds one adds it here.
+const API_KEYS = ('addGuide autoGrout bitmap busy canRedo canUndo clearGuides download error estimate glCanvas gpu '
+  + 'guides hasImage images info isDefault labels lines loadBlob loadSample macros mosaicReady params pickShape redo '
+  + 'refineShape removeZone resetAll restore seg segAccept segDecline segRetry segments setMacro setManual setParam '
+  + 'setParams setStyle setViewport setWanted setZoneMode share style undo undoGuide zones').split(' ');
+
 const ready = () => page.waitForFunction(
   () => !document.querySelector('.is-busy') && !document.querySelector('.download[disabled]'),
   null, { timeout: 120000 },
@@ -30,8 +37,12 @@ const step = async (name, fn) => {
 
 try {
   await step('load', async () => {
-    await page.goto('http://localhost:5191/');
+    await page.goto('http://localhost:5191/?debug');
     await ready();
+    const keys = await page.evaluate(() => Object.keys(window.__trencadis).sort());
+    if (JSON.stringify(keys) !== JSON.stringify(API_KEYS)) {
+      throw new Error(`engine API changed: ${keys.join(' ')}`);
+    }
   });
   await step('switch method', async () => {
     await page.locator('.algo', { hasText: 'Grietas' }).click();
