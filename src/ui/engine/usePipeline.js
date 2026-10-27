@@ -100,6 +100,8 @@ export function usePipeline(effective, setAutoGrout) {
   // Exports waiting for the worker, by id.
   const exports = useRef(new Map());
   const exportId = useRef(0);
+  // The newest shards and colours from the worker, whether or not the GPU is up.
+  const latest = useRef({ shards: null, colors: null });
   // The long side the CPU render was last asked to draw at.
   const sentLong = useRef(0);
 
@@ -123,11 +125,16 @@ export function usePipeline(effective, setAutoGrout) {
           return next;
         });
         setLabels((prev) => ({ ...prev, ...Object.fromEntries(data.images.map((v) => [v.key, v.label])) }));
-        if (renderer.ok && data.shards) {
-          renderer.setShards(data.shards.map((poly, i) => ({ poly, row: data.rows?.[i] })), data.w, data.h, effectiveRef.current.seed);
+        // Kept even while the context is lost, so a restore uploads the latest.
+        if (data.shards) {
+          latest.current.shards = { list: data.shards.map((poly, i) => ({ poly, row: data.rows?.[i] })), w: data.w, h: data.h };
+          if (renderer.ok) renderer.setShards(latest.current.shards.list, data.w, data.h, effectiveRef.current.seed);
+        }
+        if (data.colors) {
+          latest.current.colors = data.colors;
+          if (renderer.ok) renderer.setColors(data.colors, effectiveRef.current.seed);
         }
         if (renderer.ok && data.colors) {
-          renderer.setColors(data.colors, effectiveRef.current.seed);
           setMosaicReady(true);
           requestRender();
         }
@@ -216,16 +223,23 @@ export function usePipeline(effective, setAutoGrout) {
   onLost.current = () => {
     setGpu(false);
     setMosaicReady(false);
-    rerun();
+    if (bitmap && readable) rerun();
   };
   onRestored.current = () => {
+    const { shards, colors } = latest.current;
+    const seed = effectiveRef.current.seed;
+    if (shards) renderer.setShards(shards.list, shards.w, shards.h, seed);
+    if (colors) renderer.setColors(colors, seed);
     setGpu(true);
+    // Without a mosaic yet, the next run fills the renderer.
+    setMosaicReady(!!(shards && colors));
     requestRender();
   };
 
   // A new photo starts without the results of the old one.
   const resetResults = useCallback(() => {
     setImages({});
+    latest.current = { shards: null, colors: null };
     setInfo(null);
     setMosaicReady(false);
   }, []);

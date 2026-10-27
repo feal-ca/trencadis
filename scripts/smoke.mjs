@@ -108,22 +108,61 @@ try {
     if (size < 50000) throw new Error(`download is only ${size} bytes`);
   });
   await step('webgl lost', async () => {
+    // The status bar overlays the bottom of the canvas, so it is left out.
+    const shot = async () => {
+      const box = await page.locator('.viewer-host canvas').boundingBox();
+      return page.screenshot({ clip: { x: box.x, y: box.y, width: box.width, height: box.height - 100 } });
+    };
+    // Shots until two in a row agree, so a redraw still under way is not compared.
+    const settled = async () => {
+      let prev = await shot();
+      for (let i = 0; i < 20; i++) {
+        await page.waitForTimeout(250);
+        const next = await shot();
+        if (next.equals(prev)) return next;
+        prev = next;
+      }
+      throw new Error('the canvas never settled');
+    };
+    const gpu = (on) => page.waitForFunction((v) => window.__trencadis.gpu === v, on, { timeout: 30000 });
     await page.evaluate(() => {
       const gl = document.querySelector('.viewer-host canvas').getContext('webgl2');
       window.__lose = gl.getExtension('WEBGL_lose_context');
       window.__lose.loseContext();
     });
-    await page.waitForTimeout(300);
+    await gpu(false);
     await ready();
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.locator('.download').click()]);
     const size = (await (await dl.createReadStream()).toArray()).reduce((s, b) => s + b.length, 0);
     if (size < 50000) throw new Error(`download after losing the context is only ${size} bytes`);
+    // Change the tessellation while on the CPU; the GPU must show it after the restore.
+    const runs = await page.evaluate(() => window.__runs.length);
+    const before = await page.evaluate(() => window.__trencadis.params.algorithm);
+    const [toName, toKey, fromName, fromKey] = before === 'fracture'
+      ? ['Grietas', 'cracks', 'Cortes rectos', 'fracture']
+      : ['Cortes rectos', 'fracture', 'Grietas', 'cracks'];
+    await page.locator('.algo', { hasText: toName }).click();
+    await page.waitForFunction((n) => window.__runs.length > n, runs, { timeout: 60000 });
+    await ready();
     await page.evaluate(() => window.__lose.restoreContext());
+    await gpu(true);
     await page.waitForSelector('.viewer-host canvas');
-    await page.waitForTimeout(300);
     await ready();
     const count = await status();
     if (!/trozos/.test(count)) throw new Error(`status after restoring the context: ${count}`);
+    const after = await settled();
+    // A blank canvas compresses to a few hundred bytes.
+    if (after.length < 5000) throw new Error(`restored canvas looks blank (${after.length} bytes)`);
+    // The same method drawn again with the GPU up is the reference.
+    const pick = async (name, algorithm) => {
+      await page.locator('.algo', { hasText: name }).click();
+      await page.waitForFunction((a) => window.__trencadis.params.algorithm === a, algorithm);
+      await page.waitForTimeout(300);
+      await ready();
+    };
+    await pick(fromName, fromKey);
+    await pick(toName, toKey);
+    if (!after.equals(await settled())) throw new Error('restored canvas does not show the mosaic made while on the CPU');
   });
   await step('no webgl', async () => {
     // Its own page, so the main one keeps its state.
