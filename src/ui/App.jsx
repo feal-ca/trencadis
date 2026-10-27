@@ -37,6 +37,22 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // R: another version; D: download in the current format. Not while typing
+  // or choosing in a control, and not with a modifier.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat) return;
+      if (e.target.closest?.('input, select, textarea, [contenteditable]')) return;
+      const key = e.key.toLowerCase();
+      if (key === 'r' && engine.hasImage) engine.reseed();
+      else if (key === 'd' && engine.mosaicReady) engine.download(engine.format);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
   // Ctrl+V / Cmd+V with an image on the clipboard loads it.
   useEffect(() => {
     const onPaste = (e) => {

@@ -194,7 +194,7 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
   .extras { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; padding: 6px 4px 10px; }
   .extras .kofi { margin-left: 0; }
   .work { grid-template-columns: 1fr; padding: 0 8px calc(var(--sheet-h, 0px) + 8px); }
-  .viewer-bar { padding: 0 10px 8px; }
+  .viewer-bar { padding: 0 10px 8px; gap: 8px; font-size: 0.82rem; }
 }
 .sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; gap: 0; padding-right: 0;
@@ -219,6 +219,10 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
 .point-actions { display: flex; align-items: center; gap: 12px; }
 .point-actions .btn { padding: 5px 12px; }
 .viewer-bar { flex-wrap: wrap; }
+/* One line of constant height: the status gives way to the buttons. */
+.viewer-bar > .status { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewer-bar .link { white-space: nowrap; }
+.zoom-buttons { display: flex; gap: 10px; }
 /* The image takes every touch: one finger draws or pans, two pinch. */
 .viewer-box { touch-action: none; }
 .hold { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }

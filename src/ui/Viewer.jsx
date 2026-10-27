@@ -3,6 +3,8 @@ import { createLongPress, nearestLine } from './longPress.js';
 import { clamp, pointerToUV } from './geometry.js';
 import SegStatus from './SegStatus.jsx';
 import ShapeLayer, { SegOutline } from './ShapeLayer.jsx';
+import { TOUCH, useMedia } from './useMedia.js';
+import { zoomAt } from './zoom.js';
 
 function ImageCanvas({ image, className }) {
   const ref = useRef(null);
@@ -11,7 +13,9 @@ function ImageCanvas({ image, className }) {
     if (!cv || !image) return;
     cv.width = image.width;
     cv.height = image.height;
-    cv.getContext('2d').putImageData(image, 0, 0);
+    // A stage image is ImageData; the original photo is a decoded bitmap.
+    if (image instanceof ImageData) cv.getContext('2d').putImageData(image, 0, 0);
+    else cv.getContext('2d').drawImage(image, 0, 0);
   }, [image]);
   return <canvas ref={ref} className={className} />;
 }
@@ -299,16 +303,45 @@ export default function Viewer({ engine, dropping, view, brush, setTool, onShape
         return;
       }
       const r = el.getBoundingClientRect();
-      const px = e.clientX - r.left, py = e.clientY - r.top;
-      const { k, x, y } = zoomRef.current;
-      const k2 = clamp(k * f, 1, 8);
-      // Keep the point under the pointer where it is.
-      const nx = px - ((px - x) * k2) / k, ny = py - ((py - y) * k2) / k;
-      setZoom({ k: k2, x: clamp(nx, r.width * (1 - k2), 0), y: clamp(ny, r.height * (1 - k2), 0) });
+      setZoom(zoomAt(zoomRef.current, f, e.clientX - r.left, e.clientY - r.top, r.width, r.height));
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [setTool]);
+
+  // The bar's buttons and the keys zoom on the centre of the box.
+  const zoomBy = (factor) => {
+    const r = box.current?.getBoundingClientRect();
+    if (r) setZoom(zoomAt(zoomRef.current, factor, r.width / 2, r.height / 2, r.width, r.height));
+  };
+  const touch = useMedia(TOUCH);
+  // + / = and - zoom, 0 fits, and holding the space bar shows the original.
+  // Not with a modifier, nor while typing or choosing in a control.
+  const keys = useRef(null);
+  const holding = useRef(false);
+  keys.current = (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target.closest?.('input, select, textarea, [contenteditable]')) return;
+    if (e.key === ' ') {
+      // A focused button takes the space bar for itself.
+      if (e.target.closest?.('button, a, summary') || (e.type !== 'keydown' && !holding.current)) return;
+      e.preventDefault();
+      holding.current = e.type === 'keydown';
+      setCompare(holding.current);
+    } else if (e.type === 'keydown') {
+      if (e.key === '+' || e.key === '=') zoomBy(1.5);
+      else if (e.key === '-') zoomBy(1 / 1.5);
+      else if (e.key === '0') setZoom({ k: 1, x: 0, y: 0 });
+      else return;
+      e.preventDefault();
+    }
+  };
+  useEffect(() => {
+    const on = (e) => keys.current(e);
+    window.addEventListener('keydown', on);
+    window.addEventListener('keyup', on);
+    return () => { window.removeEventListener('keydown', on); window.removeEventListener('keyup', on); };
+  }, []);
 
   // Dragging pans when zoomed in: left button or one finger without a tool,
   // middle button always. Two fingers pinch to zoom and pan, tool or not; the
@@ -356,7 +389,8 @@ export default function Viewer({ engine, dropping, view, brush, setTool, onShape
     if (pinch.current) { e.stopPropagation(); if (!pointers.current.size) pinch.current = null; }
   };
 
-  const image = compare ? engine.images.original : engine.images[view];
+  // The original is the decoded photo, not the working copy of the pipeline.
+  const image = compare ? engine.bitmap : engine.images[view];
   const ready = useGl ? engine.mosaicReady : showDraw ? !!engine.images.original : !!image;
 
   return (
@@ -409,6 +443,15 @@ export default function Viewer({ engine, dropping, view, brush, setTool, onShape
             <button type="button" className="btn btn-dark chamfer-s" onClick={() => toolApi.current?.finish()} disabled={pending < 2}>Terminar línea</button>
           </span>
         )}
+        {engine.hasImage && (
+          <button type="button" className="link" onClick={engine.reseed} title="Otra versión (R)">Otra versión ↻</button>
+        )}
+        {!touch && engine.hasImage && (
+          <span className="zoom-buttons">
+            <button type="button" className="link" onClick={() => zoomBy(1 / 1.5)} disabled={zoom.k <= 1} aria-label="Alejar" title="Alejar (-)">−</button>
+            <button type="button" className="link" onClick={() => zoomBy(1.5)} disabled={zoom.k >= 8} aria-label="Ampliar" title="Ampliar (+)">+</button>
+          </span>
+        )}
         {zoom.k > 1 && (
           <button type="button" className="link" onClick={() => setZoom({ k: 1, x: 0, y: 0 })}>
             Ajustar ({Math.round(zoom.k * 100)} %)
@@ -423,7 +466,7 @@ export default function Viewer({ engine, dropping, view, brush, setTool, onShape
           onPointerLeave={() => setCompare(false)}
           onKeyDown={(e) => e.key === ' ' && setCompare(true)}
           onKeyUp={() => setCompare(false)}
-          disabled={!engine.images.original}
+          disabled={!engine.bitmap}
         >
           Mantén para ver la original
         </button>

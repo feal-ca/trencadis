@@ -48,6 +48,7 @@ export function useEngine() {
     photoName, renderer: pipeline.renderer, effectiveRef: pipeline.effectiveRef,
     requestRender: pipeline.requestRender, requestCpuExport: pipeline.requestCpuExport, awaitFull: pipeline.awaitFull,
     setError: pipeline.setError,
+    settings: { effective, info, busy: pipeline.busy, mosaicReady: pipeline.mosaicReady },
   });
 
   const { setBitmap, setError, resetResults } = pipeline;
@@ -142,7 +143,8 @@ export function useEngine() {
     isDefault: settings.isDefault,
     loadBlob: pickBlob, loadSample: pickSample, setViewport: pipeline.setViewport, setWanted: pipeline.setWanted,
     dragStart: pipeline.dragStart, dragEnd: pipeline.dragEnd,
-    download: exporter.download, share: exporter.share,
+    download: exporter.download, share: exporter.share, format: exporter.format, setFormat: exporter.setFormat,
+    reseed: () => settings.setParams((p) => ({ ...p, seed: (p.seed % 999) + 1 })),
     seg: segmentation.seg, segments: segmentation.segments,
     segAccept: segmentation.segAccept, segDecline: segmentation.segDecline, segRetry: segmentation.segRetry,
     zones: zones.zonesView, pickShape: zones.pickShape, refineShape: zones.refineShape,

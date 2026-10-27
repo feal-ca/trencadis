@@ -37,9 +37,9 @@ page.on('request', (r) => { if (/(^|\.)(hf\.co|huggingface\.co|jsdelivr\.net)$/.
 
 // The keys of the engine's API (window.__trencadis, on with ?debug): a refactor
 // of useEngine must keep them all. A task that adds one adds it here.
-const API_KEYS = ('addGuide autoGrout bitmap busy canRedo canUndo clearGuides download dragEnd dragStart error estimate glCanvas gpu '
+const API_KEYS = ('addGuide autoGrout bitmap busy canRedo canUndo clearGuides download dragEnd dragStart error estimate format glCanvas gpu '
   + 'guides hasImage images info isDefault labels lines loadBlob loadSample macros mosaicReady params photoName pickShape redo '
-  + 'refineShape removeZone resetAll restore seg segAccept segDecline segRetry segments setMacro setManual setParam '
+  + 'refineShape removeZone reseed resetAll restore seg segAccept segDecline segRetry segments setFormat setMacro setManual setParam '
   + 'setParams setStyle setViewport setWanted setZoneMode share style undo undoGuide zones').split(' ');
 
 const idle = (pg) => pg.waitForFunction(
@@ -206,6 +206,37 @@ try {
     if (!dl.suggestedFilename().startsWith('trencadis-barcas-')) throw new Error(`file name: ${dl.suggestedFilename()}`);
     const size = (await (await dl.createReadStream()).toArray()).reduce((s, b) => s + b.length, 0);
     if (size < 50000) throw new Error(`download is only ${size} bytes`);
+  });
+  await step('keys', async () => {
+    // With the focus on the page, R is another version.
+    await page.evaluate(() => document.activeElement?.blur());
+    const seed = () => page.evaluate(() => window.__trencadis.params.seed);
+    const before = await seed();
+    await page.keyboard.press('r');
+    await page.waitForFunction((n) => window.__trencadis.params.seed !== n, before, { timeout: 10000 });
+    await ready();
+    // Typing in a control does not reseed.
+    const typed = await seed();
+    await page.locator('select.out-size').focus();
+    await page.keyboard.press('r');
+    await page.waitForTimeout(300);
+    if ((await seed()) !== typed) throw new Error('R reseeded while a select had the focus');
+    await page.evaluate(() => document.activeElement?.blur());
+    // Holding the space bar shows the decoded photo, not the 800 px working copy.
+    await page.keyboard.down(' ');
+    await page.waitForFunction(() => [...document.querySelectorAll('canvas.viewer-canvas')]
+      .some((c) => c.width === window.__trencadis.bitmap.width && c.height === window.__trencadis.bitmap.height), null, { timeout: 10000 });
+    await page.keyboard.up(' ');
+  });
+  await step('export size', async () => {
+    await page.locator('select.out-size').selectOption('3000');
+    await ready();
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.locator('.download').click()]);
+    const png = Buffer.concat(await (await dl.createReadStream()).toArray());
+    const side = Math.max(png.readUInt32BE(16), png.readUInt32BE(20));
+    if (side !== 3000) throw new Error(`download is ${side} px on its long side, not 3000`);
+    await page.locator('select.out-size').selectOption('2000');
+    await ready();
   });
   await step('webgl lost', async () => {
     // The status bar overlays the bottom of the canvas, so it is left out.
@@ -424,6 +455,12 @@ try {
       console.log(`    image ${(100 * withStatus.share).toFixed(1)} % of the viewport (${(100 * m.share).toFixed(1)} % after the status), header ${Math.round(m.header)} px`);
       if (withStatus.share < 0.28) throw new Error(`the image is only ${(100 * withStatus.share).toFixed(1)} % of the phone viewport`);
       if (withStatus.cuts) throw new Error('.seg-status covers the image');
+      // «Otra versión ↻» and the status share one line with the hold button.
+      const bar = await ph.evaluate(() => {
+        const b = document.querySelector('.viewer-bar');
+        return { h: b.getBoundingClientRect().height, other: !!b.querySelector('[title="Otra versión (R)"]'), zoomButtons: !!b.querySelector('.zoom-buttons') };
+      });
+      if (!bar.other || bar.zoomButtons || bar.h > 40) throw new Error(`phone viewer bar: ${JSON.stringify(bar)}`);
       if (Math.abs(withStatus.boxH - m.boxH) > 0.5) throw new Error(`the image box went from ${withStatus.boxH} to ${m.boxH} px when the status went`);
     } finally {
       await ctx.close();

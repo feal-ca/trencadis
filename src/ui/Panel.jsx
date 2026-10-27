@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { macroKeys, STYLES } from '../core/macros.js';
 import { ALGORITHMS, isVisible, PARAM } from '../core/params.js';
+import { OUT_SIZES, printSize } from './exportSize.js';
+import { CAN_SHARE } from './engine/useExport.js';
 import { InfoTip, Macro, Param } from './Param.jsx';
 import { ALGORITHM_INFO, ROW_PARAMS, STEPS } from './steps.js';
 import { TOUCH, useMedia } from './useMedia.js';
@@ -51,9 +53,9 @@ function RowTools({ engine, tool, setTool, showLines, linesShown }) {
           {drawing ? 'Terminar' : 'Dibujar hileras'}
         </button>
         <button type="button" className="link" onClick={showLines} disabled={!engine.lines.lines.length && !linesShown}>{linesShown ? 'Ocultar las líneas' : 'Ver las líneas'}</button>
-        <button type="button" className="link" onClick={engine.undoGuide} disabled={!engine.guides.length}>Deshacer</button>
+        <button type="button" className="link" onClick={engine.undoGuide} disabled={!engine.guides.length}>Quitar la última</button>
         <button type="button" className="link" onClick={engine.clearGuides} disabled={!engine.guides.length}>
-          Deshacer todo{engine.guides.length ? ` (${engine.guides.length})` : ''}
+          Quitar todas{engine.guides.length ? ` (${engine.guides.length})` : ''}
         </button>
       </div>
       {drawing && (
@@ -125,7 +127,7 @@ function Controls({ step, engine }) {
     if (c.param) return <Param key={i} k={c.param} engine={engine} />;
     if (c.kind === 'reseed') {
       return (
-        <button key={i} type="button" className="btn chamfer-s reseed" onClick={() => engine.setParam('seed', (engine.params.seed % 999) + 1)}>
+        <button key={i} type="button" className="btn chamfer-s reseed" onClick={engine.reseed}>
           Otra versión ↻
         </button>
       );
@@ -190,26 +192,22 @@ function Section({ step, index, engine, open, onOpen, peek, onPeek }) {
   );
 }
 
-const FORMAT_STORE = 'trencadis.format.v1';
-// Web Share with files: phones mostly, and Safari/Edge on desktop.
-const CAN_SHARE = typeof navigator !== 'undefined' && !!navigator.canShare
-  && navigator.canShare({ files: [new File([''], 'x.png', { type: 'image/png' })] });
-
 export function Export({ engine }) {
-  const [format, setFormat] = useState(() => {
-    try { return localStorage.getItem(FORMAT_STORE) || 'png'; } catch { return 'png'; }
-  });
-  const pick = (f) => {
-    setFormat(f);
-    try { localStorage.setItem(FORMAT_STORE, f); } catch { /* storage unavailable */ }
-  };
+  const { format, setFormat } = engine;
   const label = format === 'jpg' ? 'JPG' : 'PNG';
+  const long = engine.params.outLong;
   return (
     <div className="export">
       <div className="seg" role="group" aria-label="Formato">
-        <button type="button" className={format === 'png' ? 'on' : ''} aria-pressed={format === 'png'} onClick={() => pick('png')} title="Sin pérdida, unos 3,5 MB">PNG</button>
-        <button type="button" className={format === 'jpg' ? 'on' : ''} aria-pressed={format === 'jpg'} onClick={() => pick('jpg')} title="Mucho más ligero">JPG</button>
+        <button type="button" className={format === 'png' ? 'on' : ''} aria-pressed={format === 'png'} onClick={() => setFormat('png')} title="Sin pérdida, unos 3,5 MB">PNG</button>
+        <button type="button" className={format === 'jpg' ? 'on' : ''} aria-pressed={format === 'jpg'} onClick={() => setFormat('jpg')} title="Mucho más ligero">JPG</button>
       </div>
+      <select className="out-size" aria-label="Tamaño de la descarga" value={long} onChange={(e) => engine.setParam('outLong', Number(e.target.value))}
+        title={`${printSize(long)}, lado largo`}>
+        {[...new Set([...OUT_SIZES, long])].sort((a, b) => a - b).map((n) => (
+          <option key={n} value={n} title={`${printSize(n)}, lado largo`}>{n} px</option>
+        ))}
+      </select>
       <button type="button" className="btn btn-dark chamfer-s download" onClick={() => engine.download(format)} disabled={!engine.mosaicReady}>
         Descargar {label}
       </button>

@@ -86,7 +86,7 @@ export const STEPS = [
     formula: 'junta: píxeles a menos de ancho / 2 del borde\ncolocación: giro ≤ 6°, desplazamiento ≤ 1,2 px, encogido ≤ 6 %\nluz = (ambiente + difusa) · color + brillo · (n · h)^dureza   (Blinn-Phong)',
     views: [],
     more: [{ param: 'grout' }, { param: 'place' }, { param: 'lightAz' }],
-    advanced: ['groutShadow', 'bevel', 'bevelStrength', 'lightEl', 'ambient', 'glazeNoise', 'outLong', 'supersample'],
+    advanced: ['groutShadow', 'bevel', 'bevelStrength', 'lightEl', 'ambient', 'glazeNoise', 'supersample'],
     summary: (p) => `Junta de ${String(p.grout).replace('.', ',')} px`,
   },
 ];
