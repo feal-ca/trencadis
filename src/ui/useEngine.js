@@ -86,6 +86,7 @@ export function useEngine() {
         : 'No se ha podido leer esa imagen. Prueba con un JPG o un PNG.');
       return false;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadBlob has to stay stable; the resets and setters only touch refs and state
   }, []);
 
   const loadSample = useCallback(async (src) => {
@@ -99,21 +100,21 @@ export function useEngine() {
       setError('No se ha podido cargar el ejemplo. Comprueba la conexión y vuelve a probar.');
       return false;
     }
-  }, [loadBlob]);
+  }, [loadBlob, setError]);
 
   // The last session comes back on start (or the first sample), and is kept as it changes.
   // Set when the user picks a photo or sample; start-up then does not load its own.
   const chosen = useRef(false);
   // A pick that fails with nothing on screen yet leaves the first sample to load.
   const shown = useRef(false);
-  const pick = (load) => async (...args) => {
+  const pick = useCallback(async (load, ...args) => {
     chosen.current = true;
     const ok = await load(...args);
     if (ok === false && !shown.current) { chosen.current = false; loadSample(SAMPLES[0].src); }
     return ok;
-  };
-  const pickBlob = useCallback(pick(loadBlob), [loadBlob]);
-  const pickSample = useCallback(pick(loadSample), [loadSample]);
+  }, [loadSample]);
+  const pickBlob = useCallback((...args) => pick(loadBlob, ...args), [pick, loadBlob]);
+  const pickSample = useCallback((...args) => pick(loadSample, ...args), [pick, loadSample]);
   useSession({
     samples: SAMPLES, loadBlob, loadSample, chosen, rebaseHistory: history.rebaseNext, setError, photoGen, zones, guides, sample, bitmap, photoName,
     segments: segmentation.segments,

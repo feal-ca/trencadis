@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Hand-drawn guide lines, polylines in normalised image coordinates. Each one
 // carries `gen`, the photo generation it was drawn on, so the history can tell
@@ -13,7 +13,7 @@ export function useGuides({ worker, rerun, photoGen }) {
     sentGuides.current = key;
     worker.current.postMessage({ type: 'guides', guides: guides.map(({ gen, ...g }) => g) });
     rerun();
-  }, [guides, rerun]);
+  }, [guides, rerun, worker]);
   // A new photo: no guides, and the pipeline worker is told so.
   const resetGuides = () => {
     setGuides([]);

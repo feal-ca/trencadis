@@ -75,6 +75,7 @@ export function useSession({ samples, loadBlob, loadSample, chosen, rebaseHistor
       if (taken(gen0)) return;
       loadSample(samples[0].src);
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- start-up runs once, with the props of the first render
   }, []);
 
   useEffect(() => {
@@ -94,5 +95,6 @@ export function useSession({ samples, loadBlob, loadSample, chosen, rebaseHistor
       } catch { /* the session just is not kept */ }
     }, SAVE_DELAY);
     return () => { stale = true; clearTimeout(timer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- zonesView carries the zones and their pixels (zones.zones, zones.pixelsOf)
   }, [bitmap, sample, photoName, guides.guides, zones.zonesView, segments]);
 }

@@ -84,7 +84,7 @@ export function useExport({ photoName, renderer, effectiveRef, requestCpuExport,
     if (signRef.current) await drawSignature(ctx, cv.width, cv.height);
     const blob = await new Promise((r) => cv.toBlob(r, type, 0.9));
     return blob && new File([blob], `trencadis-${photoName}-${p.algorithm}-${p.seed}.${format}`, { type });
-  }, [photoName, renderer, requestCpuExport, awaitFull]);
+  }, [photoName, renderer, effectiveRef, requestCpuExport, awaitFull]);
 
   // The export can fail without a GPU (the worker may have nothing to draw, or
   // run out of memory); the error goes to the status line like the others.

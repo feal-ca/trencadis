@@ -95,6 +95,7 @@ export function useSegmentation({ bitmap, readable, preset, worker, rerun }) {
       } else session.current.photo(image);
     })();
     return () => { stale = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- this must run once per photo; rerun only reposts the latest parameters
   }, [bitmap, readable, preset, worker]);
 
   return {

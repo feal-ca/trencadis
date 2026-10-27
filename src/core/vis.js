@@ -61,7 +61,7 @@ export function structureImage(img, tess) {
     return imageFromRgb(w, h, (i) =>
       structure.mask[i] ? [0.086, 0.133, 0.231] : [0.93 - (0.93 - base[i * 4] / 255) * 0.35, 0.94 - (0.94 - base[i * 4 + 1] / 255) * 0.35, 0.925 - (0.925 - base[i * 4 + 2] / 255) * 0.35]);
   }
-  const { cv, ctx } = faded(img, 0.65);
+  const { ctx } = faded(img, 0.65);
   if (structure.kind === 'guides') {
     for (const s of shards) {
       if (!s.row) continue;

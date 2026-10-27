@@ -128,7 +128,7 @@ function DrawLayer({ engine, tool, api, onPending }) {
       }
     }
   };
-  useEffect(redraw, [original, engine.guides, engine.lines]);
+  useEffect(redraw, [original, engine.guides, engine.lines, mode]);
   const cancel = () => { stroke.current = null; hover.current = null; onPending(0); redraw(); };
   const back = () => {
     if (!stroke.current) return;
@@ -183,7 +183,7 @@ function DrawLayer({ engine, tool, api, onPending }) {
       else if (added.current) { added.current = false; back(); }
     },
   };
-  useEffect(() => () => onPending(0), [mode]);
+  useEffect(() => () => onPending(0), [mode, onPending]);
   useEffect(() => {
     if (mode !== 'points') return;
     const onKey = (e) => {
@@ -273,7 +273,8 @@ export default function Viewer({ engine, dropping, view, brush, setTool, onShape
     return () => engine.glCanvas.remove();
   }, [useGl, engine.glCanvas]);
 
-  useEffect(() => { engine.setWanted(view === 'draw' ? 'original' : view); }, [view, engine.setWanted]);
+  const { setWanted, setViewport } = engine;
+  useEffect(() => { setWanted(view === 'draw' ? 'original' : view); }, [view, setWanted]);
 
   // The mosaic is redrawn at the zoomed size, so zooming in stays sharp.
   const size = useRef([0, 0]);
@@ -282,12 +283,12 @@ export default function Viewer({ engine, dropping, view, brush, setTool, onShape
     if (!el) return;
     const ro = new ResizeObserver(([e]) => {
       size.current = [e.contentRect.width, e.contentRect.height];
-      engine.setViewport(e.contentRect.width * zoomRef.current.k, e.contentRect.height * zoomRef.current.k);
+      setViewport(e.contentRect.width * zoomRef.current.k, e.contentRect.height * zoomRef.current.k);
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [engine.setViewport]);
-  useEffect(() => { engine.setViewport(size.current[0] * zoom.k, size.current[1] * zoom.k); }, [zoom.k, engine.setViewport]);
+  }, [setViewport]);
+  useEffect(() => { setViewport(size.current[0] * zoom.k, size.current[1] * zoom.k); }, [zoom.k, setViewport]);
 
   // Wheel: with a tool, resizes its circle (brush size or snap radius);
   // otherwise, or with Ctrl, zooms towards the pointer.

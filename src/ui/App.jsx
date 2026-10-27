@@ -54,16 +54,17 @@ export default function App() {
   });
 
   // Ctrl+V / Cmd+V with an image on the clipboard loads it.
+  const { loadBlob } = engine;
   useEffect(() => {
     const onPaste = (e) => {
       const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith('image/'));
       if (!file) return;
       e.preventDefault();
-      engine.loadBlob(file);
+      loadBlob(file);
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [engine.loadBlob]);
+  }, [loadBlob]);
 
   // `brush` is the active tool: guide drawing, or picking shapes on the mosaic.
   const view = brush ? (brush.kind === 'shape' ? 'final' : brush.kind) : peek?.view ?? 'final';

@@ -111,6 +111,8 @@ export default function ShapeLayer({ engine, api, zoom }) {
     const z = zonesRef.current.find((x) => x.id === id);
     if (z && !z.mode) removeZone(id);
   };
+  // Cleanup on unmount only: it reads the selection through selectedRef.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- forget only reads refs and calls the stable removeZone
   useEffect(() => () => forget(selectedRef.current), []);
   // Undo, "Quitar todas" or a new photo may take the selected shape away.
   useEffect(() => { if (selected && !zones.some((z) => z.id === selected)) setSelected(null); }, [zones, selected]);
@@ -133,7 +135,7 @@ export default function ShapeLayer({ engine, api, zoom }) {
     }
     if (sel) paint(img, regionAt(sel.region, W, H), { line: [...OCHRE, 255], fill: [...OCHRE, 90], r: 2 * r, box: regionBox(sel.region, W, H, r) });
     cv.getContext('2d').putImageData(img, 0, 0);
-  }, [zones, selected, size]);
+  }, [zones, selected, sel, size]);
 
   // The overlay's image rectangle in the zoom layer's own coordinates.
   const frame = () => {
@@ -157,6 +159,7 @@ export default function ShapeLayer({ engine, api, zoom }) {
     top = clamp(top, vy0 + gap, vy1 - mh - gap);
     const left = clamp(f.x + ((u0 + u1) / 2) * f.w - mw / 2, vx0 + gap, Math.max(vx0 + gap, vx1 - mw - gap));
     setPos((old) => (old && old.left === left && old.top === top ? old : { left, top }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- sel is a new object whenever the zones change; only its region moves the menu
   }, [sel?.region, zoom, size]);
 
   // Not clamped: a touch outside the image is dropped by touch().

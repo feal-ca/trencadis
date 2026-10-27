@@ -23,6 +23,7 @@ export function useZones({ session, worker, rerun, seg, photoGen }) {
   // The zones with their pixels, for the viewer.
   const zonesView = useMemo(
     () => zones.map((z) => ({ ...z, region: pixelsOf(z)?.region ?? null, parts: pixelsOf(z)?.parts ?? null })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pixelsOf reads a ref; pixelsVersion says when it changed
     [zones, pixelsVersion],
   );
   // The zones with a mode go to the pipeline worker; "more" zones first get
@@ -53,7 +54,8 @@ export function useZones({ session, worker, rerun, seg, photoGen }) {
     sentZones.current = key;
     worker.current.postMessage({ type: 'zones', zones: list });
     rerun();
-  }, [zones, pixelsVersion, rerun]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- pixelsOf reads a ref; pixelsVersion says when it changed
+  }, [zones, pixelsVersion, rerun, session, worker]);
   // A new shape where the photo was touched at (u, v); resolves to its id,
   // null if there is none, or { error } if the search failed (declined,
   // model or worker error).
@@ -69,7 +71,8 @@ export function useZones({ session, worker, rerun, seg, photoGen }) {
     keepPixels(id, points, region);
     setZones((zs) => [...zs, { id, mode: null, points }]);
     return id;
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keepPixels only reads refs and sets state
+  }, [photoGen, session]);
   // Another touch inside a shape grows or corrects it.
   const refineShape = useCallback(async (id, u, v) => {
     const z = zonesRef.current.find((x) => x.id === id);
@@ -83,7 +86,8 @@ export function useZones({ session, worker, rerun, seg, photoGen }) {
       setZones((zs) => zs.map((x) => (x.id === id ? { ...x, points } : x)));
       return true;
     } catch { return false; }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keepPixels only reads refs and sets state
+  }, [photoGen, session]);
   // Setting the mode again asks once more for parts that failed before.
   const clearFailed = (id) => {
     let any = false;

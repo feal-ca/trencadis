@@ -5,7 +5,7 @@
 // model is confident (predicted IoU) and the mask is stable (it barely
 // changes when the threshold moves), then duplicates are dropped (NMS),
 // as in SAM's automatic mask generator.
-import { AutoProcessor, env, RawImage, SamModel, Tensor } from '@huggingface/transformers';
+import { AutoProcessor, env, SamModel, Tensor } from '@huggingface/transformers';
 import { analyze } from '../core/analysis.js';
 import { fromImageData } from '../core/image.js';
 import { applyMacroDefaults } from '../core/macros.js';

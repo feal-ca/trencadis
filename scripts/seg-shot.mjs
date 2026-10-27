@@ -23,7 +23,7 @@ page.on('console', (m) => { if (m.text().startsWith('[sam]')) console.log(m.text
 page.on('pageerror', (e) => console.log('[error]', e.message));
 const t0 = Date.now();
 const secs = () => `${((Date.now() - t0) / 1000).toFixed(1)} s`;
-let ok = false;
+let ok;
 try {
   await page.goto('http://localhost:5193/?debug&samDevice=wasm');
   // The sample comes with its shapes; uploading the photo starts afresh.

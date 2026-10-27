@@ -1,65 +1,106 @@
 # Trencadís
 
-Trencadís convierte una foto en un mosaico de azulejo roto, como los bancos del Park Güell. Todo se calcula en el navegador y la foto no sale de tu ordenador.
+[Español](README.es.md)
 
-Ábrelo en https://feal-ca.github.io/trencadis/
+Trencadís turns a photo into a broken-tile mosaic, like the benches of Park Güell in Barcelona. Everything is computed in your browser, and the photo never leaves your device.
 
-## Cómo se usa
+Try it at https://feal-ca.github.io/trencadis/
 
-La app abre con un cuadro de ejemplo ya convertido. Sube tu foto con «Subir foto» o arrastrándola sobre la imagen.
+![Trencadís showing Vermeer's Girl with a Pearl Earring as a mosaic](docs/screenshot.jpg)
 
-A la derecha están los cuatro pasos, en orden: 1 Detalle, 2 Trozos, 3 Colores y 4 Acabado. Cada uno tiene sus controles principales, «Más ajustes» con el resto, «¿Qué hace?» con la explicación y la fórmula, y «Ver este paso», que cambia la imagen grande por el resultado parcial de ese paso. El icono ⓘ junto a cada control explica qué hace, y ↺ (solo aparece si lo has cambiado) lo devuelve a su valor de origen.
+## How to use it
 
-Algunos controles principales mueven varios parámetros a la vez («Tamaño de los trozos», «Parecido a la foto», «Brillo del esmalte»). «Ajustar a mano» los desactiva y muestra esos parámetros por separado; «Volver al control simple» deshace el cambio.
+The app opens with a sample painting already converted. Load your own photo with "Subir foto", by dragging it onto the image, or by pasting it with Ctrl+V.
 
-Si una zona tiene mucho detalle que no te interesa (reflejos de sol en el agua, césped, hojas), hay dos herramientas en Detalle. «Ignorar texturas» rebaja de forma automática el detalle hecho de puntos, y deja los contornos. El pincel de detalle permite pintar sobre la foto para quitar detalle o para añadirlo donde quieras trozos más pequeños.
+### The panel
 
-En Trozos también hay **hileras**: piezas rectangulares en fila a lo largo de una línea, como la espiral negra de los bancos de Gaudí. Las líneas salen solas de los contornos fuertes de la foto («Contornos con hilera») o las dibujas tú con «Dibujar línea», a mano alzada o por puntos (tramos rectos). Con «Pegar al contorno», la línea se acerca al borde más marcado dentro del círculo del cursor, cuyo tamaño cambia con la rueda; al dibujar se ven en azul las que ha encontrado la app, y «Ver las líneas» enseña todas las que se usan. Si una línea tuya acaba cerca de una automática, se une a ella, y donde las dos se cruzan se queda la tuya. Sirven para que se lean contornos, barandillas o letras sin subir el detalle de toda la imagen. Los trozos del fondo se recortan hasta tocarlas.
+The panel on the right starts simple:
 
-La rueda del ratón amplía la imagen hacia donde apunta (con una herramienta activa, Ctrl + rueda), arrastrar la desplaza y «Ajustar» vuelve a la vista completa.
+- Styles at the top (Natural, Park Güell, Romano, Vitral) replace all settings in one click, and you can undo that.
+- "Tipo de trozos" picks the cutting method. Two are shown, and "métodos más" reveals the other four.
+- "Tamaño de los trozos", "Parecido a la foto" and "Brillo del esmalte" each move several parameters at once. "Ajustar a mano" shows those parameters separately, and "Volver al control simple" undoes that.
+- The palette, the saturation and the grout color complete the basics.
 
-El acabado (junta, colocación, bisel, luz, brillo) se dibuja en la tarjeta gráfica y responde al momento. Los cambios de detalle, trozos o color se recalculan en segundo plano en menos de un segundo y medio; mientras tanto la imagen se atenúa y aparece un pequeño indicador. El PNG se descarga al tamaño elegido en Acabado.
+### Shapes
 
-## Cómo funciona
+On your own photo, a segmentation model (SlimSAM) finds the objects in it. With "Tocar una forma" you tap an eye, a face or a bird, and choose more or less detail for that shape. The three sample photos come with their shapes already computed, so they need no download.
 
-1. **Detalle.** Se mide la energía de alta frecuencia D(x) = |L − desenfoque(L, σ)|, suavizada y normalizada. «Ignorar texturas» la rebaja donde la imagen está hecha de manchas: el determinante del Hessiano, dividido por el gradiente al cuadrado, es alto en puntos brillantes, hojas o césped y casi nulo a lo largo de un contorno. El pincel, desenfocado para que no se note dónde empieza, la multiplica o la eleva según lo pintado. De ahí sale el tamaño de trozo s(x) = s_max − (s_max − s_min)·D(x)^γ, y del tensor de estructura, la dirección de los bordes θ(x). Los desenfoques son tres pasadas de box blur con el σ exacto (Kovesi). En imágenes grandes los mapas se calculan a media resolución y se interpolan, porque son suaves.
-2. **Trozos.** Seis métodos:
-   - Cortes rectos: la imagen se divide en azulejos irregulares (Voronoi) de unas 3,5 veces el tamaño de trozo, y cada azulejo se parte con rectas hasta llegar al tamaño pedido. Así ningún corte cruza la imagen. En cada corte se prueban N rectas y se elige una con probabilidad ∝ exp(−coste/T), donde el coste es la varianza de color que queda en las dos mitades más un castigo a las astillas. Salen uniones en T, como en el azulejo roto.
-   - Grietas: inspirado en *Substrate* de Jared Tarbell. Cada grieta nace en un punto interior, lejos de otras grietas, y crece en los dos sentidos hasta chocar con otra. Los trozos más estrechos que el grosor mínimo se unen al vecino con el que comparten más borde (lo mismo se hace con las teselas alargadas y las manchas de color).
-   - Teselas redondeadas: Voronoi con semillas de Poisson-disk de radio variable (Bridson) y relajación de Lloyd ponderada por 1/s(x)².
-   - Teselas alargadas: Voronoi con una métrica estirada a lo largo de los bordes, como en Hausner (2001).
-   - Teselas partidas: teselas redondeadas grandes que reciben unos pocos cortes rectos.
-   - Manchas de color: superpíxeles SLIC con la separación tomada de s(x) y bordes simplificados con Douglas-Peucker.
-   - Hileras, sobre cualquiera de los anteriores: las guías automáticas salen de un detector de bordes (supresión de no máximos e histéresis, con umbrales relativos a los bordes más fuertes) cuyas cadenas se suavizan y se quedan las más largas. Las guías se combinan antes: las dibujadas van primero; de las automáticas, de la más larga a la más corta, se quitan los tramos que caen dentro de la banda de otra guía, y los extremos de las dibujadas que quedan cerca de una automática se enganchan a ella. El ancho de las piezas es una fracción del tamaño de trozo de cada zona, suavizada a lo largo de la guía. Para cada píxel cerca de una guía se mide la distancia con signo y la posición a lo largo de ella; de ahí salen la fila y la pieza, con filas vecinas desplazadas media pieza. El fondo se rasteriza, las hileras lo sobrescriben, cada fragmento suelto pasa a ser un trozo y los muy estrechos se unen a su vecino del fondo. Los trozos que ninguna hilera toca conservan su polígono original.
-3. **Color.** Un color por trozo (media, más vivo, el más frecuente, mediana o el del centro), con paleta opcional (k-means de la foto o un juego fijo de azulejos de taller) y una pequeña variación al azar.
-4. **Acabado.** En WebGL2: los trozos se triangulan con earcut y se dibujan con su índice, cada uno algo girado, desplazado y encogido según «Colocación a mano»; un jump flood da a cada píxel la distancia al borde más cercano; el último pase pinta la junta, el bisel, la inclinación de cada trozo y un brillo Blinn-Phong. Si el navegador no tiene WebGL2, el mismo acabado se calcula en la CPU.
+### Rows (hileras)
 
-## Desarrollo
+Rows are rectangular pieces laid in a line, like the black spiral on Gaudí's benches. They come from the contours of the shapes the model found. There are no automatic edge rows. You can also draw your own lines with "Dibujar hileras", freehand or point by point, and with "Pegar al contorno" a line snaps to the strongest edge near the cursor. "Ver las líneas" shows every line in use, and "Quitar la última" and "Quitar todas" remove the ones you drew.
+
+### More settings
+
+The "Más ajustes" section holds the four steps of the algorithm, each with its own controls, a "¿Qué hace?" explanation with the formula, and "Ver este paso", which swaps the big image for that step's partial result: 1 Detalle, 2 Trozos, 3 Colores and 4 Acabado. The ⓘ icon next to a control explains it, and ↺ (it appears only after a change) restores its default.
+
+### Viewer
+
+The wheel zooms (Ctrl + wheel when a tool is active), dragging pans, and there are zoom buttons in the bar. "Otra versión ↻" draws a new random layout, and holding "Mantén para ver la original" shows the sharp original. Keyboard: R for another version, space to see the original, + − 0 for zoom, D to download, Ctrl+Z and Ctrl+Shift+Z for undo and redo.
+
+### Export
+
+Download PNG or JPG at the size you choose (the equivalent printed size shows in the menu), or share it on phones. The image carries a small signature that you can turn off. The finish (grout, placement, bevel, light, gloss) is drawn on the graphics card and responds instantly. Changes to detail, pieces or color are recomputed in the background.
+
+## Privacy
+
+- The photo is processed in your browser and is never uploaded.
+- The segmentation model comes from Hugging Face and its ONNX runtime from jsDelivr. Both are downloaded the first time you search for shapes on your own photo (desktop with WebGPU starts on its own; phones and other browsers ask first). Neither request carries the photo.
+- The last session (photo, shapes and lines) is saved in this browser with IndexedDB, so a reload brings it back. Settings go to localStorage.
+- Those two downloads are the only network requests the app makes.
+
+## How it works
+
+1. Detail. The high-frequency energy D(x) = |L − blur(L, σ)| is measured, smoothed and normalized. "Ignorar texturas" lowers it where the image is made of blobs: the Hessian determinant divided by the squared gradient is high on bright points, leaves and grass and almost zero along a contour. Shapes you set to more or less detail raise or lower it there. From it comes the piece size s(x) = s_max − (s_max − s_min)·D(x)^γ, and the structure tensor gives the edge direction θ(x). The blurs are three box-blur passes with the exact σ (Kovesi). On large images the maps are computed at half resolution and interpolated, because they are smooth.
+2. Pieces. Six methods:
+   - Straight cuts: the image is divided into irregular tiles (Voronoi) about 3.5 times the piece size, and each tile is split with straight lines until it reaches the requested size, so no cut crosses the image. At each cut, N lines are tried and one is picked with probability ∝ exp(−cost/T), where the cost is the color variance left in the two halves plus a penalty for slivers. This gives T-junctions, as in real broken tile.
+   - Cracks: inspired by Jared Tarbell's *Substrate*. Each crack starts at an interior point far from other cracks and grows both ways until it hits another. Pieces narrower than the minimum width join the neighbor they share the most border with (the same is done for elongated tiles and color patches).
+   - Rounded tiles: Voronoi with variable-radius Poisson-disk seeds (Bridson) and Lloyd relaxation weighted by 1/s(x)².
+   - Elongated tiles: Voronoi with a metric stretched along the edges, as in Hausner (2001).
+   - Split tiles: large rounded tiles that get a few straight cuts.
+   - Color patches: SLIC superpixels with spacing taken from s(x) and borders simplified with Douglas-Peucker.
+   - Rows, over any of the above. The guides come from the outlines between the objects the segmentation model found, plus the lines you draw. Your lines go first. Automatic ones are processed from longest to shortest, and any stretch that falls inside the band of another guide is dropped. The ends of your lines near an automatic one snap to it. The piece width is a fraction of the piece size in each zone, smoothed along the guide. For each pixel near a guide, the signed distance and the position along it give the row and the piece, with neighboring rows offset by half a piece. The background is rasterized, the rows overwrite it, each loose fragment becomes a piece, and very narrow ones join their neighbor in the background. Pieces that no row touches keep their original polygon. Where a piece would straddle two objects it is cut along their border.
+3. Color. One color per piece (mean, most vivid, most frequent, median or the center one), with an optional palette (k-means of the photo, or a fixed set of workshop tiles) and a small random variation.
+4. Finish. In WebGL2: pieces are triangulated with earcut and drawn by index, each slightly rotated, shifted and shrunk according to "Colocación a mano". A jump flood gives every pixel its distance to the nearest edge, and the last pass paints the grout, the bevel, the tilt of each piece and a Blinn-Phong highlight. If the browser has no WebGL2, the same finish is computed on the CPU.
+
+## Development
 
 ```
 npm ci
-npm run dev                  # servidor local
-npm test                     # tests del núcleo (Vitest)
-npm run build                # sitio estático en dist/
-node scripts/bench.mjs       # tiempos por etapa en una imagen sintética
-node scripts/thumbs.mjs      # regenera las miniaturas de los métodos
+npm run dev                  # local server
+npm test                     # Vitest
+npm run lint                 # ESLint with the React hooks rules, no warnings allowed
+npm run build                # static site in dist/
+npm run smoke                # end-to-end check in Chromium of the built site
+npm run golden:update        # rewrite test/golden.json (only when the geometry changes on purpose)
+node scripts/check-dist.mjs  # fails if dist/ has a WASM file or weighs more than 3 MB
+node scripts/shots.mjs       # screenshots of the build (desktop, phone, dark) in the temp folder
+node scripts/sample-segments.mjs  # recompute the segments of the samples (public/samples/*.seg.png)
+node scripts/seg-bytes.mjs   # measure what the first shape search downloads
+node scripts/bench.mjs       # time per stage on a synthetic image
+node scripts/thumbs.mjs      # regenerate the method thumbnails
 ```
 
-`scripts/thumbs.mjs` necesita Chromium; usa `/usr/bin/chromium-browser` o la ruta de la variable `CHROMIUM`. Con el servidor de desarrollo arrancado, `test/browser/gl.html` comprueba el renderer WebGL y mide los fps, y añadir `?debug` a la URL de la app guarda los tiempos de cada cálculo en `window.__runs`.
+The scripts that drive a browser use `/usr/bin/chromium-browser`, or the path in the `CHROMIUM` variable.
 
-El código de imagen está en `src/core/` y no depende del DOM, salvo `vis.js`, que dibuja las etapas con OffscreenCanvas. El cálculo corre en un Web Worker (`src/worker.js`) y el render en `src/gl/`. La interfaz en React está en `src/ui/`; los pasos y sus textos, en `src/ui/steps.js`, y la ayuda de cada parámetro, en `src/core/params.js`.
+Query parameters for the app:
 
-Cada push a `main` se publica en GitHub Pages mediante `.github/workflows/deploy.yml`.
+- `?debug` exposes `window.__trencadis` and records the timing of each run in `window.__runs`.
+- `?nogl` skips WebGL2, to try the CPU path.
+- `?samDevice=wasm` (or `webgpu`) forces the device the segmentation model runs on. `?segBatch=N` and `?segPoints=N` change its batch size and number of prompt points.
 
-## Créditos
+`test/golden.json` holds a hash of the geometry for each method with a fixed seed, so any unintended change shows up as a failing test. CI (`.github/workflows/ci.yml`) runs lint, tests, build, the dist size check and the smoke test; the deploy workflow calls it and publishes to GitHub Pages only if it passes.
 
-- Los cuadros de ejemplo son de dominio público y vienen de Wikimedia Commons: *La joven de la perla*, de Johannes Vermeer (c. 1665), y *La noche estrellada*, de Vincent van Gogh (1889). La foto de las barcas es «El Guamache Bay, Margarita island», también de Wikimedia Commons, con licencia CC0.
-- A. Hausner, «Simulating Decorative Mosaics», SIGGRAPH 2001.
-- R. Achanta et al., «SLIC Superpixels Compared to State-of-the-Art Superpixel Methods», IEEE TPAMI 2012.
+The image code is in `src/core/` and does not depend on the DOM, except `vis.js`, which draws the stages with OffscreenCanvas. The shapes of the main data (Shard, Zone, Region, Parts, Segments) are documented as JSDoc in `src/core/types.js`. Computation runs in a Web Worker (`src/worker.js`), rendering in `src/gl/` and segmentation in `src/seg/`. The React interface is in `src/ui/`; the steps and their texts are in `src/ui/steps.js` and the help for each parameter in `src/core/params.js`. The interface is in Spanish for now.
+
+## Credits
+
+- The sample paintings are public domain and come from Wikimedia Commons: *Girl with a Pearl Earring* by Johannes Vermeer (c. 1665) and *The Starry Night* by Vincent van Gogh (1889). The boat photo is "El Guamache Bay, Margarita island", also from Wikimedia Commons, under a CC0 license.
+- A. Hausner, "Simulating Decorative Mosaics", SIGGRAPH 2001.
+- R. Achanta et al., "SLIC Superpixels Compared to State-of-the-Art Superpixel Methods", IEEE TPAMI 2012.
 - J. Tarbell, *Substrate* (2003).
-- R. Bridson, «Fast Poisson Disk Sampling in Arbitrary Dimensions», SIGGRAPH 2007 sketches.
-- P. Kovesi, «Fast Almost-Gaussian Filtering», DICTA 2010.
-- G. Rong y T.-S. Tan, «Jump Flooding in GPU with Applications to Voronoi Diagram and Distance Transform», I3D 2006.
-- P. Felzenszwalb y D. Huttenlocher, «Distance Transforms of Sampled Functions», 2012 (render en CPU).
+- R. Bridson, "Fast Poisson Disk Sampling in Arbitrary Dimensions", SIGGRAPH 2007 sketches.
+- P. Kovesi, "Fast Almost-Gaussian Filtering", DICTA 2010.
+- G. Rong and T.-S. Tan, "Jump Flooding in GPU with Applications to Voronoi Diagram and Distance Transform", I3D 2006.
+- P. Felzenszwalb and D. Huttenlocher, "Distance Transforms of Sampled Functions", 2012 (CPU render).
 
-Licencia MIT.
+MIT license.
