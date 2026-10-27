@@ -25,18 +25,24 @@ try {
     page.on('pageerror', (e) => console.log(`[${device} error]`, e.message));
     const t = Date.now();
     await page.goto(`http://localhost:5195/?debug&samDevice=${device}`);
+    // The first sample comes with its shapes (done); the uploaded photo starts afresh.
+    await page.waitForFunction(() => window.__trencadis?.mosaicReady, null, { timeout: 120000 });
+    await page.evaluate(() => { window.__segStates = []; });
     await page.locator('input[type=file]').setInputFiles('public/samples/barcas.webp');
-    await page.waitForTimeout(500);
-    if (await page.evaluate(() => window.__trencadis.seg.phase === 'ask')) await page.evaluate(() => window.__trencadis.segAccept());
+    await page.waitForFunction(() => window.__segStates.some((s) => ['ask', 'download'].includes(s.phase)), null, { timeout: 60000 });
+    if (await page.evaluate(() => window.__segStates.at(-1).phase === 'ask')) await page.evaluate(() => window.__trencadis.segAccept());
     let end;
     try {
-      await page.waitForFunction(() => ['done', 'error'].includes(window.__trencadis.seg.phase), null, { timeout: 1200000 });
+      await page.waitForFunction(() => ['done', 'error'].includes(window.__segStates.at(-1).phase), null, { timeout: 1200000 });
       end = await page.evaluate(() => window.__trencadis.seg);
     } catch (e) { end = { phase: `timeout (${e.message.split('\n')[0]})` }; }
     await page.waitForTimeout(500);
+    // The device and dtype the worker really used (?debug keeps its timings).
+    const used = await page.evaluate(() => (window.__runs ?? []).find((r) => r.seg)).catch(() => null);
+    const fellBack = used && used.device !== device;
     const total = sizes.reduce((s, r) => s + r.bytes, 0);
-    totals[device] = total;
-    console.log(`${device}: segmentation ${end.phase}${end.message ? ` (${end.message})` : ''}${end.found != null ? `, ${end.found} found` : ''} in ${((Date.now() - t) / 1000).toFixed(0)} s; ${MB(total)} MB in ${sizes.length} requests`);
+    if (!fellBack) totals[device] = total;
+    console.log(`${device}${used ? ` (ran on ${used.device} ${used.dtype})` : ''}${fellBack ? ' FELL BACK, not a ' + device + ' total' : ''}: segmentation ${end.phase}${end.message ? ` (${end.message})` : ''}${end.found != null ? `, ${end.found} found` : ''} in ${((Date.now() - t) / 1000).toFixed(0)} s; ${MB(total)} MB in ${sizes.length} requests`);
     for (const r of sizes.filter((x) => x.bytes > 100000)) console.log(`  ${MB(r.bytes)} MB ${r.url.split("?")[0]}`);
     await context.close();
   }
@@ -44,5 +50,6 @@ try {
   await browser.close();
   await server.close();
 }
+if (!totals.webgpu) console.log('webgpu was not measured: add the fp16 model files (see SEG_DOWNLOAD_MB) by hand');
 const max = Math.max(...Object.values(totals));
-console.log(`largest total ${MB(max)} MB -> SEG_DOWNLOAD_MB ${Math.ceil(max / 1e6 / 5) * 5}`);
+console.log(`largest measured total ${MB(max)} MB${totals.webgpu ? ` -> SEG_DOWNLOAD_MB ${Math.ceil(max / 1e6 / 5) * 5}` : ''}`);

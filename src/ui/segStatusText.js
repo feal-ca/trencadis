@@ -1,9 +1,12 @@
 // The text, bar and buttons of the segmentation status (SegStatus.jsx) for a
 // session state.
 
-// Megabytes of the first download (model and ONNX runtime), as measured by
-// scripts/seg-bytes.mjs: the larger of its two totals, rounded up to 5.
-export const SEG_DOWNLOAD_MB = 20;
+// Megabytes of the first download (model and ONNX runtime). The WASM total,
+// 19.4 MB, is measured by scripts/seg-bytes.mjs. The WebGPU one (fp16 model,
+// sam.js) could not be measured, since headless Chromium has no WebGPU
+// adapter and falls back to WASM: it is 12.2 + 8.6 MB of fp16 files (Hugging
+// Face API) plus the 5.6 MB runtime, about 26.4 MB. The larger, rounded up to 5.
+export const SEG_DOWNLOAD_MB = 30;
 
 const percent = (seg) => (seg.total ? Math.round((100 * seg.done) / seg.total) : 0);
 
