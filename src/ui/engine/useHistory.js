@@ -14,9 +14,18 @@ export function useHistory({ state, apply }) {
     if (pending.current) history.current.record(pending.current.state);
     pending.current = null;
   }, []);
+  // Set by rebaseNext(): the next state that shows up becomes the start of the history.
+  const rebasing = useRef(false);
   useEffect(() => {
     const recorded = { params: state.params, macros: state.macros, zones: state.zones, guides: state.guides };
     clearTimeout(pending.current?.timer);
+    if (rebasing.current) {
+      rebasing.current = false;
+      pending.current = null;
+      history.current.rebase(recorded);
+      setHistoryVersion((v) => v + 1);
+      return;
+    }
     pending.current = { state: recorded, timer: setTimeout(() => { flushHistory(); setHistoryVersion((v) => v + 1); }, 500) };
   }, [state.params, state.macros, state.zones, state.guides, flushHistory]);
   const travel = (dir) => {
@@ -27,6 +36,9 @@ export function useHistory({ state, apply }) {
   };
 
   return {
+    // For a state set from outside (a restored session): the next change of
+    // `state` is taken as the starting point, with no step to undo.
+    rebaseNext: () => { rebasing.current = true; },
     undo: () => travel(-1),
     redo: () => travel(1),
     // A change not recorded yet can be undone too.

@@ -46,3 +46,18 @@ describe('settings history', () => {
     expect(n).toBe(3);
   });
 });
+
+describe('rebase', () => {
+  it('makes a state current with nothing to undo or redo', () => {
+    const h = createHistory({ a: 1 });
+    h.record({ a: 2 });
+    h.undo();
+    h.rebase({ a: 9 });
+    expect(h.canUndo).toBe(false);
+    expect(h.canRedo).toBe(false);
+    expect(h.undo()).toBeNull();
+    expect(h.matches({ a: 9 })).toBe(true);
+    h.record({ a: 10 });
+    expect(h.undo()).toEqual({ a: 9 });
+  });
+});

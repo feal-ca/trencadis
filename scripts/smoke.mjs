@@ -342,13 +342,14 @@ try {
       await re.reload();
       await re.waitForFunction(() => window.__trencadis?.zones.some((z) => z.id === 'z7' && z.mode === 'more'), null, { timeout: 30000 });
       await idle(re);
-      // A change after the restore is a step of its own; undoing it keeps the shape.
-      await re.evaluate(() => window.__trencadis.setZoneMode('z7', 'less'));
-      await re.waitForFunction(() => window.__trencadis.zones[0].mode === 'less');
-      await re.waitForTimeout(600);
+      // The restore is where the history starts: nothing to undo, and Ctrl+Z keeps the shape.
+      await re.waitForTimeout(700);
+      if (await re.evaluate(() => window.__trencadis.canUndo)) throw new Error('canUndo right after a restore');
       await re.evaluate(() => document.body.focus());
       await re.keyboard.press('Control+z');
-      await re.waitForFunction(() => window.__trencadis.zones.some((z) => z.id === 'z7' && z.mode === 'more'), null, { timeout: 10000 });
+      await re.waitForTimeout(300);
+      const kept = await re.evaluate(() => window.__trencadis.zones.some((z) => z.id === 'z7' && z.mode === 'more'));
+      if (!kept) throw new Error('Ctrl+Z after a restore removed the shape');
       await idle(re);
     } finally {
       await re.close();

@@ -24,7 +24,7 @@ function jpegOf(bitmap) {
 // Keeps the photo (or sample), touched shapes, lines and segments in
 // IndexedDB, and brings the saved session back on start; without a usable one
 // the first sample loads. A saved session that cannot be read is no error.
-export function useSession({ samples, loadBlob, loadSample, chosen, setError, photoGen, zones, guides, sample, bitmap, photoName, segments }) {
+export function useSession({ samples, loadBlob, loadSample, chosen, rebaseHistory, setError, photoGen, zones, guides, sample, bitmap, photoName, segments }) {
   const store = useRef(null);
   store.current ??= openSessionStore();
   // The blob a photo was restored from, so saving it again does not re-encode it.
@@ -54,6 +54,8 @@ export function useSession({ samples, loadBlob, loadSample, chosen, setError, ph
     // Another photo chosen while this one loaded wins.
     if (photoGen.current !== gen + 1) return true;
     if (!known) restored.current = { gen: photoGen.current, blob };
+    // The restored shapes and lines are where the history starts, not a step.
+    if (snap.zones.length || snap.guides.length) rebaseHistory();
     zones.loadZones(snap.zones);
     guides.restoreGuides(snap.guides.map((g) => ({ ...g, gen: photoGen.current })));
     return true;

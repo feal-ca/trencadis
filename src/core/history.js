@@ -26,6 +26,13 @@ export function createHistory(initial, limit = 50) {
       back.push(current);
       return set(forward.pop());
     },
+    // Makes `s` the only state: nothing to undo or redo. For a state that comes
+    // from outside the user's edits, such as a restored session.
+    rebase(s) {
+      back.length = 0;
+      forward.length = 0;
+      set(s);
+    },
     matches: (s) => JSON.stringify(s) === key,
     get canUndo() { return back.length > 0; },
     get canRedo() { return forward.length > 0; },

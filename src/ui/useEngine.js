@@ -58,12 +58,13 @@ export function useEngine() {
   const [sample, setSample] = useState(null);
   // Each request takes a number when it starts; one overtaken by a later request is dropped.
   const requests = useRef(0);
-  // Resolves to whether the photo was loaded.
+  // Resolves to true when the photo was loaded, false when it failed and null
+  // when a later request took its place.
   const loadBlob = useCallback(async (blob, name, seg = null, sampleSrc = null, ticket = ++requests.current) => {
     if (!isImage(blob)) { setError('Ese archivo no es una imagen. Prueba con un JPG o un PNG.'); return false; }
     try {
       const bmp = await decodePhoto(blob);
-      if (ticket !== requests.current) { bmp.close(); return false; }
+      if (ticket !== requests.current) { bmp.close(); return null; }
       resetResults();
       resetGuides();
       // Results of the old photo still on their way are dropped from here on.
@@ -73,6 +74,7 @@ export function useEngine() {
       setPhotoName(name ?? nameOf(blob));
       setPreset(seg);
       setSample(sampleSrc);
+      shown.current = true;
       setBitmap(bmp);
       return true;
     } catch {
@@ -91,19 +93,28 @@ export function useEngine() {
       const res = await fetch(src);
       if (!res.ok) throw new Error(res.statusText);
       const sample = SAMPLES.find((s) => s.src === src);
-      await loadBlob(await res.blob(), nameOf({ name: (sample?.label ?? '').toLowerCase() }), sample?.seg, src, ticket);
+      return await loadBlob(await res.blob(), nameOf({ name: (sample?.label ?? '').toLowerCase() }), sample?.seg, src, ticket);
     } catch {
       setError('No se ha podido cargar el ejemplo. Comprueba la conexión y vuelve a probar.');
+      return false;
     }
   }, [loadBlob]);
 
   // The last session comes back on start (or the first sample), and is kept as it changes.
   // Set when the user picks a photo or sample; start-up then does not load its own.
   const chosen = useRef(false);
-  const pickBlob = useCallback((...args) => { chosen.current = true; return loadBlob(...args); }, [loadBlob]);
-  const pickSample = useCallback((src) => { chosen.current = true; return loadSample(src); }, [loadSample]);
+  // A pick that fails with nothing on screen yet leaves the first sample to load.
+  const shown = useRef(false);
+  const pick = (load) => async (...args) => {
+    chosen.current = true;
+    const ok = await load(...args);
+    if (ok === false && !shown.current) { chosen.current = false; loadSample(SAMPLES[0].src); }
+    return ok;
+  };
+  const pickBlob = useCallback(pick(loadBlob), [loadBlob]);
+  const pickSample = useCallback(pick(loadSample), [loadSample]);
   useSession({
-    samples: SAMPLES, loadBlob, loadSample, chosen, setError, photoGen, zones, guides, sample, bitmap, photoName,
+    samples: SAMPLES, loadBlob, loadSample, chosen, rebaseHistory: history.rebaseNext, setError, photoGen, zones, guides, sample, bitmap, photoName,
     segments: segmentation.segments,
   });
 
