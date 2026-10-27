@@ -87,10 +87,14 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', id: msg.id, message: 'No hay ningún mosaico que exportar' });
       return;
     }
-    const { shards, colors, w, h, params } = lastRun;
-    const { data, width, height } = renderMosaic(shards, colors, w, h, toWorkPx(params), params.outLong);
-    const image = new ImageData(data, width, height);
-    self.postMessage({ type: 'exported', id: msg.id, image }, [image.data.buffer]);
+    try {
+      const { shards, colors, w, h, params } = lastRun;
+      const { data, width, height } = renderMosaic(shards, colors, w, h, toWorkPx(params), params.outLong);
+      const image = new ImageData(data, width, height);
+      self.postMessage({ type: 'exported', id: msg.id, image }, [image.data.buffer]);
+    } catch (err) {
+      self.postMessage({ type: 'error', id: msg.id, message: err?.message || String(err) });
+    }
     return;
   }
   if (msg.type !== 'run') return;

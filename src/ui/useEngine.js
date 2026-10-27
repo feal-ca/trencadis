@@ -39,6 +39,7 @@ export function useEngine() {
   const exporter = useExport({
     photoName, renderer: pipeline.renderer, effectiveRef: pipeline.effectiveRef,
     requestRender: pipeline.requestRender, requestCpuExport: pipeline.requestCpuExport,
+    setError: pipeline.setError,
   });
 
   const { setBitmap, setError, resetResults } = pipeline;
