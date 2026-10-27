@@ -106,7 +106,7 @@ a { color: inherit; }
 .viewer-host { position: absolute; inset: 0; }
 .viewer-canvas { position: absolute; inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); object-fit: contain; }
 .viewer-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--soft); }
-.viewer-bar { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 0 14px 10px; min-height: 30px; font-size: 0.88rem; }
+.viewer-bar { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 0 14px 10px; min-height: 36px; font-size: 0.88rem; }
 .status { color: var(--soft); }
 .err { color: var(--red); }
 
@@ -313,7 +313,9 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
 
 /* Progress, questions and the shape hint, in the viewer's bar: a line of text
    with its actions and a thin bar below, so nothing covers the image. */
-.seg-status { flex: 1 1 100%; display: grid; gap: 4px; font-size: 0.85rem; }
+.seg-status { flex: 1 1 100%; display: grid; gap: 2px; font-size: 0.85rem; line-height: 1.2; }
+/* While a status shows it takes the bar's row, so the image does not resize. */
+.viewer-bar:has(.seg-status) > :not(.seg-status, :has(.err)) { display: none; }
 .seg-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
 .seg-actions { display: flex; align-items: center; gap: 12px; }
 .seg-status .btn { padding: 4px 12px; }

@@ -81,7 +81,7 @@ export default function App() {
       </header>
       <main className="work">
         <div className="work-main">
-          <Viewer engine={engine} dropping={dropping} view={view} brush={brush} setTool={setBrush} onShapeTool={() => setBrush({ kind: 'shape' })} />
+          <Viewer engine={engine} dropping={dropping} view={view} brush={brush} setTool={setBrush} onShapeTool={() => { setBrush({ kind: 'shape' }); setPeek(null); }} />
           {peekStep && peekStep.views.length > 1 && (
             <div className="views" role="tablist" aria-label="Vista">
               {peekStep.views.map((v) => (

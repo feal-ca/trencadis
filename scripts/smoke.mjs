@@ -396,8 +396,10 @@ try {
       await ph.waitForFunction(() => window.__trencadis?.mosaicReady, null, { timeout: 60000 });
       // The sample's "N formas" line takes a row of the bar for two seconds; measure after it.
       await ph.waitForSelector('.seg-status', { state: 'detached', timeout: 10000 });
-      // The visible image is the canvas box with object-fit: contain applied.
-      const m = await ph.evaluate(() => {
+      // The sample's "N formas" line is up for two seconds after the mosaic: measure
+      // with it on screen, then again without it. The visible image is the canvas
+      // box with object-fit: contain applied.
+      const measure = () => ph.evaluate(() => {
         const cv = [...document.querySelectorAll('canvas.viewer-canvas')]
           .filter((c) => !/seg-outline|shape-canvas|brush-canvas/.test(c.className) && c.getBoundingClientRect().width > 0)
           .sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0];
@@ -408,12 +410,21 @@ try {
         const st = document.querySelector('.seg-status')?.getBoundingClientRect();
         const cuts = !!st && st.left < left + w && st.right > left && st.top < top + h && st.bottom > top;
         return {
-          share: (w * h) / (innerWidth * innerHeight), cuts, header: document.querySelector('header.top').getBoundingClientRect().height,
+          share: (w * h) / (innerWidth * innerHeight), cuts, status: !!st, boxH: b.height,
+          header: document.querySelector('header.top').getBoundingClientRect().height,
         };
       });
-      console.log(`    image ${(100 * m.share).toFixed(1)} % of the viewport, header ${Math.round(m.header)} px`);
-      if (m.share < 0.28) throw new Error(`the image is only ${(100 * m.share).toFixed(1)} % of the phone viewport`);
-      if (m.cuts) throw new Error('.seg-status covers the image');
+      // Loading the sample again (from the sheet's own links) brings the line back for two seconds.
+      await ph.locator('.extras .link', { hasText: 'Vermeer' }).click();
+      await ph.waitForSelector('.seg-status', { timeout: 10000 });
+      const withStatus = await measure();
+      if (!withStatus.status) throw new Error('the status line was gone before it was measured');
+      await ph.waitForSelector('.seg-status', { state: 'detached', timeout: 10000 });
+      const m = await measure();
+      console.log(`    image ${(100 * withStatus.share).toFixed(1)} % of the viewport (${(100 * m.share).toFixed(1)} % after the status), header ${Math.round(m.header)} px`);
+      if (withStatus.share < 0.28) throw new Error(`the image is only ${(100 * withStatus.share).toFixed(1)} % of the phone viewport`);
+      if (withStatus.cuts) throw new Error('.seg-status covers the image');
+      if (Math.abs(withStatus.boxH - m.boxH) > 0.5) throw new Error(`the image box went from ${withStatus.boxH} to ${m.boxH} px when the status went`);
     } finally {
       await ctx.close();
     }
