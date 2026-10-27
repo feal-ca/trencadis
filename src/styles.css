@@ -318,8 +318,11 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
 /* Progress, questions and the shape hint, in the viewer's bar: a line of text
    with its actions and a thin bar below, so nothing covers the image. */
 .seg-status { flex: 1 1 100%; display: grid; gap: 2px; font-size: 0.85rem; line-height: 1.2; }
-/* While a status shows it takes the bar's row, so the image does not resize. */
-.viewer-bar:has(.seg-status) > :not(.seg-status, :has(.err)) { display: none; }
+/* The brief lines (the count, the hint) take the bar's row, so the image does
+   not resize. The long-lived ones (question, progress, error) get a row of
+   their own and the tools stay below them. */
+.viewer-bar:has(.seg-status[data-brief]) > :not(.seg-status, :has(.err)) { display: none; }
+.viewer-bar:has(.seg-status:not([data-brief])) > .status:not(:has(.err)) { display: none; }
 .seg-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
 .seg-actions { display: flex; align-items: center; gap: 12px; }
 .seg-status .btn { padding: 4px 12px; }

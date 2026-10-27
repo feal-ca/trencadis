@@ -77,6 +77,7 @@ export function useEngine() {
       setSample(sampleSrc);
       shown.current = true;
       setBitmap(bmp);
+      setError(null);
       return true;
     } catch {
       // HEIC (iPhone photos) only opens in Safari; elsewhere it fails here.

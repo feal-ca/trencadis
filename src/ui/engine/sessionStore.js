@@ -30,6 +30,14 @@ export function fromSnapshot(obj) {
   const hasSample = typeof obj.sample === 'string' && obj.sample;
   if (!hasSample && !(obj.photo instanceof Blob)) return null;
   if (!Array.isArray(obj.guides) || !Array.isArray(obj.zones)) return null;
+  const pair = (pt) => Array.isArray(pt) && pt.length === 2 && pt.every(Number.isFinite);
+  // A line has a mode and its points; an erase (long press on a line) has the points it touched and a radius.
+  for (const g of obj.guides) {
+    if (!g) return null;
+    if (g.erase !== undefined) {
+      if (!Array.isArray(g.erase) || !g.erase.every(pair) || !Number.isFinite(g.radius)) return null;
+    } else if (typeof g.mode !== 'string' || !Array.isArray(g.points) || !g.points.every(pair)) return null;
+  }
   for (const z of obj.zones) {
     if (!z || !Array.isArray(z.points) || !grid(z.region, 'data', Uint8Array)) return null;
     if (!Array.isArray(z.region.box) || z.region.box.length !== 4 || !z.region.box.every(Number.isFinite)) return null;

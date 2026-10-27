@@ -39,14 +39,14 @@ La rueda amplía (Ctrl + rueda si hay una herramienta activa), arrastrar desplaz
 
 ### Exportar
 
-Descarga PNG o JPG al tamaño que elijas (el tamaño impreso equivalente aparece en el menú), o compártelo en el móvil. La imagen lleva una pequeña firma que puedes quitar. El acabado (junta, colocación, bisel, luz, brillo) se dibuja en la tarjeta gráfica y responde al momento. Los cambios de detalle, trozos o color se recalculan en segundo plano.
+Descarga PNG o JPG al tamaño que elijas (el tamaño impreso equivalente aparece en la ayuda emergente de la opción de tamaño), o compártelo en el móvil. La imagen lleva una pequeña firma que puedes quitar. El acabado (junta, colocación, bisel, luz, brillo) se dibuja en la tarjeta gráfica y responde al momento. Los cambios de detalle, trozos o color se recalculan en segundo plano.
 
 ## Privacidad
 
 - La foto se procesa en tu navegador y no se sube a ningún sitio.
 - El modelo de segmentación viene de Hugging Face y su runtime ONNX de jsDelivr. Los dos se descargan la primera vez que buscas formas en tu propia foto (en escritorio con WebGPU empieza sola; el móvil y otros navegadores preguntan antes). Ninguna de las dos peticiones lleva la foto.
 - La última sesión (foto, formas y líneas) se guarda en este navegador con IndexedDB, así que al recargar vuelve. Los ajustes van a localStorage.
-- Esas dos descargas son las únicas peticiones de red de la app.
+- Esas dos descargas son las únicas peticiones que la app hace a otros sitios.
 
 ## Cómo funciona
 

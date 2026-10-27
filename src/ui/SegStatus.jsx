@@ -56,7 +56,7 @@ export default function SegStatus({ engine, onShapeTool }) {
   }
   if (!text) return null;
   return (
-    <div className="seg-status" role="status">
+    <div className="seg-status" role="status" data-brief={(hint || (seg.phase === 'done' && shown)) || undefined}>
       <div className="seg-line">
         <span>{text}</span>
         {actions && <span className="seg-actions">{actions}</span>}

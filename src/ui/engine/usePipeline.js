@@ -307,10 +307,10 @@ export function usePipeline(effective, setAutoGrout) {
   }, []);
 
   // The mosaic at export size, drawn by the worker from its last finished run.
-  const requestCpuExport = useCallback(() => new Promise((resolve, reject) => {
+  const requestCpuExport = useCallback((params) => new Promise((resolve, reject) => {
     const id = `export-${++exportId.current}`;
     exports.current.set(id, { resolve, reject });
-    worker.current.postMessage({ type: 'export', id });
+    worker.current.postMessage({ type: 'export', id, params });
   }), []);
 
   const setViewport = useCallback((w, h) => {

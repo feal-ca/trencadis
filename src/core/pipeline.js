@@ -8,12 +8,6 @@ import { resampleLabels } from './seglines.js';
 import { tessellate } from './tessellate.js';
 import { zonesDetailMask } from './zones.js';
 
-// Runs the four stages, reusing cached results whose inputs did not change.
-// `onStage(name, result)` fires after each stage; `isStale()` lets the caller
-// abandon a run when newer parameters arrive (checked between stages).
-// { cpuRender: false } stops after the colour stage, for when the GPU draws
-// the mosaic. { cpuLong } is the long side the render stage draws at (the
-// screen, when there is no GPU); without it the stage draws at outLong.
 // A few results by key, the least recently used one leaving first.
 function lru(limit) {
   const m = new Map();
@@ -38,6 +32,12 @@ function lru(limit) {
 // a full-size canvas.
 const LIMITS = { analysis: 2, tessellation: 4, color: 4, render: 1 };
 
+// Runs the four stages, reusing cached results whose inputs did not change.
+// `onStage(name, result)` fires after each stage; `isStale()` lets the caller
+// abandon a run when newer parameters arrive (checked between stages).
+// { cpuRender: false } stops after the colour stage, for when the GPU draws
+// the mosaic. { cpuLong } is the long side the render stage draws at (the
+// screen, when there is no GPU); without it the stage draws at outLong.
 export function createPipeline() {
   let full = null, imgVersion = 0, zones = null, zonesVersion = 0, guides = null, guidesVersion = 0;
   let segments = null, segmentsVersion = 0;

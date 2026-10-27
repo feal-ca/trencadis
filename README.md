@@ -39,14 +39,14 @@ The wheel zooms (Ctrl + wheel when a tool is active), dragging pans, and there a
 
 ### Export
 
-Download PNG or JPG at the size you choose (the equivalent printed size shows in the menu), or share it on phones. The image carries a small signature that you can turn off. The finish (grout, placement, bevel, light, gloss) is drawn on the graphics card and responds instantly. Changes to detail, pieces or color are recomputed in the background.
+Download PNG or JPG at the size you choose (the size option's tooltip gives the equivalent printed size), or share it on phones. The image carries a small signature that you can turn off. The finish (grout, placement, bevel, light, gloss) is drawn on the graphics card and responds instantly. Changes to detail, pieces or color are recomputed in the background.
 
 ## Privacy
 
 - The photo is processed in your browser and is never uploaded.
 - The segmentation model comes from Hugging Face and its ONNX runtime from jsDelivr. Both are downloaded the first time you search for shapes on your own photo (desktop with WebGPU starts on its own; phones and other browsers ask first). Neither request carries the photo.
 - The last session (photo, shapes and lines) is saved in this browser with IndexedDB, so a reload brings it back. Settings go to localStorage.
-- Those two downloads are the only network requests the app makes.
+- Those two downloads are the only requests the app makes to other sites.
 
 ## How it works
 

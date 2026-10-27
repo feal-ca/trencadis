@@ -67,7 +67,7 @@ export function useSettings() {
       const before = { params: rawParams.current, macros: macrosRef.current };
       const next = applyStyle(DEFAULTS, id);
       setMacros(next.macros);
-      setParams({ ...next.params, seed: rawParams.current.seed });
+      setParams({ ...next.params, seed: rawParams.current.seed, outLong: rawParams.current.outLong });
       return before;
     },
     setMacro: (id, value) => {
@@ -83,7 +83,7 @@ export function useSettings() {
     resetAll: () => {
       const before = { params: rawParams.current, macros: macrosRef.current };
       setMacros({ values: { ...MACRO_DEFAULTS }, manual: {} });
-      setParams(applyMacroDefaults(DEFAULTS));
+      setParams({ ...applyMacroDefaults(DEFAULTS), outLong: rawParams.current.outLong });
       return before;
     },
     restore: ({ params: p, macros: m }) => { setMacros(m); setParams(p); },

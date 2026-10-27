@@ -10,6 +10,8 @@ export default function About() {
       <button type="button" className="link about-link" onClick={() => dialog.current.showModal()}>Acerca de</button>
       <dialog ref={dialog} className="about" aria-labelledby="about-title" onClick={(e) => {
         // Only a click outside the box (on the backdrop), not on its padding.
+        // A keyboard-triggered click (Enter, Space) has no position.
+        if (e.detail === 0) return;
         const r = dialog.current.getBoundingClientRect();
         if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dialog.current.close();
       }}>

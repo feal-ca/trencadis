@@ -9,8 +9,10 @@ const KOFI_STORE = 'trencadis.kofi.v1';
 // Web Share with files: phones mostly, and Safari/Edge on desktop.
 export const CAN_SHARE = typeof navigator !== 'undefined' && !!navigator.canShare
   && navigator.canShare({ files: [new File([''], 'x.png', { type: 'image/png' })] });
-// How long the mosaic must stay as it is before the share file is encoded.
-const SETTLE_MS = 800;
+// How long the mosaic must stay as it is before the share file is encoded, and
+// the largest download size that is encoded ahead (bigger ones wait for the tap).
+const SETTLE_MS = 2500;
+const AHEAD_MAX_LONG = 2000;
 const whenIdle = (fn) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn) : setTimeout(fn, 0));
 const cancelIdle = (id) => (typeof cancelIdleCallback === 'function' ? cancelIdleCallback(id) : clearTimeout(id));
 
@@ -75,7 +77,7 @@ export function useExport({ photoName, renderer, effectiveRef, requestCpuExport,
     // On the GPU the pixels are read back in one task, with the screen frame
     // drawn again before it ends; without one the worker draws the download
     // apart from what is on screen.
-    const image = renderer.ok ? renderer.pixels(p, p.outLong) : await requestCpuExport();
+    const image = renderer.ok ? renderer.pixels(p, p.outLong) : await requestCpuExport(p);
     const cv = document.createElement('canvas');
     cv.width = image.width;
     cv.height = image.height;
@@ -83,14 +85,17 @@ export function useExport({ photoName, renderer, effectiveRef, requestCpuExport,
     ctx.putImageData(image, 0, 0);
     if (signRef.current) await drawSignature(ctx, cv.width, cv.height);
     const blob = await new Promise((r) => cv.toBlob(r, type, 0.9));
-    return blob && new File([blob], `trencadis-${photoName}-${p.algorithm}-${p.seed}.${format}`, { type });
+    if (!blob) throw new Error('No se ha podido guardar el mosaico.');
+    return new File([blob], `trencadis-${photoName}-${p.algorithm}-${p.seed}.${format}`, { type });
   }, [photoName, renderer, effectiveRef, requestCpuExport, awaitFull]);
 
   // The export can fail without a GPU (the worker may have nothing to draw, or
   // run out of memory); the error goes to the status line like the others.
   const exportOrReport = useCallback(async (format) => {
     try {
-      return await exportFile(format);
+      const file = await exportFile(format);
+      setError(null);
+      return file;
     } catch (e) {
       setError(e?.message || 'No se ha podido guardar el mosaico.');
       return null;
@@ -98,7 +103,9 @@ export function useExport({ photoName, renderer, effectiveRef, requestCpuExport,
   }, [exportFile, setError]);
 
   // The share file, encoded in the background once the mosaic has stood still
-  // and the tab is in view. It is keyed by what decides the output (photo,
+  // and the tab is in view. Only on the GPU and up to AHEAD_MAX_LONG: without
+  // one, or for a bigger file, it costs more than it saves, so the share
+  // encodes it at the tap. It is keyed by what decides the output (photo,
   // settings, the run's result, format), so a file made for anything else is
   // never used and the same key is never encoded twice.
   const { effective, info, busy, mosaicReady } = settings;
@@ -116,7 +123,8 @@ export function useExport({ photoName, renderer, effectiveRef, requestCpuExport,
     return () => document.removeEventListener('visibilitychange', on);
   }, []);
   useEffect(() => {
-    if (!CAN_SHARE || !mosaicReady || busy || hidden || prepared.current?.key === key) return;
+    if (!CAN_SHARE || !renderer.ok || effective.outLong > AHEAD_MAX_LONG) return;
+    if (!mosaicReady || busy || hidden || prepared.current?.key === key) return;
     let idle = 0;
     let stale = false;
     const timer = setTimeout(() => {
@@ -132,7 +140,7 @@ export function useExport({ photoName, renderer, effectiveRef, requestCpuExport,
       });
     }, SETTLE_MS);
     return () => { stale = true; clearTimeout(timer); cancelIdle(idle); };
-  }, [key, busy, mosaicReady, hidden, format, exportFile, awaitFull]);
+  }, [key, busy, mosaicReady, hidden, format, exportFile, awaitFull, renderer, effective.outLong]);
 
   const download = useCallback(async (f = formatRef.current) => {
     const file = await exportOrReport(f);

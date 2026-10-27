@@ -205,17 +205,28 @@ export function createRenderer(canvas, { onLost, onRestored } = {}) {
     // The mosaic at export size as ImageData, top row first. The canvas goes
     // back to what it showed before the task ends, so no frame is painted at
     // export size.
+    // Throws instead of returning a blank or partial image: a lost context,
+    // or a canvas the browser would not make that large.
     pixels(p, long) {
       const back = shown;
       const [W, H] = api.sizeFor(long);
-      api.render(p, W, H);
       const raw = new Uint8ClampedArray(W * H * 4);
-      gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, raw);
-      if (back) api.render(back.p, back.W, back.H);
-      // readPixels starts at the bottom row.
-      const out = new Uint8ClampedArray(raw.length);
-      for (let y = 0; y < H; y++) out.set(raw.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
-      return new ImageData(out, W, H);
+      try {
+        if (!api.ok || gl.isContextLost()) throw new Error('El contexto gráfico se ha perdido. Vuelve a probar.');
+        api.render(p, W, H);
+        if (gl.drawingBufferWidth !== W || gl.drawingBufferHeight !== H) throw new Error('El navegador no puede dibujar el mosaico a ese tamaño. Prueba con un tamaño de descarga menor.');
+        gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, raw);
+        if (gl.isContextLost()) throw new Error('El contexto gráfico se ha perdido. Vuelve a probar.');
+      } finally {
+        if (back && api.ok) api.render(back.p, back.W, back.H);
+      }
+      // readPixels starts at the bottom row; flip in place.
+      const row = W * 4, tmp = new Uint8ClampedArray(row);
+      for (let y = 0; y < H >> 1; y++) {
+        const a = raw.subarray(y * row, (y + 1) * row), b = raw.subarray((H - 1 - y) * row, (H - y) * row);
+        tmp.set(a); a.set(b); b.set(tmp);
+      }
+      return new ImageData(raw, W, H);
     },
   };
   canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); api.ok = false; onLost?.(); });

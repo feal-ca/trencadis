@@ -1,13 +1,14 @@
 import { downscale, fromImageData } from './core/image.js';
 import { createPipeline } from './core/pipeline.js';
 import { renderMosaic } from './core/render.js';
-import { DRAFT_LONG, toWorkPx } from './core/params.js';
+import { DRAFT_LONG, keysForStage, toWorkPx } from './core/params.js';
 import * as vis from './core/vis.js';
 
 // While a control is dragged, runs go to a second pipeline on a smaller copy
 // of the photo; the full one keeps the results that are exported.
 const fullPipe = createPipeline();
 const draftPipe = createPipeline();
+const RENDER_KEYS = keysForStage('render');
 // The pipeline of the last finished run, which the views are drawn from.
 let pipe = fullPipe;
 // The result last sent to the page for each stage, so one that comes out of a
@@ -100,14 +101,17 @@ self.onmessage = async (e) => {
     return;
   }
   if (msg.type === 'export') {
-    // The download is drawn from the last finished run, at its own size,
-    // whatever the screen-size render is.
+    // The download is drawn from the last finished run's shapes and colours,
+    // with the render settings the page has now (size, grout, light), whatever
+    // the screen-size render is.
     if (!lastRun) {
       self.postMessage({ type: 'error', id: msg.id, message: 'No hay ningún mosaico que exportar' });
       return;
     }
     try {
-      const { shards, colors, w, h, params } = lastRun;
+      const { shards, colors, w, h, params: ran } = lastRun;
+      const params = { ...ran };
+      if (msg.params) for (const k of RENDER_KEYS) if (k in msg.params) params[k] = msg.params[k];
       const { data, width, height } = renderMosaic(shards, colors, w, h, toWorkPx(params), params.outLong);
       const image = new ImageData(data, width, height);
       self.postMessage({ type: 'exported', id: msg.id, image }, [image.data.buffer]);

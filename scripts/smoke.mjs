@@ -47,6 +47,17 @@ const idle = (pg) => pg.waitForFunction(
   null, { timeout: 120000 },
 );
 const ready = () => idle(page);
+// Whether «Otra versión» and the zoom buttons (not on touch) are on screen in the viewer bar.
+const barTools = (pg) => pg.evaluate(() => {
+  const shown = (el) => !!el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width > 0;
+  const bar = document.querySelector('.viewer-bar');
+  return {
+    status: !!bar.querySelector('.seg-status'),
+    other: shown(bar.querySelector('[title="Otra versión (R)"]')),
+    zoom: shown(bar.querySelector('.zoom-buttons')),
+    hold: shown(bar.querySelector('.hold')),
+  };
+});
 // Polls the session kept in IndexedDB until `ok(snapshot)` holds. The store is
 // created here if the page has not yet, as the app would.
 const storedWhen = async (pg, ok) => {
@@ -180,6 +191,10 @@ try {
     await page.waitForTimeout(300);
     await ready();
     if (modelRequests.length) throw new Error(`requests to the model before any pick: ${modelRequests.join(' ')}`);
+    // The question stays up until answered; the bar's tools stay with it.
+    await page.waitForFunction(() => window.__trencadis.seg.phase === 'ask', null, { timeout: 30000 });
+    const tools = await barTools(page);
+    if (!tools.other || !tools.zoom) throw new Error(`viewer bar while the shape search asks: ${JSON.stringify(tools)}`);
   });
   await step('drop on the panel', async () => {
     const b64 = readFileSync('public/samples/barcas.webp').toString('base64');
@@ -309,7 +324,7 @@ try {
     }
   });
   await step('webgl lost', async () => {
-    // The status bar overlays the bottom of the canvas, so it is left out.
+    // The bottom 100 px are left out, in case the bar's status line overlaps the canvas.
     const shot = async () => {
       const box = await page.locator('.viewer-host canvas').boundingBox();
       return page.screenshot({ clip: { x: box.x, y: box.y, width: box.width, height: box.height - 100 } });
@@ -532,6 +547,11 @@ try {
       });
       if (!bar.other || bar.zoomButtons || bar.h > 40) throw new Error(`phone viewer bar: ${JSON.stringify(bar)}`);
       if (Math.abs(withStatus.boxH - m.boxH) > 0.5) throw new Error(`the image box went from ${withStatus.boxH} to ${m.boxH} px when the status went`);
+      // An own photo with no WebGPU gets the question, which stays: the bar keeps its tools.
+      await ph.locator('input[type=file]').setInputFiles('public/samples/barcas.webp');
+      await ph.waitForFunction(() => window.__trencadis.seg.phase === 'ask', null, { timeout: 30000 });
+      const asking = await barTools(ph);
+      if (!asking.status || !asking.other || !asking.hold) throw new Error(`phone viewer bar while the shape search asks: ${JSON.stringify(asking)}`);
     } finally {
       await ctx.close();
     }
