@@ -241,7 +241,7 @@ function DrawLayer({ engine, tool, api, onPending }) {
 // with the outline of the shapes found and the touched shapes over it, and
 // the shape search's progress at the bottom. A faint Eixample grid sits
 // behind it; a file dragged over the window shows the panot.
-export default function Viewer({ engine, dropping, view, brush, setTool }) {
+export default function Viewer({ engine, dropping, view, brush, setTool, onShapeTool }) {
   const box = useRef(null);
   const host = useRef(null);
   const [compare, setCompare] = useState(false);
@@ -389,7 +389,6 @@ export default function Viewer({ engine, dropping, view, brush, setTool }) {
         </div>
         {!ready && <p className="viewer-empty">{engine.hasImage ? 'Calculando…' : 'Todavía no hay foto.'}</p>}
         {engine.busy && ready && <span className="busy-mark" role="status" aria-label="Calculando" />}
-        <SegStatus engine={engine} />
       </div>
       {dropping && (
         <div className="drop">
@@ -398,6 +397,7 @@ export default function Viewer({ engine, dropping, view, brush, setTool }) {
         </div>
       )}
       <div className="viewer-bar">
+        <SegStatus engine={engine} onShapeTool={onShapeTool} />
         <span className="status" aria-live="polite">
           {engine.error ? <span className="err">{engine.error}</span>
             : engine.busy ? 'Calculando…'

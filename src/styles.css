@@ -188,8 +188,11 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
    shrinks with the sheet and is only covered when it is pulled up all the way. */
 @media (max-width: 860px) {
   .app { height: 100dvh; min-height: 0; overflow: hidden; }
-  .top { flex-wrap: wrap; gap: 4px 10px; padding: 8px 12px; }
-  .top .btn { padding: 7px 12px; }
+  .top { gap: 10px; padding: 6px 12px; }
+  .top .btn { margin-left: auto; padding: 7px 12px; }
+  .viewer-canvas { inset: 4px; width: calc(100% - 8px); height: calc(100% - 8px); }
+  .extras { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; padding: 6px 4px 10px; }
+  .extras .kofi { margin-left: 0; }
   .work { grid-template-columns: 1fr; padding: 0 8px calc(var(--sheet-h, 0px) + 8px); }
   .viewer-bar { padding: 0 10px 8px; }
 }
@@ -308,15 +311,14 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
 .more-all > summary { font-weight: 550; }
 .more-all .section { border-bottom: 0; }
 
-/* Progress and questions about the shape search, over the viewer */
-.seg-status {
-  position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 3; display: grid; gap: 6px;
-  padding: 8px 12px; border-radius: 6px; background: rgba(20, 18, 16, 0.78); color: #fff; font-size: 0.85rem;
-}
-.seg-status .link { color: #fff; }
+/* Progress, questions and the shape hint, in the viewer's bar: a line of text
+   with its actions and a thin bar below, so nothing covers the image. */
+.seg-status { flex: 1 1 100%; display: grid; gap: 4px; font-size: 0.85rem; }
+.seg-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
 .seg-actions { display: flex; align-items: center; gap: 12px; }
-.seg-bar { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.25); }
-.seg-bar > div { height: 100%; border-radius: 2px; background: #e3a33b; transition: width 0.2s; }
+.seg-status .btn { padding: 4px 12px; }
+.seg-bar { height: 3px; border-radius: 2px; background: var(--line); }
+.seg-bar > div { height: 100%; border-radius: 2px; background: var(--ochre); transition: width 0.2s; }
 
 /* Shapes over the image: the outline of those found, fading after the
    search, and the touched ones with their menu. */

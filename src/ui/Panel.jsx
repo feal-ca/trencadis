@@ -265,7 +265,8 @@ function ResetAll({ engine }) {
 }
 
 // `withExport` false: the phone sheet shows the export row in its own footer.
-export default function Panel({ engine, open, setOpen, peek, setPeek, brush, setBrush, withExport = true }) {
+// `extras` goes last: the phone's samples and Ko-fi link.
+export default function Panel({ engine, open, setOpen, peek, setPeek, brush, setBrush, withExport = true, extras = null }) {
   const pickTool = (b) => { setBrush(b); if (b) setPeek(null); };
   return (
     <>
@@ -303,6 +304,7 @@ export default function Panel({ engine, open, setOpen, peek, setPeek, brush, set
       </details>
       <ResetAll engine={engine} />
       {withExport && <Export engine={engine} />}
+      {extras}
     </>
   );
 }

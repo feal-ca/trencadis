@@ -30,3 +30,8 @@ export function statusOf(seg) {
   }
   return { text, bar, actions };
 }
+
+// The one-off pointer to the shape tool, once a photo of the user's has its shapes.
+export const SHAPE_HINT = 'Toca una forma para darle más o menos detalle';
+export const HINT_STORE = 'trencadis.hint.v1';
+export const HINT_MS = 8000;

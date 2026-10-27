@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import Extras from './Extras.jsx';
 import Panel, { Export } from './Panel.jsx';
 import Sheet from './Sheet.jsx';
 import { STEPS } from './steps.js';
-import { SAMPLES, useEngine } from './useEngine.js';
+import { useEngine } from './useEngine.js';
 import { MOBILE, useMedia } from './useMedia.js';
 import { useWindowDrop } from './useWindowDrop.js';
 import Viewer from './Viewer.jsx';
@@ -62,6 +63,7 @@ export default function App() {
       brush={brush}
       setBrush={setBrush}
       withExport={!mobile}
+      extras={mobile ? <div className="extras"><Extras engine={engine} /></div> : null}
     />
   );
 
@@ -71,24 +73,15 @@ export default function App() {
       <header className="top">
         <h1 className="brand-block">
           <span className="brand">Trencadís</span>
-          <span className="tagline">Tu foto hecha mosaico, sin salir de tu dispositivo</span>
+          {!mobile && <span className="tagline">Tu foto hecha mosaico, sin salir de tu dispositivo</span>}
         </h1>
         <button type="button" className="btn btn-dark chamfer-s" onClick={() => input.current.click()} title="También puedes arrastrarla aquí o pegarla con Ctrl+V">Subir foto</button>
         <input ref={input} type="file" accept="image/*" hidden onChange={(e) => e.target.files[0] && engine.loadBlob(e.target.files[0])} />
-        <span className="samples muted">
-          o prueba con{' '}
-          {SAMPLES.map((s, i) => (
-            <span key={s.src}>
-              {i > 0 && ', '}
-              <button type="button" className="link" onClick={() => engine.loadSample(s.src)}>{s.label}</button>
-            </span>
-          ))}
-        </span>
-        <a className="kofi link" href="https://ko-fi.com/fealca" target="_blank" rel="noopener">Invítame a un café</a>
+        {!mobile && <Extras engine={engine} />}
       </header>
       <main className="work">
         <div className="work-main">
-          <Viewer engine={engine} dropping={dropping} view={view} brush={brush} setTool={setBrush} />
+          <Viewer engine={engine} dropping={dropping} view={view} brush={brush} setTool={setBrush} onShapeTool={() => setBrush({ kind: 'shape' })} />
           {peekStep && peekStep.views.length > 1 && (
             <div className="views" role="tablist" aria-label="Vista">
               {peekStep.views.map((v) => (

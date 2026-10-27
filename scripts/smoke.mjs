@@ -381,6 +381,43 @@ try {
       await nogl.close();
     }
   });
+  await step('phone', async () => {
+    // Its own context: a touch phone, where the header is one line and the image gets the room.
+    const ctx = await browser.newContext({
+      viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2,
+    });
+    const ph = await ctx.newPage();
+    await ph.addInitScript(() => { delete Navigator.prototype.gpu; });
+    ph.on('pageerror', (e) => errors.push(e.message));
+    ph.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    try {
+      await ph.goto('http://localhost:5191/?debug');
+      await idle(ph);
+      await ph.waitForFunction(() => window.__trencadis?.mosaicReady, null, { timeout: 60000 });
+      // The sample's "N formas" line takes a row of the bar for two seconds; measure after it.
+      await ph.waitForSelector('.seg-status', { state: 'detached', timeout: 10000 });
+      // The visible image is the canvas box with object-fit: contain applied.
+      const m = await ph.evaluate(() => {
+        const cv = [...document.querySelectorAll('canvas.viewer-canvas')]
+          .filter((c) => !/seg-outline|shape-canvas|brush-canvas/.test(c.className) && c.getBoundingClientRect().width > 0)
+          .sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0];
+        const b = cv.getBoundingClientRect();
+        const k = Math.min(b.width / cv.width, b.height / cv.height);
+        const w = cv.width * k, h = cv.height * k;
+        const left = b.left + (b.width - w) / 2, top = b.top + (b.height - h) / 2;
+        const st = document.querySelector('.seg-status')?.getBoundingClientRect();
+        const cuts = !!st && st.left < left + w && st.right > left && st.top < top + h && st.bottom > top;
+        return {
+          share: (w * h) / (innerWidth * innerHeight), cuts, header: document.querySelector('header.top').getBoundingClientRect().height,
+        };
+      });
+      console.log(`    image ${(100 * m.share).toFixed(1)} % of the viewport, header ${Math.round(m.header)} px`);
+      if (m.share < 0.28) throw new Error(`the image is only ${(100 * m.share).toFixed(1)} % of the phone viewport`);
+      if (m.cuts) throw new Error('.seg-status covers the image');
+    } finally {
+      await ctx.close();
+    }
+  });
   if (errors.length) throw new Error('page errors: ' + errors.join(' | '));
   console.log('smoke test passed');
 } catch (e) {
