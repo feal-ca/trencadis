@@ -56,11 +56,14 @@ export function useEngine() {
   const { resetGuides } = guides;
   // Which sample is on screen (its src), or null for a photo of the user's.
   const [sample, setSample] = useState(null);
+  // Each request takes a number when it starts; one overtaken by a later request is dropped.
+  const requests = useRef(0);
   // Resolves to whether the photo was loaded.
-  const loadBlob = useCallback(async (blob, name, seg = null, sampleSrc = null) => {
+  const loadBlob = useCallback(async (blob, name, seg = null, sampleSrc = null, ticket = ++requests.current) => {
     if (!isImage(blob)) { setError('Ese archivo no es una imagen. Prueba con un JPG o un PNG.'); return false; }
     try {
       const bmp = await decodePhoto(blob);
+      if (ticket !== requests.current) { bmp.close(); return false; }
       resetResults();
       resetGuides();
       // Results of the old photo still on their way are dropped from here on.
@@ -83,19 +86,24 @@ export function useEngine() {
   }, []);
 
   const loadSample = useCallback(async (src) => {
+    const ticket = ++requests.current;
     try {
       const res = await fetch(src);
       if (!res.ok) throw new Error(res.statusText);
       const sample = SAMPLES.find((s) => s.src === src);
-      await loadBlob(await res.blob(), nameOf({ name: (sample?.label ?? '').toLowerCase() }), sample?.seg, src);
+      await loadBlob(await res.blob(), nameOf({ name: (sample?.label ?? '').toLowerCase() }), sample?.seg, src, ticket);
     } catch {
       setError('No se ha podido cargar el ejemplo. Comprueba la conexión y vuelve a probar.');
     }
   }, [loadBlob]);
 
   // The last session comes back on start (or the first sample), and is kept as it changes.
+  // Set when the user picks a photo or sample; start-up then does not load its own.
+  const chosen = useRef(false);
+  const pickBlob = useCallback((...args) => { chosen.current = true; return loadBlob(...args); }, [loadBlob]);
+  const pickSample = useCallback((src) => { chosen.current = true; return loadSample(src); }, [loadSample]);
   useSession({
-    samples: SAMPLES, loadBlob, loadSample, setError, photoGen, zones, guides, sample, bitmap, photoName,
+    samples: SAMPLES, loadBlob, loadSample, chosen, setError, photoGen, zones, guides, sample, bitmap, photoName,
     segments: segmentation.segments,
   });
 
@@ -121,7 +129,7 @@ export function useEngine() {
     canUndo: history.canUndo,
     canRedo: history.canRedo,
     isDefault: settings.isDefault,
-    loadBlob, loadSample, setViewport: pipeline.setViewport, setWanted: pipeline.setWanted,
+    loadBlob: pickBlob, loadSample: pickSample, setViewport: pipeline.setViewport, setWanted: pipeline.setWanted,
     dragStart: pipeline.dragStart, dragEnd: pipeline.dragEnd,
     download: exporter.download, share: exporter.share,
     seg: segmentation.seg, segments: segmentation.segments,

@@ -5,6 +5,9 @@
 
 const DB = 'trencadis', STORE = 'session', KEY = 'last';
 const typed = (a, Type) => a instanceof Type;
+const dim = (n) => Number.isInteger(n) && n > 0;
+// A grid { w, h } whose array `key` holds one entry per cell.
+const grid = (g, key, Type) => !!g && dim(g.w) && dim(g.h) && typed(g[key], Type) && g[key].length === g.w * g.h;
 
 // The snapshot to store. Shapes without a mode or without pixels are left out.
 export function toSnapshot({ sample, photo, name, guides, zones, pixelsOf, segments }) {
@@ -28,11 +31,12 @@ export function fromSnapshot(obj) {
   if (!hasSample && !(obj.photo instanceof Blob)) return null;
   if (!Array.isArray(obj.guides) || !Array.isArray(obj.zones)) return null;
   for (const z of obj.zones) {
-    if (!z || !typed(z.region?.data, Uint8Array) || !Array.isArray(z.points)) return null;
-    if (z.parts != null && !typed(z.parts.labels, Int32Array)) return null;
+    if (!z || !Array.isArray(z.points) || !grid(z.region, 'data', Uint8Array)) return null;
+    if (!Array.isArray(z.region.box) || z.region.box.length !== 4 || !z.region.box.every(Number.isFinite)) return null;
+    if (z.parts != null && !(grid(z.parts, 'labels', Int32Array) && Number.isInteger(z.parts.count) && z.parts.count >= 0)) return null;
   }
   const s = obj.segments;
-  if (s != null && !(ArrayBuffer.isView(s.labels) && s.w > 0 && s.h > 0)) return null;
+  if (s != null && !(ArrayBuffer.isView(s.labels) && s.labels.length === s.w * s.h && dim(s.w) && dim(s.h) && Number.isInteger(s.count) && s.count > 0)) return null;
   return {
     v: 1, sample: hasSample ? obj.sample : null, photo: hasSample ? null : obj.photo,
     name: typeof obj.name === 'string' ? obj.name : 'foto',

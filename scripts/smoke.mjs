@@ -47,6 +47,26 @@ const idle = (pg) => pg.waitForFunction(
   null, { timeout: 120000 },
 );
 const ready = () => idle(page);
+// Polls the session kept in IndexedDB until `ok(snapshot)` holds. The store is
+// created here if the page has not yet, as the app would.
+const storedWhen = async (pg, ok) => {
+  for (let i = 0; i < 60; i++) {
+    const snap = await pg.evaluate(() => new Promise((resolve) => {
+      const open = indexedDB.open('trencadis', 1);
+      open.onupgradeneeded = () => open.result.createObjectStore('session');
+      open.onerror = () => resolve(null);
+      open.onsuccess = () => {
+        const db = open.result;
+        const get = db.transaction('session').objectStore('session').get('last');
+        get.onsuccess = () => { db.close(); resolve(get.result ? { name: get.result.name, guides: get.result.guides } : null); };
+        get.onerror = () => { db.close(); resolve(null); };
+      };
+    }));
+    if (ok(snap)) return;
+    await pg.waitForTimeout(250);
+  }
+  throw new Error('the session was never saved');
+};
 const status = () => page.locator('.status').textContent();
 const step = async (name, fn) => {
   const t = performance.now();
@@ -259,12 +279,77 @@ try {
       await re.evaluate(() => window.__trencadis.addGuide({ points: [[0.1, 0.5], [0.9, 0.5]], mode: 'points', snap: false }));
       await re.waitForFunction(() => window.__trencadis.guides.length === 1);
       // The session is written 1 s after the last change.
-      await re.waitForTimeout(1500);
+      await storedWhen(re, (snap) => snap?.guides?.length === 1 && snap.name === 'barcas');
       await re.reload();
       await re.waitForFunction(() => window.__trencadis?.hasImage && window.__trencadis.guides.length === 1, null, { timeout: 30000 });
       await idle(re);
       const name = await re.evaluate(() => window.__trencadis.photoName);
       if (name !== 'barcas') throw new Error(`photoName after the reload: ${name}`);
+    } finally {
+      await re.close();
+    }
+  });
+  await step('photo chosen during start-up wins', async () => {
+    const early = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await early.addInitScript(() => { delete Navigator.prototype.gpu; });
+    early.on('pageerror', (e) => errors.push(e.message));
+    early.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    try {
+      await early.goto('http://localhost:5191/?debug', { waitUntil: 'commit' });
+      await early.locator('input[type=file]').setInputFiles('public/samples/barcas.webp');
+      await early.waitForFunction(() => window.__trencadis?.hasImage);
+      await idle(early);
+      // Time for a start-up load to land on top of the photo, if it were going to.
+      await early.waitForTimeout(1500);
+      await idle(early);
+      const name = await early.evaluate(() => window.__trencadis.photoName);
+      if (name !== 'barcas') throw new Error(`photoName after an upload during start-up: ${name}`);
+    } finally {
+      await early.close();
+    }
+  });
+  await step('reload keeps shapes', async () => {
+    const re = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await re.addInitScript(() => { delete Navigator.prototype.gpu; });
+    re.on('pageerror', (e) => errors.push(e.message));
+    re.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    try {
+      await re.goto('http://localhost:5191/?debug');
+      await idle(re);
+      // Wait for the sample's own save, so the seeded session is the last write.
+      await re.waitForTimeout(1500);
+      await re.evaluate(() => new Promise((resolve, reject) => {
+        const open = indexedDB.open('trencadis', 1);
+        open.onupgradeneeded = () => open.result.createObjectStore('session');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const box = [0.4, 0.4, 0.6, 0.6];
+          const snap = {
+            v: 1, sample: './samples/vermeer.webp', photo: null, name: 'vermeer', guides: [],
+            zones: [{
+              id: 'z7', mode: 'more', points: [[0.5, 0.5, 1]],
+              region: { box, w: 4, h: 4, data: new Uint8Array(16).fill(1) },
+              parts: { box, w: 4, h: 4, labels: new Int32Array(16).fill(0), count: 1 },
+            }],
+            segments: null,
+          };
+          const tx = open.result.transaction('session', 'readwrite');
+          tx.objectStore('session').put(snap, 'last');
+          tx.oncomplete = () => { open.result.close(); resolve(); };
+          tx.onerror = () => reject(tx.error);
+        };
+      }));
+      await re.reload();
+      await re.waitForFunction(() => window.__trencadis?.zones.some((z) => z.id === 'z7' && z.mode === 'more'), null, { timeout: 30000 });
+      await idle(re);
+      // A change after the restore is a step of its own; undoing it keeps the shape.
+      await re.evaluate(() => window.__trencadis.setZoneMode('z7', 'less'));
+      await re.waitForFunction(() => window.__trencadis.zones[0].mode === 'less');
+      await re.waitForTimeout(600);
+      await re.evaluate(() => document.body.focus());
+      await re.keyboard.press('Control+z');
+      await re.waitForFunction(() => window.__trencadis.zones.some((z) => z.id === 'z7' && z.mode === 'more'), null, { timeout: 10000 });
+      await idle(re);
     } finally {
       await re.close();
     }

@@ -44,6 +44,21 @@ describe('fromSnapshot', () => {
     expect(fromSnapshot({ ...ok, zones: [{ id: 'z1', mode: 'more', points: [] }] })).toBeNull();
     expect(fromSnapshot({ ...ok, segments: { w: 1, h: 1, labels: [1], count: 1 } })).toBeNull();
   });
+  it('rejects shapes whose sizes do not match their data', () => {
+    const zone = (r, parts = null) => ({ id: 'z1', mode: 'more', points: [[0.2, 0.2, 1]], region: r, parts });
+    expect(fromSnapshot({ ...ok, zones: [zone(region, parts)] })).not.toBeNull();
+    expect(fromSnapshot({ ...ok, zones: [zone({ ...region, w: 3 })] })).toBeNull();
+    expect(fromSnapshot({ ...ok, zones: [zone({ ...region, w: 0, h: 0, data: new Uint8Array(0) })] })).toBeNull();
+    expect(fromSnapshot({ ...ok, zones: [zone({ ...region, box: [0, 0, 1] })] })).toBeNull();
+    expect(fromSnapshot({ ...ok, zones: [zone({ ...region, box: [0, 0, 'a', 1] })] })).toBeNull();
+    expect(fromSnapshot({ ...ok, zones: [zone(region, { ...parts, labels: new Int32Array(3) })] })).toBeNull();
+    expect(fromSnapshot({ ...ok, zones: [zone(region, { ...parts, count: 'x' })] })).toBeNull();
+    const seg = { w: 2, h: 1, labels: new Uint8Array([1, 2]), count: 2 };
+    expect(fromSnapshot({ ...ok, segments: seg })).not.toBeNull();
+    expect(fromSnapshot({ ...ok, segments: { ...seg, labels: new Uint8Array(5) } })).toBeNull();
+    expect(fromSnapshot({ ...ok, segments: { ...seg, count: 0 } })).toBeNull();
+    expect(fromSnapshot({ ...ok, segments: { ...seg, count: 1.5 } })).toBeNull();
+  });
 });
 
 describe('openSessionStore', () => {
