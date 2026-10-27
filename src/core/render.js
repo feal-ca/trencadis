@@ -45,10 +45,10 @@ export function distanceTransform(f, w, h) {
 }
 
 // Final image: grout lines, per-shard glaze tilt, bevelled edges and a
-// Blinn-Phong highlight. Rendered at outLong * supersample and box-filtered down.
-export function renderMosaic(shards, colors, w, h, p) {
+// Blinn-Phong highlight. Rendered at `long` (the download size by default) * supersample and box-filtered down.
+export function renderMosaic(shards, colors, w, h, p, long = p.outLong) {
   const ss = Math.max(1, Math.round(p.supersample));
-  const scale = p.outLong / Math.max(w, h);
+  const scale = long / Math.max(w, h);
   const W = Math.round(w * scale * ss), H = Math.round(h * scale * ss);
   const k = scale * ss;
 

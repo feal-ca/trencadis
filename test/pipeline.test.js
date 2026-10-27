@@ -37,6 +37,22 @@ describe('pipeline', () => {
 });
 
 describe('cpu render switch', () => {
+  it('a new cpuLong redraws only the render stage', async () => {
+    const pipe = createPipeline();
+    pipe.setImage(syntheticImage());
+    const p = { ...DEFAULTS, supersample: 1 };
+    await pipe.run(p, () => {}, undefined, undefined, undefined, { cpuLong: 300 });
+    const fresh = [];
+    let width;
+    await pipe.run(p, (name, v, recomputed) => {
+      if (recomputed) fresh.push(name);
+      if (name === 'render') width = v.width;
+    }, undefined, undefined, undefined, { cpuLong: 400 });
+    expect(fresh).toEqual(['render']);
+    expect(width).toBe(400);
+  });
+
+
   it('cpuRender false skips render stage', async () => {
     const pipe = createPipeline();
     pipe.setImage(syntheticImage());

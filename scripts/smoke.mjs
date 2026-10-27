@@ -32,10 +32,11 @@ const API_KEYS = ('addGuide autoGrout bitmap busy canRedo canUndo clearGuides do
   + 'refineShape removeZone resetAll restore seg segAccept segDecline segRetry segments setMacro setManual setParam '
   + 'setParams setStyle setViewport setWanted setZoneMode share style undo undoGuide zones').split(' ');
 
-const ready = () => page.waitForFunction(
+const idle = (pg) => pg.waitForFunction(
   () => !document.querySelector('.is-busy') && !document.querySelector('.download[disabled]'),
   null, { timeout: 120000 },
 );
+const ready = () => idle(page);
 const status = () => page.locator('.status').textContent();
 const step = async (name, fn) => {
   const t = performance.now();
@@ -105,6 +106,32 @@ try {
     if (!dl.suggestedFilename().startsWith('trencadis-barcas-')) throw new Error(`file name: ${dl.suggestedFilename()}`);
     const size = (await (await dl.createReadStream()).toArray()).reduce((s, b) => s + b.length, 0);
     if (size < 50000) throw new Error(`download is only ${size} bytes`);
+  });
+  await step('no webgl', async () => {
+    // Its own page, so the main one keeps its state.
+    const nogl = await browser.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+    nogl.on('pageerror', (e) => errors.push(e.message));
+    nogl.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    try {
+      await nogl.goto('http://localhost:5191/?debug&nogl');
+      await idle(nogl);
+      const gpu = await nogl.evaluate(() => window.__trencadis.gpu);
+      if (gpu) throw new Error('?nogl still created a renderer');
+      // The mosaic on screen is drawn at screen size, not at the download size.
+      const sizes = await nogl.evaluate(() => [...document.querySelectorAll('canvas.viewer-canvas')]
+        .map((c) => ({ c, r: c.getBoundingClientRect() }))
+        .filter(({ c, r }) => r.width > 0 && r.height > 0 && getComputedStyle(c).visibility !== 'hidden' && !/seg-outline|shape-canvas|brush-canvas/.test(c.className))
+        .map(({ c, r }) => ({ px: Math.max(c.width, c.height), box: Math.max(r.width, r.height) })));
+      if (!sizes.length) throw new Error('no visible mosaic canvas');
+      for (const { px, box } of sizes) {
+        if (px > 2 * box) throw new Error(`mosaic canvas is ${px} px in a ${Math.round(box)} px box`);
+      }
+      const [dl] = await Promise.all([nogl.waitForEvent('download'), nogl.locator('.download').click()]);
+      const size = (await (await dl.createReadStream()).toArray()).reduce((s, b) => s + b.length, 0);
+      if (size < 50000) throw new Error(`download without WebGL is only ${size} bytes`);
+    } finally {
+      await nogl.close();
+    }
   });
   if (errors.length) throw new Error('page errors: ' + errors.join(' | '));
   console.log('smoke test passed');

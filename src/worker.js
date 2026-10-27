@@ -1,11 +1,14 @@
 import { fromImageData } from './core/image.js';
 import { createPipeline } from './core/pipeline.js';
+import { renderMosaic } from './core/render.js';
 import { toWorkPx } from './core/params.js';
 import * as vis from './core/vis.js';
 
 const pipe = createPipeline();
 let latest = 0;
 let lastParams = null;
+// The tessellation and colours of the last finished run, for exports.
+let lastRun = null;
 // Only the view on screen is drawn after a run; others on request.
 let wanted = new Set(['final']);
 const STAGE_OF_VIEW = {
@@ -47,6 +50,7 @@ self.onmessage = async (e) => {
   const msg = e.data;
   if (msg.type === 'image') {
     pipe.setImage(fromImageData(msg.image));
+    lastRun = null;
     return;
   }
   if (msg.type === 'zones') {
@@ -74,6 +78,19 @@ self.onmessage = async (e) => {
         .map(({ key, label, make }) => ({ key, label, image: make() }));
       self.postMessage({ type: 'stage', id: latest, stage, images, viewsOnly: true }, images.map((v) => v.image.data.buffer));
     }
+    return;
+  }
+  if (msg.type === 'export') {
+    // The download is drawn from the last finished run, at its own size,
+    // whatever the screen-size render is.
+    if (!lastRun) {
+      self.postMessage({ type: 'error', id: msg.id, message: 'No hay ningún mosaico que exportar' });
+      return;
+    }
+    const { shards, colors, w, h, params } = lastRun;
+    const { data, width, height } = renderMosaic(shards, colors, w, h, toWorkPx(params), params.outLong);
+    const image = new ImageData(data, width, height);
+    self.postMessage({ type: 'exported', id: msg.id, image }, [image.data.buffer]);
     return;
   }
   if (msg.type !== 'run') return;
@@ -109,10 +126,16 @@ self.onmessage = async (e) => {
       () => latest !== id,
       () => new Promise((r) => setTimeout(r, 0)),
       (stage) => self.postMessage({ type: 'progress', id, stage }),
-      { cpuRender: !!msg.cpuRender },
+      { cpuRender: !!msg.cpuRender, cpuLong: msg.cpuLong },
     );
     lastParams = p;
-    if (res) self.postMessage({ type: 'done', id, ...res });
+    if (res) {
+      lastRun = {
+        shards: pipe.cached('tessellation').shards, colors: pipe.cached('color').colors,
+        w: pipe.image.w, h: pipe.image.h, params: p,
+      };
+      self.postMessage({ type: 'done', id, ...res });
+    }
   } catch (err) {
     self.postMessage({ type: 'error', id, message: err?.message || String(err) });
   }

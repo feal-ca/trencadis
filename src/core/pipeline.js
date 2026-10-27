@@ -11,17 +11,18 @@ import { zonesDetailMask } from './zones.js';
 // `onStage(name, result)` fires after each stage; `isStale()` lets the caller
 // abandon a run when newer parameters arrive (checked between stages).
 // { cpuRender: false } stops after the colour stage, for when the GPU draws
-// the mosaic.
+// the mosaic. { cpuLong } is the long side the render stage draws at (the
+// screen, when there is no GPU); without it the stage draws at outLong.
 export function createPipeline() {
   let full = null, imgVersion = 0, zones = null, zonesVersion = 0, guides = null, guidesVersion = 0;
   let segments = null, segmentsVersion = 0;
   const cache = {};
 
-  const stageKey = (stage, p) => {
+  const stageKey = (stage, p, long) => {
     const upto = STAGE_ORDER.slice(0, STAGE_ORDER.indexOf(stage) + 1);
     const vals = upto.flatMap((s) => keysForStage(s).map((k) => p[k]));
     const after = stage !== 'analysis';
-    return JSON.stringify([imgVersion, zonesVersion, after ? guidesVersion : 0, after ? segmentsVersion : 0, vals]);
+    return JSON.stringify([imgVersion, zonesVersion, after ? guidesVersion : 0, after ? segmentsVersion : 0, vals, long]);
   };
 
   return {
@@ -53,8 +54,10 @@ export function createPipeline() {
       const p = toWorkPx(params);
       const { img, lab } = full;
       const timings = {};
+      const long = opts.cpuLong ?? params.outLong;
       const step = async (stage, fn, keyStage = stage) => {
-        const key = stageKey(keyStage, params);
+        // Only the render stage depends on the size it is drawn at.
+        const key = stageKey(keyStage, params, stage === 'render' ? long : null);
         if (cache[stage]?.key !== key) {
           await yieldFn();
           if (isStale()) throw new StaleRun();
@@ -76,7 +79,7 @@ export function createPipeline() {
           const pal = applyPalette(flat, tess.shards, p, mulberry32(p.seed + 101));
           return { flat, ...pal };
         });
-        if (opts.cpuRender ?? true) await step('render', () => renderMosaic(tess.shards, col.colors, img.w, img.h, p));
+        if (opts.cpuRender ?? true) await step('render', () => renderMosaic(tess.shards, col.colors, img.w, img.h, p, long));
         return { timings, shards: tess.shards.length };
       } catch (e) {
         if (e instanceof StaleRun) return null;

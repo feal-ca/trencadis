@@ -37,7 +37,8 @@ export function useEngine() {
   // The photo's name goes into the downloaded file's name.
   const [photoName, setPhotoName] = useState('foto');
   const exporter = useExport({
-    photoName, renderer: pipeline.renderer, effectiveRef: pipeline.effectiveRef, images, requestRender: pipeline.requestRender,
+    photoName, renderer: pipeline.renderer, effectiveRef: pipeline.effectiveRef,
+    requestRender: pipeline.requestRender, requestCpuExport: pipeline.requestCpuExport,
   });
 
   const { setBitmap, setError, resetResults } = pipeline;

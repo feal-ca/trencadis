@@ -6,6 +6,8 @@ import { createRenderer } from '../../gl/renderer.js';
 // With ?debug in the URL, run timings are collected in window.__runs and the
 // engine is reachable as window.__trencadis (for scripts).
 export const DEBUG = typeof location !== 'undefined' && location.search.includes('debug');
+// With ?nogl the renderer is skipped, to try the path of browsers without WebGL2.
+const NOGL = typeof location !== 'undefined' && location.search.includes('nogl');
 const RENDER_KEYS = new Set(keysForStage('render'));
 
 // Firefox's fingerprinting protection can return random pixels from canvas
@@ -60,6 +62,7 @@ export function usePipeline(effective, setAutoGrout) {
   const sent = useRef(null);
   const view = useRef([800, 600]);
   const frame = useRef(0);
+  const redrawTimer = useRef(0);
   const effectiveRef = useRef(effective);
   effectiveRef.current = effective;
 
@@ -69,6 +72,7 @@ export function usePipeline(effective, setAutoGrout) {
     return c;
   }, []);
   const renderer = useMemo(() => {
+    if (NOGL) return { ok: false };
     try { return createRenderer(glCanvas); } catch { return { ok: false }; }
   }, [glCanvas]);
   const gpu = renderer.ok;
@@ -87,10 +91,22 @@ export function usePipeline(effective, setAutoGrout) {
 
   // The settings of the run in flight, so its result can be read against them.
   const posted = useRef(null);
+  // Exports waiting for the worker, by id.
+  const exports = useRef(new Map());
+  const exportId = useRef(0);
+  // The long side the CPU render was last asked to draw at.
+  const sentLong = useRef(0);
 
   useEffect(() => {
     const w = new Worker(new URL('../../worker.js', import.meta.url), { type: 'module' });
     w.onmessage = ({ data }) => {
+      const waiting = exports.current.get(data.id);
+      if (waiting) {
+        exports.current.delete(data.id);
+        if (data.type === 'exported') waiting.resolve(data.image);
+        else waiting.reject(new Error(data.message));
+        return;
+      }
       if (data.id !== runId.current) return;
       if (data.type === 'progress') setBusy(data.stage);
       else if (data.type === 'stage') {
@@ -157,15 +173,23 @@ export function usePipeline(effective, setAutoGrout) {
     sent.current = null;
   }, [bitmap, effective.workLong, readable, setAutoGrout]);
 
+  // Without a GPU the screen needs the mosaic at screen size only; the download
+  // is drawn apart (requestCpuExport).
+  const cpuLongFor = useCallback((p) => {
+    const [vw, vh] = view.current;
+    return Math.min(p.outLong, Math.round(Math.max(vw, vh) * Math.min(2, window.devicePixelRatio || 1)));
+  }, []);
+
   const post = useCallback((p) => {
     sent.current = p;
+    sentLong.current = cpuLongFor(p);
     posted.current = p;
     const id = ++runId.current;
     setError(null);
     setBusy('analysis');
     sentAt.current = performance.now();
-    worker.current.postMessage({ type: 'run', id, params: p, views: wanted.current, cpuRender: !renderer.ok });
-  }, [renderer]);
+    worker.current.postMessage({ type: 'run', id, params: p, views: wanted.current, cpuRender: !renderer.ok, cpuLong: sentLong.current });
+  }, [renderer, cpuLongFor]);
 
   useEffect(() => {
     if (!bitmap || !readable) return;
@@ -196,13 +220,25 @@ export function usePipeline(effective, setAutoGrout) {
     worker.current?.postMessage({ type: 'views', keys: wanted.current });
   }, []);
 
+  // The mosaic at export size, drawn by the worker from its last finished run.
+  const requestCpuExport = useCallback(() => new Promise((resolve, reject) => {
+    const id = `export-${++exportId.current}`;
+    exports.current.set(id, { resolve, reject });
+    worker.current.postMessage({ type: 'export', id });
+  }), []);
+
   const setViewport = useCallback((w, h) => {
     view.current = [w, h];
     requestRender();
-  }, [requestRender]);
+    // Without a GPU the mosaic on screen is redrawn when its size changes.
+    if (!renderer.ok && sent.current && cpuLongFor(sent.current) !== sentLong.current) {
+      clearTimeout(redrawTimer.current);
+      redrawTimer.current = setTimeout(() => post(effectiveRef.current), 150);
+    }
+  }, [renderer, requestRender, cpuLongFor, post]);
 
   return {
     worker, renderer, effectiveRef, glCanvas, gpu, bitmap, setBitmap, readable, images, labels, busy, info,
-    error, setError, mosaicReady, lines, post, rerun, requestRender, setWanted, setViewport, resetResults,
+    error, setError, mosaicReady, lines, post, rerun, requestRender, requestCpuExport, setWanted, setViewport, resetResults,
   };
 }
