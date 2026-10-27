@@ -51,7 +51,10 @@ describe('downscale', () => {
     const w = 800, h = 600, img = flat(w, h, 0);
     for (let i = 0; i < w * h; i++) img.rgb.fill(((i % w) + Math.floor(i / w)) % 2, i * 3, i * 3 + 3);
     const out = downscale(img, 400);
-    for (const v of out.rgb) expect(v).toBeCloseTo(0.5, 5);
+    // One assertion on the worst deviation; toBeCloseTo(0.5, 5) means |v - 0.5| < 5e-6.
+    let maxDev = 0;
+    for (const v of out.rgb) maxDev = Math.max(maxDev, Math.abs(v - 0.5));
+    expect(maxDev).toBeLessThan(5e-6);
   });
 });
 

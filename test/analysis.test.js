@@ -84,7 +84,14 @@ describe('detail stays finite', () => {
       const whole = analyze(img, DEFAULTS);
       const parts = withSize(analyzeMaps(img, DEFAULTS), DEFAULTS);
       expect(Object.keys(parts).sort()).toEqual(Object.keys(whole).sort());
-      for (const k of ['detail', 'size', 'theta', 'coherence']) expect(parts[k]).toEqual(whole[k]);
+      for (const k of ['detail', 'size', 'theta', 'coherence']) {
+        // Byte equality is exact (NaN-safe) and avoids element-wise deep equality on large arrays.
+        const a = parts[k], b = whole[k];
+        expect(a.length).toBe(b.length);
+        const ba = Buffer.from(a.buffer, a.byteOffset, a.byteLength);
+        const bb = Buffer.from(b.buffer, b.byteOffset, b.byteLength);
+        expect(Buffer.compare(ba, bb), k).toBe(0);
+      }
     }
   });
 });
