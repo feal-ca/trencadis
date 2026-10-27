@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createLongPress, nearestLine } from './longPress.js';
+import { clamp, pointerToUV } from './geometry.js';
 import SegStatus from './SegStatus.jsx';
 import ShapeLayer, { SegOutline } from './ShapeLayer.jsx';
 
@@ -132,12 +133,8 @@ function DrawLayer({ engine, tool, api, onPending }) {
     onPending(stroke.current?.length ?? 0);
     redraw();
   };
-  const toUV = (e) => {
-    const cv = ref.current, r = cv.getBoundingClientRect();
-    const s = Math.min(r.width / cv.width, r.height / cv.height);
-    const ox = (r.width - cv.width * s) / 2, oy = (r.height - cv.height * s) / 2;
-    return [Math.min(1, Math.max(0, (e.clientX - r.left - ox) / (cv.width * s))), Math.min(1, Math.max(0, (e.clientY - r.top - oy) / (cv.height * s)))];
-  };
+  // Presses in the bands around the image count as its nearest edge.
+  const toUV = (e) => pointerToUV(ref.current, e).map((v) => clamp(v, 0, 1));
   // Holding still: the nearest line within the snap circle turns red, and
   // the stroke (or the vertex) the press began is dropped.
   const fire = useRef(null);
@@ -244,8 +241,6 @@ function DrawLayer({ engine, tool, api, onPending }) {
 // with the outline of the shapes found and the touched shapes over it, and
 // the shape search's progress at the bottom. A faint Eixample grid sits
 // behind it; dropping a file shows the panot.
-const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-
 export default function Viewer({ engine, view, brush, setTool }) {
   const box = useRef(null);
   const host = useRef(null);

@@ -114,7 +114,6 @@ a { color: inherit; }
 .views button { border: 0; background: none; padding: 4px 10px; cursor: pointer; color: var(--soft); font-size: 0.88rem; }
 .views button.on { color: var(--ink); background: var(--seg); border-radius: 999px; }
 
-.panel-title { margin: 0 0 6px; font-size: 1rem; font-weight: 650; }
 .explain { margin: 0; color: var(--soft); font-size: 0.9rem; }
 
 .fields { display: grid; gap: 14px; }
@@ -214,7 +213,6 @@ input[type='range'] { width: 100%; margin: 4px 0; accent-color: var(--ink); }
 
 .export { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: auto; flex-shrink: 0; }
 .export .download { flex: 1; margin-top: 0; }
-.brush-links { display: flex; gap: 12px; }
 .point-actions { display: flex; align-items: center; gap: 12px; }
 .point-actions .btn { padding: 5px 12px; }
 .viewer-bar { flex-wrap: wrap; }

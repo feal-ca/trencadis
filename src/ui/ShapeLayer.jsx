@@ -1,10 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { inside as onRegion, regionAt, regionBox } from './shapeMask.js';
+import { clamp, pointerToUV } from './geometry.js';
 
 // Whether the normalised point (u, v) falls on a shape's pixels.
 const inside = (z, u, v) => !!z.region && onRegion(z.region, u, v);
-
-const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 // The size in canvas pixels for an overlay of an iw x ih image drawn with
 // object-fit: contain in `ref`'s box: the size it shows at, in device
@@ -160,12 +159,8 @@ export default function ShapeLayer({ engine, api, zoom }) {
     setPos((old) => (old && old.left === left && old.top === top ? old : { left, top }));
   }, [sel?.region, zoom, size]);
 
-  const toUV = (e) => {
-    const cv = ref.current, r = cv.getBoundingClientRect();
-    const s = Math.min(r.width / cv.width, r.height / cv.height);
-    const ox = (r.width - cv.width * s) / 2, oy = (r.height - cv.height * s) / 2;
-    return [(e.clientX - r.left - ox) / (cv.width * s), (e.clientY - r.top - oy) / (cv.height * s)];
-  };
+  // Not clamped: a touch outside the image is dropped by touch().
+  const toUV = (e) => pointerToUV(ref.current, e);
   const touch = async (u, v) => {
     if (busy.current || u < 0 || v < 0 || u > 1 || v > 1) return;
     const current = zonesRef.current.find((z) => z.id === selectedRef.current);

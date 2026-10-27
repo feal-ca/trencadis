@@ -133,23 +133,26 @@ export function simplifyClosed(P, eps) {
     const d = (P[i][0] - P[0][0]) ** 2 + (P[i][1] - P[0][1]) ** 2;
     if (d > fd) { fd = d; far = i; }
   }
-  const a = dp(P.slice(0, far + 1), eps);
-  const b = dp(P.slice(far).concat([P[0]]), eps);
+  const a = douglasPeucker(P.slice(0, far + 1), eps);
+  const b = douglasPeucker(P.slice(far).concat([P[0]]), eps);
   const out = a.slice(0, -1).concat(b.slice(0, -1));
   return out.length >= 3 ? out : P;
 }
 
-function dp(pts, eps) {
+// Douglas-Peucker on an open run: keeps the ends and every point farther than
+// eps from the chord. With coincident ends, the distance is to that point.
+export function douglasPeucker(pts, eps) {
   if (pts.length <= 2) return pts;
   const [ax, ay] = pts[0], [bx, by] = pts[pts.length - 1];
-  const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1e-9;
+  const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
   let idx = -1, md = -1;
   for (let i = 1; i < pts.length - 1; i++) {
-    const d = Math.abs((pts[i][0] - ax) * dy - (pts[i][1] - ay) * dx) / len;
+    const d = len > 1e-9
+      ? Math.abs((pts[i][0] - ax) * dy - (pts[i][1] - ay) * dx) / len
+      : Math.hypot(pts[i][0] - ax, pts[i][1] - ay);
     if (d > md) { md = d; idx = i; }
   }
   if (md <= eps) return [pts[0], pts[pts.length - 1]];
-  const l = dp(pts.slice(0, idx + 1), eps);
-  const r = dp(pts.slice(idx), eps);
-  return l.slice(0, -1).concat(r);
+  const l = douglasPeucker(pts.slice(0, idx + 1), eps);
+  return l.slice(0, -1).concat(douglasPeucker(pts.slice(idx), eps));
 }

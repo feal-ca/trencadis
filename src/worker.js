@@ -32,8 +32,8 @@ function visualsFor(stage, value, p, img) {
       ];
     case 'color':
       return [
-        { key: 'flat', label: 'Color por trozo', make: () => vis.flatImage(img, pipe.lastTess, value.flat) },
-        { key: 'palette', label: 'Con paleta y variación', make: () => vis.flatImage(img, pipe.lastTess, value.colors) },
+        { key: 'flat', label: 'Color por trozo', make: () => vis.flatImage(img, pipe.cached('tessellation'), value.flat) },
+        { key: 'palette', label: 'Con paleta y variación', make: () => vis.flatImage(img, pipe.cached('tessellation'), value.colors) },
       ];
     case 'render':
       // Copy: the transfer would otherwise detach the cached render.
@@ -84,7 +84,6 @@ self.onmessage = async (e) => {
     const res = await pipe.run(
       p,
       (stage, value, recomputed) => {
-        if (stage === 'tessellation') pipe.lastTess = value;
         if (!recomputed) return;
         const img = pipe.image;
         const images = visualsFor(stage, value, toWorkPx(p), img)

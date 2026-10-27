@@ -19,11 +19,9 @@ export { partition };
 
 env.allowLocalModels = false;
 const MODEL = 'Xenova/slimsam-77-uniform';
-// Segmentation settings. The coarse pass asks about 64 prompt points in
-// batches of 32, with no zoomed crops (crops: 0; cropPoints is the points
-// per crop when there are crops).
+// Segmentation settings. The pass asks about 64 prompt points in batches of 32.
 export const opts = {
-  points: 64, cropPoints: 160, crops: 0, iou: 0.86, stability: 0.9, nms: 0.7,
+  points: 64, iou: 0.86, stability: 0.9, nms: 0.7,
   skip: true, batch: 32,
   device: typeof navigator !== 'undefined' && 'gpu' in navigator ? 'webgpu' : 'wasm',
   dtype: undefined,
@@ -242,11 +240,9 @@ function nms(cands) {
 }
 
 // Returns { w, h, masks: [{ data: Uint8Array(w*h), area, score }] } at the
-// display size, plus timings. Pass 1: the whole photo, prompt points where
-// the detail is. Pass 2 (only with opts.crops > 0): crops around the most
-// detailed objects found, embedded again at full model resolution so small
-// parts (eyes) get enough pixels. `onBatch(done, total, found)` is called after each batch of the
-// first pass: prompt points tried, points in all, candidates kept so far.
+// display size, plus timings. Prompt points where the detail is.
+// `onBatch(done, total, found)` is called after each batch: prompt points
+// tried, points in all, candidates kept so far.
 export async function segmentEverything(image, outLong = 600, { onBatch } = {}) {
   const T = {};
   let t = performance.now();
@@ -255,38 +251,8 @@ export async function segmentEverything(image, outLong = 600, { onBatch } = {}) 
   const ds = outLong / Math.max(image.width, image.height);
   const w = Math.round(image.width * ds), h = Math.round(image.height * ds);
   const all = [0, 0, image.width - 1, image.height - 1];
-  let cands = await decodePass(image, all, promptPoints(dm, all, opts.points, 1), ds, T, 'pass 1', onBatch);
-  const first = nms(cands.slice());
+  const cands = await decodePass(image, all, promptPoints(dm, all, opts.points, 1), ds, T, 'pass 1', onBatch);
 
-  // Crops: objects between 1 % and 30 % of the photo, densest detail
-  // first, skipping ones mostly inside a crop already chosen. A crop is at
-  // most half the photo across, so it is a real zoom.
-  const { an } = dm;
-  const detailIn = (c) => {
-    let sum = 0;
-    const bw = c.box[2] - c.box[0] + 1;
-    for (let k = 0; k < c.data.length; k += 3) {
-      if (!c.data[k]) continue;
-      const x = c.box[0] + (k % bw), y = c.box[1] + Math.floor(k / bw);
-      sum += an.detail[Math.min(an.h - 1, Math.floor((y / ds) * dm.s)) * an.w + Math.min(an.w - 1, Math.floor((x / ds) * dm.s))];
-    }
-    return sum / Math.max(1, c.area / 3);
-  };
-  const crops = [];
-  for (const c of first.filter((c) => c.area > 0.01 * w * h && c.area < 0.3 * w * h).sort((a, b) => detailIn(b) - detailIn(a))) {
-    if (crops.length >= opts.crops) break;
-    let [x0, y0, x1, y1] = c.box.map((v) => v / ds);
-    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-    const hw = Math.min(0.65 * (x1 - x0), image.width / 4), hh = Math.min(0.65 * (y1 - y0), image.height / 4);
-    const [mx, my] = [0, 0];
-    [x0, y0, x1, y1] = [cx - hw, cy - hh, cx + hw, cy + hh];
-    const box = [Math.max(0, Math.floor(x0 - mx)), Math.max(0, Math.floor(y0 - my)), Math.min(image.width - 1, Math.ceil(x1 + mx)), Math.min(image.height - 1, Math.ceil(y1 + my))];
-    const inside = crops.some((b) => Math.max(0, Math.min(b[2], box[2]) - Math.max(b[0], box[0])) * Math.max(0, Math.min(b[3], box[3]) - Math.max(b[1], box[1])) > 0.7 * (box[2] - box[0]) * (box[3] - box[1]));
-    if (!inside) crops.push(box);
-  }
-  for (let i = 0; i < crops.length; i++) {
-    cands = cands.concat(await decodePass(image, crops[i], promptPoints(dm, crops[i], opts.cropPoints, 2 + i), ds, T, `crop ${i + 1}`));
-  }
   t = performance.now();
   const kept = nms(cands);
   const masks = kept.map((c) => {
@@ -296,7 +262,7 @@ export async function segmentEverything(image, outLong = 600, { onBatch } = {}) 
     return { data, area: c.area, score: c.score, pass: c.pass };
   });
   T.nms = performance.now() - t;
-  return { w, h, masks, candidates: cands.length, crops: crops.map((b) => b.map((v) => Math.round(v * ds))), T };
+  return { w, h, masks, candidates: cands.length, T };
 }
 
 // Touched shapes come back as a region normalised to the photo:

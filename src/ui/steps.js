@@ -90,5 +90,3 @@ export const STEPS = [
     summary: (p) => `Junta de ${String(p.grout).replace('.', ',')} px`,
   },
 ];
-
-export const stepById = (id) => STEPS.find((s) => s.id === id) ?? STEPS[0];

@@ -34,11 +34,28 @@ export function labelsToPolygons(labels, w, h, eps = 1, minPixels = 4, only = nu
   return out;
 }
 
+// The boundary loop of label l with the largest area, as [x, y] corners.
 function traceLabel(labels, w, h, l, xa, ya, xb, yb) {
+  const W = w + 1;
+  let best = null, bestArea = 0;
+  for (const loop of traceLoops(labels, w, h, l, [xa, ya, xb, yb])) {
+    const ring = loop.map((c) => [c % W, Math.floor(c / W)]);
+    const a = Math.abs(signedArea(ring));
+    if (a > bestArea) {
+      bestArea = a;
+      best = ring;
+    }
+  }
+  return best;
+}
+
+// Every boundary loop of label l inside the box [xa, ya, xb, yb], as corner
+// ids (y * (w + 1) + x), with 4 corners or more.
+export function traceLoops(labels, w, h, l, [xa, ya, xb, yb]) {
   const inside = (x, y) => x >= 0 && y >= 0 && x < w && y < h && labels[y * w + x] === l;
   const W = w + 1;
   const next = new Map();
-  const addEdge = (ax, ay, bx, by) => {
+  const add = (ax, ay, bx, by) => {
     const k = ay * W + ax;
     const v = by * W + bx;
     const list = next.get(k);
@@ -49,33 +66,27 @@ function traceLabel(labels, w, h, l, xa, ya, xb, yb) {
   for (let y = ya; y <= yb; y++) {
     for (let x = xa; x <= xb; x++) {
       if (!inside(x, y)) continue;
-      if (!inside(x, y - 1)) addEdge(x, y, x + 1, y);
-      if (!inside(x + 1, y)) addEdge(x + 1, y, x + 1, y + 1);
-      if (!inside(x, y + 1)) addEdge(x + 1, y + 1, x, y + 1);
-      if (!inside(x - 1, y)) addEdge(x, y + 1, x, y);
+      if (!inside(x, y - 1)) add(x, y, x + 1, y);
+      if (!inside(x + 1, y)) add(x + 1, y, x + 1, y + 1);
+      if (!inside(x, y + 1)) add(x + 1, y + 1, x, y + 1);
+      if (!inside(x - 1, y)) add(x, y + 1, x, y);
     }
   }
-  let best = null, bestArea = 0;
+  const loops = [];
   for (const start of next.keys()) {
     while (next.get(start)?.length) {
       const ring = [];
-      let cur = start;
-      let guard = 0;
+      let cur = start, guard = 0;
       do {
         const list = next.get(cur);
-        if (!list || !list.length) break;
-        const v = list.pop();
-        ring.push([cur % W, Math.floor(cur / W)]);
-        cur = v;
+        if (!list?.length) break;
+        ring.push(cur);
+        cur = list.pop();
       } while (cur !== start && ++guard < 1e7);
-      const a = Math.abs(signedArea(ring));
-      if (a > bestArea) {
-        bestArea = a;
-        best = ring;
-      }
+      if (ring.length >= 4) loops.push(ring);
     }
   }
-  return best;
+  return loops;
 }
 
 function dropCollinear(ring) {
