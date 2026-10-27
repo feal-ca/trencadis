@@ -71,11 +71,17 @@ export function usePipeline(effective, setAutoGrout) {
     c.className = 'viewer-canvas';
     return c;
   }, []);
+  // The renderer is created before the callbacks that react to losing the
+  // context, so it reaches them through these refs.
+  const onLost = useRef(null);
+  const onRestored = useRef(null);
   const renderer = useMemo(() => {
     if (NOGL) return { ok: false };
-    try { return createRenderer(glCanvas); } catch { return { ok: false }; }
+    try {
+      return createRenderer(glCanvas, { onLost: () => onLost.current?.(), onRestored: () => onRestored.current?.() });
+    } catch { return { ok: false }; }
   }, [glCanvas]);
-  const gpu = renderer.ok;
+  const [gpu, setGpu] = useState(renderer.ok);
 
   const requestRender = useCallback(() => {
     if (!renderer.ok || frame.current) return;
@@ -205,6 +211,17 @@ export function usePipeline(effective, setAutoGrout) {
   }, [effective, bitmap, readable, renderer, post, requestRender]);
 
   const rerun = useCallback(() => post(effectiveRef.current), [post]);
+
+  // A lost context moves the mosaic to the CPU; a restored one brings it back.
+  onLost.current = () => {
+    setGpu(false);
+    setMosaicReady(false);
+    rerun();
+  };
+  onRestored.current = () => {
+    setGpu(true);
+    requestRender();
+  };
 
   // A new photo starts without the results of the old one.
   const resetResults = useCallback(() => {

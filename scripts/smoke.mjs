@@ -107,6 +107,24 @@ try {
     const size = (await (await dl.createReadStream()).toArray()).reduce((s, b) => s + b.length, 0);
     if (size < 50000) throw new Error(`download is only ${size} bytes`);
   });
+  await step('webgl lost', async () => {
+    await page.evaluate(() => {
+      const gl = document.querySelector('.viewer-host canvas').getContext('webgl2');
+      window.__lose = gl.getExtension('WEBGL_lose_context');
+      window.__lose.loseContext();
+    });
+    await page.waitForTimeout(300);
+    await ready();
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.locator('.download').click()]);
+    const size = (await (await dl.createReadStream()).toArray()).reduce((s, b) => s + b.length, 0);
+    if (size < 50000) throw new Error(`download after losing the context is only ${size} bytes`);
+    await page.evaluate(() => window.__lose.restoreContext());
+    await page.waitForSelector('.viewer-host canvas');
+    await page.waitForTimeout(300);
+    await ready();
+    const count = await status();
+    if (!/trozos/.test(count)) throw new Error(`status after restoring the context: ${count}`);
+  });
   await step('no webgl', async () => {
     // Its own page, so the main one keeps its state.
     const nogl = await browser.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });

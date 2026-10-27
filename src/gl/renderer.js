@@ -42,21 +42,26 @@ function texture(gl, internal, format, type, w, h, data = null) {
 // Real-time mosaic renderer. Geometry and the distance field are rebuilt only
 // when the shards or the output size change; every other parameter is a
 // uniform of the final shading pass.
-export function createRenderer(canvas, { onLost } = {}) {
+export function createRenderer(canvas, { onLost, onRestored } = {}) {
   const gl = canvas.getContext('webgl2', { antialias: false, premultipliedAlpha: false });
   if (!gl || !gl.getExtension('EXT_color_buffer_float')) return { ok: false };
-  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); api.ok = false; onLost?.(); });
 
-  const progId = program(gl, ID_VS, ID_FS);
-  const progSeed = program(gl, FULLSCREEN_VS, SEED_FS);
-  const progJfa = program(gl, FULLSCREEN_VS, JFA_FS);
-  const progShade = program(gl, FULLSCREEN_VS, SHADE_FS);
+  let progId, progSeed, progJfa, progShade, emptyVao;
   const maxSize = Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE), gl.getParameter(gl.MAX_RENDERBUFFER_SIZE));
-  const emptyVao = gl.createVertexArray();
+  const initGl = () => {
+    progId = program(gl, ID_VS, ID_FS);
+    progSeed = program(gl, FULLSCREEN_VS, SEED_FS);
+    progJfa = program(gl, FULLSCREEN_VS, JFA_FS);
+    progShade = program(gl, FULLSCREEN_VS, SHADE_FS);
+    emptyVao = gl.createVertexArray();
+  };
+  initGl();
 
   let vao = null, vertexCount = 0, work = [1, 1], rowFlags = [];
   let colorTex = null, tiltTex = null;
   let targets = null, fieldDirty = true, placed = null;
+  // The last arguments of setShards and setColors, to upload again after a restore.
+  let lastShards = null, lastColors = null;
 
   const makeTargets = (W, H) => {
     if (targets) for (const t of [targets.id, targets.a, targets.b]) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fb); }
@@ -115,6 +120,7 @@ export function createRenderer(canvas, { onLost } = {}) {
     ok: true,
     maxSize,
     setShards(shards, w, h, seed = 1) {
+      lastShards = [shards, w, h, seed];
       const { positions, ids, centers, place } = triangulate(shards, seed);
       rowFlags = shards.map((s) => !!s.row);
       if (vao) gl.deleteVertexArray(vao);
@@ -134,6 +140,7 @@ export function createRenderer(canvas, { onLost } = {}) {
       fieldDirty = true;
     },
     setColors(colors, seed) {
+      lastColors = [colors, seed];
       const n = colors.length / 3;
       const rows = Math.max(1, Math.ceil(n / DATA_WIDTH));
       const col = new Float32Array(DATA_WIDTH * rows * 4);
@@ -199,5 +206,16 @@ export function createRenderer(canvas, { onLost } = {}) {
       return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
     },
   };
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); api.ok = false; onLost?.(); });
+  canvas.addEventListener('webglcontextrestored', () => {
+    // Every GL object died with the context.
+    if (!gl.getExtension('EXT_color_buffer_float')) return;
+    vao = null; colorTex = null; tiltTex = null; targets = null; fieldDirty = true; placed = null;
+    initGl();
+    if (lastShards) api.setShards(...lastShards);
+    if (lastColors) api.setColors(...lastColors);
+    api.ok = true;
+    onRestored?.();
+  });
   return api;
 }
