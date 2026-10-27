@@ -1,0 +1,20 @@
+{
+  "fracture": "04b7c241",
+  "fracture+rows": "3ef6066d",
+  "fracture+seg": "7a0f6b54",
+  "cracks": "d2ddab1c",
+  "cracks+rows": "1724c9f9",
+  "cracks+seg": "5df4f362",
+  "voronoi": "0f067c6d",
+  "voronoi+rows": "41aaf4e1",
+  "voronoi+seg": "ff193354",
+  "voronoi-aniso": "12e928ea",
+  "voronoi-aniso+rows": "f6be0a51",
+  "voronoi-aniso+seg": "36cf59d3",
+  "hybrid": "adeb3200",
+  "hybrid+rows": "3a9f8c78",
+  "hybrid+seg": "9203d7c7",
+  "slic": "b332c1eb",
+  "slic+rows": "8089d989",
+  "slic+seg": "d8267334"
+}
