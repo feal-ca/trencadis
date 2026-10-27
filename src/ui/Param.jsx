@@ -35,10 +35,12 @@ export function InfoTip({ text, label }) {
   );
 }
 
-function Range({ id, value, onChange, disabled }) {
+// While it is held, the engine computes drafts; releasing it redoes them in full.
+function Range({ id, value, onChange, disabled, engine }) {
   return (
     <input id={id} type="range" min={0} max={1000} value={Math.round(value * 1000)} disabled={disabled}
-      onChange={(e) => onChange(e.target.value / 1000)} />
+      onChange={(e) => onChange(e.target.value / 1000)}
+      onPointerDown={engine.dragStart} onPointerUp={engine.dragEnd} onPointerCancel={engine.dragEnd} onKeyUp={engine.dragEnd} />
   );
 }
 
@@ -128,7 +130,7 @@ export function Param({ k, engine, def = DEFAULTS[k] }) {
   return (
     <div className="field">
       <Label htmlFor={id} label={q.label} help={q.help} onReset={reset}><output htmlFor={id}>{format(q, value)}</output></Label>
-      <Range id={id} value={toPos(q, value)} onChange={(t) => set(fromPos(q, t))} />
+      <Range id={id} value={toPos(q, value)} onChange={(t) => set(fromPos(q, t))} engine={engine} />
     </div>
   );
 }
@@ -152,7 +154,7 @@ export function Macro({ id, engine }) {
       <Label htmlFor={fid} label={info.label} help={info.help} onReset={reset}>
         <output htmlFor={fid}>{manual ? 'a mano' : id === 'size' && engine.estimate ? pieces(engine.estimate) : word(value)}</output>
       </Label>
-      <Range id={fid} value={value} disabled={manual} onChange={(v) => engine.setMacro(id, v)} />
+      <Range id={fid} value={value} disabled={manual} onChange={(v) => engine.setMacro(id, v)} engine={engine} />
       <button type="button" className="link macro-switch" onClick={() => engine.setManual(id, !manual)}>
         {manual ? 'Volver al control simple' : 'Ajustar a mano'}
       </button>

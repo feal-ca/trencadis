@@ -214,6 +214,8 @@ export const keysForStage = (stage) => ALL_PARAMS.filter((q) => q.stage === stag
 // working resolution changes how fine the mosaic is computed, not how it looks.
 // This turns them into pixels of the photo the pipeline actually gets.
 export const REFERENCE_LONG = 800;
+// Working resolution of the draft shown while a control is being dragged.
+export const DRAFT_LONG = 400;
 const SCALED = ALL_PARAMS.filter((q) => q.unit === ' px' && q.key !== 'workLong' && q.key !== 'outLong').map((q) => q.key);
 export function toWorkPx(p) {
   const k = (p.workLong ?? REFERENCE_LONG) / REFERENCE_LONG;

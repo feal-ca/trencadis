@@ -37,7 +37,7 @@ page.on('request', (r) => { if (/(^|\.)(hf\.co|huggingface\.co|jsdelivr\.net)$/.
 
 // The keys of the engine's API (window.__trencadis, on with ?debug): a refactor
 // of useEngine must keep them all. A task that adds one adds it here.
-const API_KEYS = ('addGuide autoGrout bitmap busy canRedo canUndo clearGuides download error estimate glCanvas gpu '
+const API_KEYS = ('addGuide autoGrout bitmap busy canRedo canUndo clearGuides download dragEnd dragStart error estimate glCanvas gpu '
   + 'guides hasImage images info isDefault labels lines loadBlob loadSample macros mosaicReady params photoName pickShape redo '
   + 'refineShape removeZone resetAll restore seg segAccept segDecline segRetry segments setMacro setManual setParam '
   + 'setParams setStyle setViewport setWanted setZoneMode share style undo undoGuide zones').split(' ');
@@ -82,6 +82,30 @@ try {
     if (!/trozos/.test(count)) throw new Error(`status with the shape tool on: ${count}`);
     await button.click();
     await page.waitForSelector('.viewer:not(.tool-shape)');
+  });
+  await step('drag a slider', async () => {
+    const before = await page.evaluate(() => window.__trencadis.info.shards);
+    const runs = await page.evaluate(() => window.__runs.length);
+    await page.locator('#m-size').scrollIntoViewIfNeeded();
+    const box = await page.locator('#m-size').boundingBox();
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + 2, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 10; i++) {
+      await page.mouse.move(box.x + 2 + ((box.width - 4) * i) / 10, y);
+      // Longer than the debounce, so runs start while the control is held.
+      await page.waitForTimeout(80);
+    }
+    // Held at the end until a draft has finished.
+    await page.waitForFunction((n) => window.__runs.slice(n).some((r) => r.draft), runs, { timeout: 60000 });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    await ready();
+    const after = await page.evaluate(() => window.__trencadis.info.shards);
+    if (after === before) throw new Error(`piece count did not change after the drag: ${before}`);
+    // Drafts while the control was held, and the last run is the full one.
+    const drafts = await page.evaluate((n) => window.__runs.slice(n).map((r) => !!r.draft), runs);
+    if (!drafts.includes(true) || drafts.at(-1)) throw new Error(`runs during the drag (draft or not): ${drafts.join(' ')}`);
   });
   await step('upload', async () => {
     await page.locator('input[type=file]').setInputFiles('public/samples/barcas.webp');

@@ -1,9 +1,11 @@
 import { useCallback } from 'react';
 
 // Saving and sharing the mosaic at export size.
-export function useExport({ photoName, renderer, effectiveRef, requestRender, requestCpuExport, setError }) {
+export function useExport({ photoName, renderer, effectiveRef, requestRender, requestCpuExport, awaitFull, setError }) {
   // The mosaic at export size, as PNG or JPG.
   const exportFile = useCallback(async (format = 'png') => {
+    // The GPU may still hold a draft; a download is always the full mosaic.
+    await awaitFull();
     const p = effectiveRef.current;
     const type = format === 'jpg' ? 'image/jpeg' : 'image/png';
     let blob;
@@ -20,7 +22,7 @@ export function useExport({ photoName, renderer, effectiveRef, requestRender, re
       blob = await new Promise((r) => cv.toBlob(r, type, 0.9));
     }
     return blob && new File([blob], `trencadis-${photoName}-${p.algorithm}-${p.seed}.${format}`, { type });
-  }, [photoName, renderer, requestRender, requestCpuExport]);
+  }, [photoName, renderer, requestRender, requestCpuExport, awaitFull]);
 
   // The export can fail without a GPU (the worker may have nothing to draw, or
   // run out of memory); the error goes to the status line like the others.

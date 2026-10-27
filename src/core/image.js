@@ -11,6 +11,39 @@ export function fromImageData({ width, height, data }) {
   return { w: width, h: height, rgb };
 }
 
+// Box-average resize so the long side is `long`; the same image if it fits.
+// Each output pixel is the area-weighted mean of the source pixels it covers.
+export function downscale(img, long) {
+  const { w, h, rgb } = img;
+  if (Math.max(w, h) <= long) return img;
+  const s = long / Math.max(w, h);
+  const nw = Math.max(1, Math.round(w * s)), nh = Math.max(1, Math.round(h * s));
+  const rx = w / nw, ry = h / nh;
+  // Columns first, into nw x h.
+  const tmp = new Float32Array(nw * h * 3);
+  for (let ox = 0; ox < nw; ox++) {
+    const a = ox * rx, b = a + rx;
+    for (let x = Math.floor(a); x < Math.min(w, Math.ceil(b)); x++) {
+      const k = (Math.min(b, x + 1) - Math.max(a, x)) / rx;
+      for (let y = 0; y < h; y++) {
+        const i = (y * w + x) * 3, o = (y * nw + ox) * 3;
+        tmp[o] += rgb[i] * k;
+        tmp[o + 1] += rgb[i + 1] * k;
+        tmp[o + 2] += rgb[i + 2] * k;
+      }
+    }
+  }
+  const out = new Float32Array(nw * nh * 3);
+  for (let oy = 0; oy < nh; oy++) {
+    const a = oy * ry, b = a + ry;
+    for (let y = Math.floor(a); y < Math.min(h, Math.ceil(b)); y++) {
+      const k = (Math.min(b, y + 1) - Math.max(a, y)) / ry;
+      for (let i = y * nw * 3, o = oy * nw * 3, e = i + nw * 3; i < e; i++, o++) out[o] += tmp[i] * k;
+    }
+  }
+  return { w: nw, h: nh, rgb: out };
+}
+
 export function luminance(img) {
   const { w, h, rgb } = img;
   const out = new Float32Array(w * h);

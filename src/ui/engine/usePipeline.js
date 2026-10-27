@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { autoGroutColor } from '../../core/color.js';
-import { keysForStage } from '../../core/params.js';
+import { DRAFT_LONG, keysForStage } from '../../core/params.js';
 import { createRenderer } from '../../gl/renderer.js';
 
 // With ?debug in the URL, run timings are collected in window.__runs and the
@@ -65,6 +65,16 @@ export function usePipeline(effective, setAutoGrout) {
   const redrawTimer = useRef(0);
   const effectiveRef = useRef(effective);
   effectiveRef.current = effective;
+  // The newest shards and colours from the worker, whether or not the GPU is
+  // up, and whether they come from a draft.
+  const latest = useRef({ shards: null, colors: null, draft: false });
+  // A control is being dragged: runs are drafts until it is released.
+  const dragging = useRef(false);
+  // Whether the last run sent was a draft, so releasing needs a full one.
+  const lastDraft = useRef(false);
+  const debounce = useRef(0);
+  // Callers waiting for the full result to replace a draft on screen.
+  const fullWaiters = useRef([]);
 
   const glCanvas = useMemo(() => {
     const c = document.createElement('canvas');
@@ -91,7 +101,10 @@ export function usePipeline(effective, setAutoGrout) {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       const [W, H] = renderer.sizeFor(1000);
       const s = Math.min((cw * dpr) / W, (ch * dpr) / H, Math.min(4096, renderer.maxSize) / Math.max(W, H));
-      renderer.render(effectiveRef.current, Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)));
+      // Draft shards are in pixels of the draft, so lengths scale from its size.
+      const p = effectiveRef.current;
+      renderer.render(latest.current.draft ? { ...p, workLong: Math.min(p.workLong, DRAFT_LONG) } : p,
+        Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)));
     });
   }, [renderer]);
 
@@ -100,10 +113,16 @@ export function usePipeline(effective, setAutoGrout) {
   // Exports waiting for the worker, by id.
   const exports = useRef(new Map());
   const exportId = useRef(0);
-  // The newest shards and colours from the worker, whether or not the GPU is up.
-  const latest = useRef({ shards: null, colors: null });
   // The long side the CPU render was last asked to draw at.
   const sentLong = useRef(0);
+
+  const flushFull = useCallback(() => {
+    for (const resolve of fullWaiters.current.splice(0)) resolve();
+  }, []);
+  // Resolves once the mosaic on screen is a full one, not a draft.
+  const awaitFull = useCallback(() => (latest.current.draft
+    ? new Promise((resolve) => fullWaiters.current.push(resolve))
+    : Promise.resolve()), []);
 
   useEffect(() => {
     const w = new Worker(new URL('../../worker.js', import.meta.url), { type: 'module' });
@@ -127,6 +146,7 @@ export function usePipeline(effective, setAutoGrout) {
         setLabels((prev) => ({ ...prev, ...Object.fromEntries(data.images.map((v) => [v.key, v.label])) }));
         // Kept even while the context is lost, so a restore uploads the latest.
         if (data.shards) {
+          latest.current.draft = !!data.draft;
           latest.current.shards = { list: data.shards.map((poly, i) => ({ poly, row: data.rows?.[i] })), w: data.w, h: data.h };
           if (renderer.ok) renderer.setShards(latest.current.shards.list, data.w, data.h, effectiveRef.current.seed);
         }
@@ -140,18 +160,21 @@ export function usePipeline(effective, setAutoGrout) {
         }
         if (data.lines) setLines(data.lines);
         if (data.stage === 'render') setMosaicReady(true);
+        if (!latest.current.draft) flushFull();
       } else if (data.type === 'done') {
-        if (DEBUG) (window.__runs ??= []).push({ ms: performance.now() - sentAt.current, timings: data.timings });
+        if (!data.draft) flushFull();
+        if (DEBUG) (window.__runs ??= []).push({ ms: performance.now() - sentAt.current, timings: data.timings, draft: data.draft });
         setBusy(null);
         setInfo({ shards: data.shards, sMax: posted.current?.sMax });
       } else if (data.type === 'error') {
+        flushFull();
         setBusy(null);
         setError(data.message);
       }
     };
     worker.current = w;
     return () => w.terminate();
-  }, [renderer, requestRender]);
+  }, [renderer, requestRender, flushFull]);
 
   // Send the photo, resized to the working resolution, whenever either changes.
   // If the browser is hiding canvas pixels, wait for the first click and retry.
@@ -197,11 +220,14 @@ export function usePipeline(effective, setAutoGrout) {
     sent.current = p;
     sentLong.current = cpuLongFor(p);
     posted.current = p;
+    // Below the draft size a draft would be the full run itself.
+    const draft = dragging.current && p.workLong > DRAFT_LONG;
+    lastDraft.current = draft;
     const id = ++runId.current;
     setError(null);
     setBusy('analysis');
     sentAt.current = performance.now();
-    worker.current.postMessage({ type: 'run', id, params: p, views: wanted.current, cpuRender: !renderer.ok, cpuLong: sentLong.current });
+    worker.current.postMessage({ type: 'run', id, params: p, views: wanted.current, cpuRender: !renderer.ok, cpuLong: sentLong.current, draft });
   }, [renderer, cpuLongFor]);
 
   useEffect(() => {
@@ -213,11 +239,29 @@ export function usePipeline(effective, setAutoGrout) {
       requestRender();
       return;
     }
-    const t = setTimeout(() => post(effective), 40);
-    return () => clearTimeout(t);
+    const t = debounce.current = setTimeout(() => { debounce.current = 0; post(effective); }, 40);
+    return () => { clearTimeout(t); debounce.current = 0; };
   }, [effective, bitmap, readable, renderer, post, requestRender]);
 
   const rerun = useCallback(() => post(effectiveRef.current), [post]);
+
+  const dragStart = useCallback(() => { dragging.current = true; }, []);
+  // Releasing a control redoes the last draft in full. A run still waiting in
+  // the debounce will be sent in full by itself.
+  const dragEnd = useCallback(() => {
+    dragging.current = false;
+    if (lastDraft.current && !debounce.current && sent.current) post(effectiveRef.current);
+  }, [post]);
+  // A control released outside the window or after a blur never gets its own
+  // pointerup, so the app would stay in draft.
+  useEffect(() => {
+    window.addEventListener('pointerup', dragEnd);
+    window.addEventListener('blur', dragEnd);
+    return () => {
+      window.removeEventListener('pointerup', dragEnd);
+      window.removeEventListener('blur', dragEnd);
+    };
+  }, [dragEnd]);
 
   // A lost context moves the mosaic to the CPU; a restored one brings it back.
   onLost.current = () => {
@@ -239,10 +283,11 @@ export function usePipeline(effective, setAutoGrout) {
   // A new photo starts without the results of the old one.
   const resetResults = useCallback(() => {
     setImages({});
-    latest.current = { shards: null, colors: null };
+    latest.current = { shards: null, colors: null, draft: false };
+    flushFull();
     setInfo(null);
     setMosaicReady(false);
-  }, []);
+  }, [flushFull]);
 
   // The stage image on screen. The worker only draws this one after a run;
   // asking for it here draws it from the last result if it is missing.
@@ -270,6 +315,6 @@ export function usePipeline(effective, setAutoGrout) {
 
   return {
     worker, renderer, effectiveRef, glCanvas, gpu, bitmap, setBitmap, readable, images, labels, busy, info,
-    error, setError, mosaicReady, lines, post, rerun, requestRender, requestCpuExport, setWanted, setViewport, resetResults,
+    error, setError, mosaicReady, lines, post, rerun, dragStart, dragEnd, awaitFull, requestRender, requestCpuExport, setWanted, setViewport, resetResults,
   };
 }

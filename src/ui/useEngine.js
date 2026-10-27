@@ -40,7 +40,7 @@ export function useEngine() {
   const [photoName, setPhotoName] = useState('foto');
   const exporter = useExport({
     photoName, renderer: pipeline.renderer, effectiveRef: pipeline.effectiveRef,
-    requestRender: pipeline.requestRender, requestCpuExport: pipeline.requestCpuExport,
+    requestRender: pipeline.requestRender, requestCpuExport: pipeline.requestCpuExport, awaitFull: pipeline.awaitFull,
     setError: pipeline.setError,
   });
 
@@ -104,6 +104,7 @@ export function useEngine() {
     canRedo: history.canRedo,
     isDefault: settings.isDefault,
     loadBlob, loadSample, setViewport: pipeline.setViewport, setWanted: pipeline.setWanted,
+    dragStart: pipeline.dragStart, dragEnd: pipeline.dragEnd,
     download: exporter.download, share: exporter.share,
     seg: segmentation.seg, segments: segmentation.segments,
     segAccept: segmentation.segAccept, segDecline: segmentation.segDecline, segRetry: segmentation.segRetry,
