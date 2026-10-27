@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { decodePhoto, isImage, photoName as nameOf } from './photo.js';
+import { ownState } from './engine/historyState.js';
 import { useExport } from './engine/useExport.js';
 import { useGuides } from './engine/useGuides.js';
 import { useHistory } from './engine/useHistory.js';
@@ -31,11 +32,15 @@ export function useEngine() {
   const zones = useZones({
     session: segmentation.session, worker, rerun: pipeline.rerun, seg: segmentation.seg, photoGen,
   });
-  const guides = useGuides({ worker, post: pipeline.post, effectiveRef: pipeline.effectiveRef });
-  const history = useHistory({
-    state: { params, macros, zones: zones.zones },
-    apply: (s) => { settings.restore(s); zones.restoreZones(s.zones); },
-  });
+  const guides = useGuides({ worker, rerun: pipeline.rerun, photoGen });
+  // Puts a recorded state back, without the lines and shapes of an earlier photo.
+  const restoreOwn = (s) => {
+    const own = ownState(s, { gen: photoGen.current, hasZone: (id) => zones.zonePixels.current.has(id) });
+    settings.restore(own);
+    if (own.zones) zones.restoreZones(own.zones);
+    if (own.guides) guides.restoreGuides(own.guides);
+  };
+  const history = useHistory({ state: { params, macros, zones: zones.zones, guides: guides.guides }, apply: restoreOwn });
   // The photo's name goes into the downloaded file's name.
   const [photoName, setPhotoName] = useState('foto');
   const exporter = useExport({
@@ -97,7 +102,7 @@ export function useEngine() {
     setMacro: settings.setMacro,
     setManual: settings.setManual,
     resetAll: () => ({ ...settings.resetAll(), zones: zones.zonesRef.current }),
-    restore: (s) => { settings.restore(s); if (s.zones) zones.restoreZones(s.zones); },
+    restore: restoreOwn,
     undo: history.undo,
     redo: history.redo,
     canUndo: history.canUndo,

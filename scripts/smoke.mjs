@@ -83,6 +83,17 @@ try {
     await button.click();
     await page.waitForSelector('.viewer:not(.tool-shape)');
   });
+  await step('undo a line', async () => {
+    // History commits a step 500 ms after the last change, so the line is its own step.
+    await page.evaluate(() => window.__trencadis.addGuide({ points: [[0.1, 0.5], [0.9, 0.5]], mode: 'points', snap: false }));
+    await page.waitForFunction(() => window.__trencadis.guides.length === 1 && window.__trencadis.canUndo);
+    await page.waitForTimeout(600);
+    await ready();
+    await page.evaluate(() => document.body.focus());
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction(() => window.__trencadis.guides.length === 0, null, { timeout: 10000 });
+    await ready();
+  });
   await step('drag a slider', async () => {
     const before = await page.evaluate(() => window.__trencadis.info.shards);
     const runs = await page.evaluate(() => window.__runs.length);

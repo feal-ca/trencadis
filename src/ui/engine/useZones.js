@@ -103,8 +103,7 @@ export function useZones({ session, worker, rerun, seg, photoGen }) {
   }, [seg.phase]);
   const removeZone = useCallback((id) => setZones((zs) => zs.filter((z) => z.id !== id)), []);
 
-  // Zones of an earlier photo have no pixels any more and are left out.
-  const restoreZones = (list) => setZones(list.filter((z) => zonePixels.current.has(z.id)));
+  const restoreZones = setZones;
   // A new photo: no zones, and the pipeline worker is told so.
   const resetZones = () => {
     zonePixels.current = new Map();

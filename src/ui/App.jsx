@@ -24,8 +24,7 @@ export default function App() {
     if (!engine.hasImage) engine.loadSample(SAMPLES[0].src);
   }, []);
 
-  // Ctrl+Z / Ctrl+Shift+Z: while drawing lines, the last line; otherwise the
-  // settings and the touched shapes.
+  // Ctrl+Z / Ctrl+Shift+Z: one history for settings, touched shapes and lines.
   useEffect(() => {
     const onKey = (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
@@ -35,7 +34,6 @@ export default function App() {
       if (e.target.matches?.('input[type=text], input[type=number], textarea')) return;
       e.preventDefault();
       if (redo) engine.redo();
-      else if (brush?.kind === 'draw') engine.undoGuide();
       else engine.undo();
     };
     window.addEventListener('keydown', onKey);

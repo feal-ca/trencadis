@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createHistory } from '../../core/history.js';
 
-// Undo/redo of `state` ({ params, macros, zones }): a step is recorded once
+// Undo/redo of `state` ({ params, macros, zones, guides }): a step is recorded once
 // changes pause for 500 ms, so dragging a slider is one step. `apply` puts a
 // recorded state back.
 export function useHistory({ state, apply }) {
@@ -15,10 +15,10 @@ export function useHistory({ state, apply }) {
     pending.current = null;
   }, []);
   useEffect(() => {
-    const recorded = { params: state.params, macros: state.macros, zones: state.zones };
+    const recorded = { params: state.params, macros: state.macros, zones: state.zones, guides: state.guides };
     clearTimeout(pending.current?.timer);
     pending.current = { state: recorded, timer: setTimeout(() => { flushHistory(); setHistoryVersion((v) => v + 1); }, 500) };
-  }, [state.params, state.macros, state.zones, flushHistory]);
+  }, [state.params, state.macros, state.zones, state.guides, flushHistory]);
   const travel = (dir) => {
     flushHistory();
     const s = dir < 0 ? history.current.undo() : history.current.redo();
