@@ -13,6 +13,8 @@ let pipe = fullPipe;
 // The result last sent to the page for each stage, so one that comes out of a
 // cache is still sent when the page is showing another.
 let sentValues = {};
+// Whether the last run finished; if not, the page may have dropped what it sent.
+let lastFinished = true;
 let latest = 0;
 let lastParams = null;
 // The tessellation and colours of the last finished full run, for exports.
@@ -114,6 +116,8 @@ self.onmessage = async (e) => {
   }
   if (msg.type !== 'run') return;
   const id = (latest = msg.id);
+  if (!lastFinished) sentValues = {};
+  lastFinished = false;
   const draft = !!msg.draft;
   const run = draft ? draftPipe : fullPipe;
   const p = draft ? { ...msg.params, workLong: Math.min(msg.params.workLong, DRAFT_LONG) } : msg.params;
@@ -151,6 +155,7 @@ self.onmessage = async (e) => {
       { cpuRender: !!msg.cpuRender, cpuLong: msg.cpuLong },
     );
     if (res) {
+      lastFinished = true;
       pipe = run;
       lastParams = p;
       if (!draft) {

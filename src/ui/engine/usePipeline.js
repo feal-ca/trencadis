@@ -119,7 +119,8 @@ export function usePipeline(effective, setAutoGrout) {
   const flushFull = useCallback(() => {
     for (const resolve of fullWaiters.current.splice(0)) resolve();
   }, []);
-  // Resolves once the mosaic on screen is a full one, not a draft.
+  // Resolves once a full run has finished, when a draft is on screen: its
+  // shards and colours are both there only at `done`.
   const awaitFull = useCallback(() => (latest.current.draft
     ? new Promise((resolve) => fullWaiters.current.push(resolve))
     : Promise.resolve()), []);
@@ -160,7 +161,6 @@ export function usePipeline(effective, setAutoGrout) {
         }
         if (data.lines) setLines(data.lines);
         if (data.stage === 'render') setMosaicReady(true);
-        if (!latest.current.draft) flushFull();
       } else if (data.type === 'done') {
         if (!data.draft) flushFull();
         if (DEBUG) (window.__runs ??= []).push({ ms: performance.now() - sentAt.current, timings: data.timings, draft: data.draft });

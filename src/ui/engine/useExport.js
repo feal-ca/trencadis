@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { DEBUG } from './usePipeline.js';
 
 // Saving and sharing the mosaic at export size.
 export function useExport({ photoName, renderer, effectiveRef, requestRender, requestCpuExport, awaitFull, setError }) {
@@ -6,6 +7,7 @@ export function useExport({ photoName, renderer, effectiveRef, requestRender, re
   const exportFile = useCallback(async (format = 'png') => {
     // The GPU may still hold a draft; a download is always the full mosaic.
     await awaitFull();
+    if (DEBUG) (window.__exports ??= []).push({ runs: window.__runs?.length, draft: !!window.__runs?.at(-1)?.draft });
     const p = effectiveRef.current;
     const type = format === 'jpg' ? 'image/jpeg' : 'image/png';
     let blob;
