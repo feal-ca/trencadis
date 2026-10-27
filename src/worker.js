@@ -13,7 +13,9 @@ let pipe = fullPipe;
 // The result last sent to the page for each stage, so one that comes out of a
 // cache is still sent when the page is showing another.
 let sentValues = {};
-// Whether the last run finished; if not, the page may have dropped what it sent.
+// The last run that finished here. The page says which `done` it accepted; if
+// that differs, it dropped some of what was sent. An unfinished run did too.
+let lastFinishedId = 0;
 let lastFinished = true;
 let latest = 0;
 let lastParams = null;
@@ -116,7 +118,7 @@ self.onmessage = async (e) => {
   }
   if (msg.type !== 'run') return;
   const id = (latest = msg.id);
-  if (!lastFinished) sentValues = {};
+  if (!lastFinished || msg.acceptedId !== lastFinishedId) sentValues = {};
   lastFinished = false;
   const draft = !!msg.draft;
   const run = draft ? draftPipe : fullPipe;
@@ -156,6 +158,7 @@ self.onmessage = async (e) => {
     );
     if (res) {
       lastFinished = true;
+      lastFinishedId = id;
       pipe = run;
       lastParams = p;
       if (!draft) {

@@ -103,21 +103,36 @@ try {
     await ready();
     const after = await page.evaluate(() => window.__trencadis.info.shards);
     if (after === before) throw new Error(`piece count did not change after the drag: ${before}`);
-    // A download right after a release waits for the full run.
-    await page.evaluate(() => { window.__exports = []; });
-    const runsBefore = await page.evaluate(() => window.__runs.length);
-    await page.mouse.move(box.x + 2, y);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2, y);
-    await page.waitForFunction((n) => window.__runs.slice(n).some((r) => r.draft), runsBefore, { timeout: 60000 });
-    await page.mouse.up();
-    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.locator('.download').click()]);
-    const png = Buffer.concat(await (await dl.createReadStream()).toArray());
-    const exp = await page.evaluate(() => window.__exports);
-    if (exp.length !== 1 || exp[0].draft || exp[0].runs <= runsBefore + 1) throw new Error(`download did not wait for the full run: ${JSON.stringify(exp)}`);
-    const side = Math.max(png.readUInt32BE(16), png.readUInt32BE(20));
-    if (side !== 2000) throw new Error(`download is ${side} px on its long side`);
-    await ready();
+    // A download after a release waits for the full run: asked right after the
+    // release, and asked at the full tessellation, before its colours arrive.
+    for (const atTessellation of [false, true]) {
+      await page.evaluate(() => { window.__exports = []; });
+      const runsBefore = await page.evaluate(() => window.__runs.length);
+      await page.mouse.move(box.x + 2, y);
+      await page.mouse.down();
+      // Ends where the control was not, so the drag changes the settings.
+      await page.mouse.move(box.x + box.width * (atTessellation ? 0.8 : 0.5), y);
+      await page.waitForFunction((n) => window.__runs.slice(n).some((r) => r.draft), runsBefore, { timeout: 60000 });
+      if (atTessellation) {
+        await page.evaluate(() => {
+          window.__onStage = (d) => {
+            if (d.stage !== 'tessellation' || d.draft) return;
+            window.__onStage = null;
+            window.__trencadis.download();
+          };
+        });
+      }
+      const [dl] = await Promise.all([
+        page.waitForEvent('download', { timeout: 60000 }),
+        page.mouse.up().then(() => !atTessellation && page.locator('.download').click()),
+      ]);
+      const png = Buffer.concat(await (await dl.createReadStream()).toArray());
+      const exp = await page.evaluate(() => window.__exports);
+      if (exp.length !== 1 || exp[0].draft || exp[0].runs <= runsBefore + 1) throw new Error(`download did not wait for the full run (at tessellation: ${atTessellation}): ${JSON.stringify(exp)}`);
+      const side = Math.max(png.readUInt32BE(16), png.readUInt32BE(20));
+      if (side !== 2000) throw new Error(`download is ${side} px on its long side`);
+      await ready();
+    }
     // Drafts while the control was held, and the last run is the full one.
     const drafts = await page.evaluate((n) => window.__runs.slice(n).map((r) => !!r.draft), runs);
     if (!drafts.includes(true) || drafts.at(-1)) throw new Error(`runs during the drag (draft or not): ${drafts.join(' ')}`);

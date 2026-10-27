@@ -49,7 +49,7 @@ describe('downscale', () => {
 
   it('downscale averages a checkerboard to grey', () => {
     const w = 800, h = 600, img = flat(w, h, 0);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) img.rgb.fill((x + y) % 2, (y * w + x) * 3, (y * w + x) * 3 + 3);
+    for (let i = 0; i < w * h; i++) img.rgb.fill(((i % w) + Math.floor(i / w)) % 2, i * 3, i * 3 + 3);
     const out = downscale(img, 400);
     for (const v of out.rgb) expect(v).toBeCloseTo(0.5, 5);
   });

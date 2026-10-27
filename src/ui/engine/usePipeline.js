@@ -75,6 +75,11 @@ export function usePipeline(effective, setAutoGrout) {
   const debounce = useRef(0);
   // Callers waiting for the full result to replace a draft on screen.
   const fullWaiters = useRef([]);
+  // A draft is on screen or on its way and its full run has not finished.
+  const fullPending = useRef(false);
+  // The last run whose `done` was accepted, so the worker can tell whether the
+  // page has seen everything it sent.
+  const lastDoneId = useRef(0);
 
   const glCanvas = useMemo(() => {
     const c = document.createElement('canvas');
@@ -117,11 +122,12 @@ export function usePipeline(effective, setAutoGrout) {
   const sentLong = useRef(0);
 
   const flushFull = useCallback(() => {
+    fullPending.current = false;
     for (const resolve of fullWaiters.current.splice(0)) resolve();
   }, []);
   // Resolves once a full run has finished, when a draft is on screen: its
   // shards and colours are both there only at `done`.
-  const awaitFull = useCallback(() => (latest.current.draft
+  const awaitFull = useCallback(() => (fullPending.current
     ? new Promise((resolve) => fullWaiters.current.push(resolve))
     : Promise.resolve()), []);
 
@@ -161,7 +167,9 @@ export function usePipeline(effective, setAutoGrout) {
         }
         if (data.lines) setLines(data.lines);
         if (data.stage === 'render') setMosaicReady(true);
+        if (DEBUG) window.__onStage?.(data);
       } else if (data.type === 'done') {
+        lastDoneId.current = data.id;
         if (!data.draft) flushFull();
         if (DEBUG) (window.__runs ??= []).push({ ms: performance.now() - sentAt.current, timings: data.timings, draft: data.draft });
         setBusy(null);
@@ -222,12 +230,14 @@ export function usePipeline(effective, setAutoGrout) {
     posted.current = p;
     // Below the draft size a draft would be the full run itself.
     const draft = dragging.current && p.workLong > DRAFT_LONG;
+    // A full run after a draft (or a draft itself) leaves a draft to replace.
+    if (draft || lastDraft.current || latest.current.draft) fullPending.current = true;
     lastDraft.current = draft;
     const id = ++runId.current;
     setError(null);
     setBusy('analysis');
     sentAt.current = performance.now();
-    worker.current.postMessage({ type: 'run', id, params: p, views: wanted.current, cpuRender: !renderer.ok, cpuLong: sentLong.current, draft });
+    worker.current.postMessage({ type: 'run', id, params: p, views: wanted.current, cpuRender: !renderer.ok, cpuLong: sentLong.current, draft, acceptedId: lastDoneId.current });
   }, [renderer, cpuLongFor]);
 
   useEffect(() => {

@@ -21,12 +21,13 @@ export function downscale(img, long) {
   const rx = w / nw, ry = h / nh;
   // Columns first, into nw x h.
   const tmp = new Float32Array(nw * h * 3);
-  for (let ox = 0; ox < nw; ox++) {
-    const a = ox * rx, b = a + rx;
-    for (let x = Math.floor(a); x < Math.min(w, Math.ceil(b)); x++) {
-      const k = (Math.min(b, x + 1) - Math.max(a, x)) / rx;
-      for (let y = 0; y < h; y++) {
-        const i = (y * w + x) * 3, o = (y * nw + ox) * 3;
+  for (let y = 0; y < h; y++) {
+    for (let ox = 0; ox < nw; ox++) {
+      const a = ox * rx, b = a + rx;
+      const o = (y * nw + ox) * 3;
+      for (let x = Math.floor(a); x < Math.min(w, Math.ceil(b)); x++) {
+        const k = (Math.min(b, x + 1) - Math.max(a, x)) / rx;
+        const i = (y * w + x) * 3;
         tmp[o] += rgb[i] * k;
         tmp[o + 1] += rgb[i + 1] * k;
         tmp[o + 2] += rgb[i + 2] * k;
