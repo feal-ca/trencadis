@@ -3,6 +3,7 @@ import { decodePhoto, isImage, photoName as nameOf } from './photo.js';
 import { ownState } from './engine/historyState.js';
 import { useExport } from './engine/useExport.js';
 import { useGuides } from './engine/useGuides.js';
+import { useSession } from './engine/useSession.js';
 import { useHistory } from './engine/useHistory.js';
 import { usePipeline, DEBUG } from './engine/usePipeline.js';
 import { useSegmentation } from './engine/useSegmentation.js';
@@ -53,8 +54,11 @@ export function useEngine() {
   const { session } = segmentation;
   const { resetZones } = zones;
   const { resetGuides } = guides;
-  const loadBlob = useCallback(async (blob, name, seg = null) => {
-    if (!isImage(blob)) { setError('Ese archivo no es una imagen. Prueba con un JPG o un PNG.'); return; }
+  // Which sample is on screen (its src), or null for a photo of the user's.
+  const [sample, setSample] = useState(null);
+  // Resolves to whether the photo was loaded.
+  const loadBlob = useCallback(async (blob, name, seg = null, sampleSrc = null) => {
+    if (!isImage(blob)) { setError('Ese archivo no es una imagen. Prueba con un JPG o un PNG.'); return false; }
     try {
       const bmp = await decodePhoto(blob);
       resetResults();
@@ -65,13 +69,16 @@ export function useEngine() {
       resetZones();
       setPhotoName(name ?? nameOf(blob));
       setPreset(seg);
+      setSample(sampleSrc);
       setBitmap(bmp);
+      return true;
     } catch {
       // HEIC (iPhone photos) only opens in Safari; elsewhere it fails here.
       const heic = /hei[cf]$/i.test(blob.type) || /\.hei[cf]$/i.test(blob.name ?? '');
       setError(heic
         ? 'Este navegador no abre fotos HEIC, el formato del iPhone. Ábrela en Safari o guárdala como JPG (en el iPhone: Ajustes › Cámara › Formatos › Más compatible).'
         : 'No se ha podido leer esa imagen. Prueba con un JPG o un PNG.');
+      return false;
     }
   }, []);
 
@@ -80,11 +87,17 @@ export function useEngine() {
       const res = await fetch(src);
       if (!res.ok) throw new Error(res.statusText);
       const sample = SAMPLES.find((s) => s.src === src);
-      await loadBlob(await res.blob(), nameOf({ name: (sample?.label ?? '').toLowerCase() }), sample?.seg);
+      await loadBlob(await res.blob(), nameOf({ name: (sample?.label ?? '').toLowerCase() }), sample?.seg, src);
     } catch {
       setError('No se ha podido cargar el ejemplo. Comprueba la conexión y vuelve a probar.');
     }
   }, [loadBlob]);
+
+  // The last session comes back on start (or the first sample), and is kept as it changes.
+  useSession({
+    samples: SAMPLES, loadBlob, loadSample, setError, photoGen, zones, guides, sample, bitmap, photoName,
+    segments: segmentation.segments,
+  });
 
   const api = {
     params, setParams: settings.setParams, images, labels: pipeline.labels, busy: pipeline.busy, info,

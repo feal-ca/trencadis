@@ -16,9 +16,9 @@ export function useZones({ session, worker, rerun, seg, photoGen }) {
   const zoneSeq = useRef(0);
   const pointsKey = (points) => JSON.stringify(points);
   const pixelsOf = (z) => zonePixels.current.get(z.id)?.get(pointsKey(z.points));
-  const keepPixels = (id, points, region) => {
+  const keepPixels = (id, points, region, parts = null) => {
     if (!zonePixels.current.has(id)) zonePixels.current.set(id, new Map());
-    zonePixels.current.get(id).set(pointsKey(points), { region, parts: null });
+    zonePixels.current.get(id).set(pointsKey(points), { region, parts });
   };
   // The zones with their pixels, for the viewer.
   const zonesView = useMemo(
@@ -104,6 +104,15 @@ export function useZones({ session, worker, rerun, seg, photoGen }) {
   const removeZone = useCallback((id) => setZones((zs) => zs.filter((z) => z.id !== id)), []);
 
   const restoreZones = setZones;
+  // Shapes of a saved session, with their pixels: [{ id, mode, points, region, parts }].
+  const loadZones = (list) => {
+    for (const z of list) {
+      keepPixels(z.id, z.points, z.region, z.parts);
+      zoneSeq.current = Math.max(zoneSeq.current, Number(/^z(\d+)$/.exec(z.id)?.[1] ?? 0));
+    }
+    setZones(list.map(({ id, mode, points }) => ({ id, mode, points })));
+    setPixelsVersion((v) => v + 1);
+  };
   // A new photo: no zones, and the pipeline worker is told so.
   const resetZones = () => {
     zonePixels.current = new Map();
@@ -112,5 +121,5 @@ export function useZones({ session, worker, rerun, seg, photoGen }) {
     worker.current?.postMessage({ type: 'zones', zones: [] });
   };
 
-  return { zones, zonesRef, zonesView, zonePixels, pickShape, refineShape, setZoneMode, removeZone, restoreZones, resetZones };
+  return { zones, zonesRef, zonesView, zonePixels, pixelsOf, loadZones, pickShape, refineShape, setZoneMode, removeZone, restoreZones, resetZones };
 }

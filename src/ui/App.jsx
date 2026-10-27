@@ -20,10 +20,6 @@ export default function App() {
   const [snap, setSnap] = useState('half');
   const [sheetH, setSheetH] = useState(0);
 
-  useEffect(() => {
-    if (!engine.hasImage) engine.loadSample(SAMPLES[0].src);
-  }, []);
-
   // Ctrl+Z / Ctrl+Shift+Z: one history for settings, touched shapes and lines.
   useEffect(() => {
     const onKey = (e) => {

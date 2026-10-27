@@ -244,6 +244,31 @@ try {
     await pick(toName, toKey);
     if (!after.equals(await settled())) throw new Error('restored canvas does not show the mosaic made while on the CPU');
   });
+  await step('reload keeps the photo', async () => {
+    // Its own page (its own storage), so the main one keeps its state.
+    const re = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await re.addInitScript(() => { delete Navigator.prototype.gpu; });
+    re.on('pageerror', (e) => errors.push(e.message));
+    re.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    try {
+      await re.goto('http://localhost:5191/?debug');
+      await idle(re);
+      await re.locator('input[type=file]').setInputFiles('public/samples/barcas.webp');
+      await re.waitForFunction(() => window.__trencadis.photoName === 'barcas');
+      await idle(re);
+      await re.evaluate(() => window.__trencadis.addGuide({ points: [[0.1, 0.5], [0.9, 0.5]], mode: 'points', snap: false }));
+      await re.waitForFunction(() => window.__trencadis.guides.length === 1);
+      // The session is written 1 s after the last change.
+      await re.waitForTimeout(1500);
+      await re.reload();
+      await re.waitForFunction(() => window.__trencadis?.hasImage && window.__trencadis.guides.length === 1, null, { timeout: 30000 });
+      await idle(re);
+      const name = await re.evaluate(() => window.__trencadis.photoName);
+      if (name !== 'barcas') throw new Error(`photoName after the reload: ${name}`);
+    } finally {
+      await re.close();
+    }
+  });
   await step('no webgl', async () => {
     // Its own page, so the main one keeps its state.
     const nogl = await browser.newPage({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
