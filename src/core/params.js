@@ -142,6 +142,8 @@ export const GROUPS = [
         help: 'Más bajo: pocos colores, aspecto más gráfico.' },
       { key: 'paletteMix', label: 'Fuerza de la paleta', min: 0, max: 1, step: 0.01, def: 1, stage: 'color', show: (p) => p.palette !== 'none',
         help: '1: solo colores de la paleta; más bajo: mezcla con el color original.' },
+      { key: 'paletteDither', label: 'Degradados con la paleta', min: 0, max: 1, step: 0.01, def: 0.6, stage: 'color', show: (p) => p.palette !== 'none',
+        help: 'Cada trozo pasa a sus vecinos la diferencia entre el color de la foto y el de la paleta, y los degradados de un cielo o una cara se hacen mezclando dos o tres colores. 0: cada trozo toma el color más cercano.' },
       {
         key: 'rowColor', label: 'Color de las hileras', type: 'select', def: 'photo', stage: 'color',
         options: [
@@ -177,6 +179,8 @@ export const GROUPS = [
         help: 'Cada trozo gira y se mueve un poco, como si se hubiera puesto a mano. Rompe las líneas rectas que cruzan varios trozos.' },
       { key: 'tilt', label: 'Inclinación de los trozos', min: 0, max: 0.6, step: 0.01, def: 0.16, stage: 'render',
         help: 'Más alto: cada trozo refleja la luz de forma distinta; 0: superficie plana.' },
+      { key: 'dome', label: 'Curvatura de los trozos', min: 0, max: 0.6, step: 0.01, def: 0.1, stage: 'render',
+        help: 'Cada trozo se curva un poco, como un pedazo de plato, y el brillo se queda en una parte del trozo en lugar de cubrirlo entero. 0: trozos planos.' },
       { key: 'lightAz', label: 'Dirección de la luz', min: 0, max: 360, step: 1, def: 135, unit: '°', stage: 'render',
         help: 'De dónde viene la luz: 0° derecha, 90° arriba, 180° izquierda.' },
       { key: 'lightEl', label: 'Altura de la luz', min: 10, max: 90, step: 1, def: 50, unit: '°', stage: 'render',

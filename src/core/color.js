@@ -1,5 +1,6 @@
+import { Delaunay } from 'd3-delaunay';
 import { centroid, rasterize, area } from './polygon.js';
-import { hslToRgb, labToRgb, rgbToHsl, rgbToLab } from './image.js';
+import { labToRgb, linearToOklab, oklabToRgb, rgbToLab, rgbToOklab, srgbToLinear } from './image.js';
 
 // A plausible set of glazed tiles from a Barcelona workshop around 1900.
 export const GAUDI_PALETTE = [
@@ -28,11 +29,28 @@ export function autoGroutColor(rgba) {
   return '#' + labToRgb(g, 1, 4).map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('');
 }
 
-// One colour per shard from the pixels it covers.
+// The photo in linear light, once per image: averages of light are taken
+// there, as the eye mixes the light of small areas, not their sRGB codes.
+const linearCache = new WeakMap();
+function linearOf(img) {
+  let v = linearCache.get(img);
+  if (!v) {
+    v = new Float32Array(img.rgb.length);
+    for (let i = 0; i < v.length; i++) v[i] = srgbToLinear(img.rgb[i]);
+    linearCache.set(img, v);
+  }
+  return v;
+}
+
+// One colour per shard from the pixels it covers. Saturation and lightness
+// are adjusted in OKLCH, so neither moves the perceived lightness or the hue:
+// in HSL a saturated blue and a saturated yellow have the same lightness.
 export function shardColors(shards, img, p) {
   const { w, h, rgb } = img;
+  const linear = linearOf(img);
   const out = new Float32Array(shards.length * 3);
   const px = [];
+  const t = [0, 0, 0];
   shards.forEach(({ poly }, k) => {
     px.length = 0;
     rasterize(poly, w, h, (x, y) => px.push(y * w + x));
@@ -40,30 +58,34 @@ export function shardColors(shards, img, p) {
       const [cx, cy] = centroid(poly);
       px.push(Math.min(h - 1, Math.max(0, cy | 0)) * w + Math.min(w - 1, Math.max(0, cx | 0)));
     }
-    const c = statistic(px, rgb, p.colorMode, poly, w, h);
-    let [hu, s, l] = rgbToHsl(c[0], c[1], c[2]);
-    s = Math.min(1, s * p.saturation);
-    l = Math.min(1, Math.max(0, l + p.lightness));
+    const c = statistic(px, rgb, linear, p.colorMode, poly, w, h);
+    let [L, a, b] = linearToOklab(c[0], c[1], c[2], t);
+    a *= p.saturation;
+    b *= p.saturation;
+    L = Math.min(1, Math.max(0, L + p.lightness));
     // Row pieces can be darker or lighter so the line reads as an outline.
     const strength = p.rowContrast ?? 1;
-    if (shards[k].row && p.rowColor === 'dark') l *= 1 - 0.65 * strength;
-    else if (shards[k].row && p.rowColor === 'light') l += (1 - l) * 0.6 * strength;
-    const r = hslToRgb(hu, s, l);
-    out[k * 3] = r[0]; out[k * 3 + 1] = r[1]; out[k * 3 + 2] = r[2];
+    if (shards[k].row && p.rowColor === 'dark') L *= 1 - 0.65 * strength;
+    else if (shards[k].row && p.rowColor === 'light') L += (1 - L) * 0.6 * strength;
+    oklabToRgb(L, a, b, t);
+    out[k * 3] = t[0]; out[k * 3 + 1] = t[1]; out[k * 3 + 2] = t[2];
   });
   return out;
 }
 
-function statistic(px, rgb, mode, poly, w, h) {
+// The colour of a piece in linear light. `rgb` (sRGB) decides which pixels
+// count, `linear` gives their light.
+function statistic(px, rgb, linear, mode, poly, w, h) {
   const n = px.length;
   if (mode === 'center') {
     const [cx, cy] = centroid(poly);
     const i = Math.min(h - 1, Math.max(0, cy | 0)) * w + Math.min(w - 1, Math.max(0, cx | 0));
-    return [rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]];
+    return [linear[i * 3], linear[i * 3 + 1], linear[i * 3 + 2]];
   }
   if (mode === 'median') {
+    // The median of each channel is the same in sRGB and in linear light.
     return [0, 1, 2].map((ch) => {
-      const v = px.map((i) => rgb[i * 3 + ch]).sort((a, b) => a - b);
+      const v = px.map((i) => linear[i * 3 + ch]).sort((a, b) => a - b);
       return v[n >> 1];
     });
   }
@@ -73,8 +95,8 @@ function statistic(px, rgb, mode, poly, w, h) {
     for (const i of px) {
       const key = ((rgb[i * 3] * 15.99) | 0) << 8 | ((rgb[i * 3 + 1] * 15.99) | 0) << 4 | ((rgb[i * 3 + 2] * 15.99) | 0);
       const b = bins.get(key);
-      if (b) { b[0] += rgb[i * 3]; b[1] += rgb[i * 3 + 1]; b[2] += rgb[i * 3 + 2]; b[3]++; }
-      else bins.set(key, [rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2], 1]);
+      if (b) { b[0] += linear[i * 3]; b[1] += linear[i * 3 + 1]; b[2] += linear[i * 3 + 2]; b[3]++; }
+      else bins.set(key, [linear[i * 3], linear[i * 3 + 1], linear[i * 3 + 2], 1]);
     }
     let best = null;
     for (const b of bins.values()) if (!best || b[3] > best[3]) best = b;
@@ -95,40 +117,134 @@ function statistic(px, rgb, mode, poly, w, h) {
     sel = px.filter((_, k) => bin[k] >= cut);
   }
   const m = [0, 0, 0];
-  for (const i of sel) { m[0] += rgb[i * 3]; m[1] += rgb[i * 3 + 1]; m[2] += rgb[i * 3 + 2]; }
+  for (const i of sel) { m[0] += linear[i * 3]; m[1] += linear[i * 3 + 1]; m[2] += linear[i * 3 + 2]; }
   return m.map((v) => v / sel.length);
 }
 
 // Snap shard colours to a palette (k-means on the shards, or the fixed Gaudi
 // set), blend toward it by paletteMix, then add per-shard glaze variation.
+// Everything happens in OKLab.
+//
+// With paletteDither, each piece passes the difference between the colour it
+// wanted and the one it got to the neighbours that come after it, as
+// Floyd-Steinberg does on pixels. A sky or a cheek then takes two or three
+// palette colours mixed, instead of one flat band, and reads as a gradient
+// from a step back. Row pieces neither give nor take: their colour is meant
+// to stand out.
 export function applyPalette(colors, shards, p, rng) {
   const n = shards.length;
   const lab = new Float32Array(n * 3);
   const t = [0, 0, 0];
   for (let k = 0; k < n; k++) {
-    rgbToLab(colors[k * 3], colors[k * 3 + 1], colors[k * 3 + 2], t);
+    rgbToOklab(colors[k * 3], colors[k * 3 + 1], colors[k * 3 + 2], t);
     lab.set(t, k * 3);
   }
   let centers = null;
-  if (p.palette === 'gaudi') centers = GAUDI_PALETTE.map((hx) => rgbToLab(...hexToRgb(hx)));
+  if (p.palette === 'gaudi') centers = GAUDI_PALETTE.map((hx) => rgbToOklab(...hexToRgb(hx)));
   else if (p.palette === 'kmeans') centers = kmeans(lab, shards.map((s) => area(s.poly)), Math.round(p.paletteK), rng);
 
-  const out = new Float32Array(n * 3);
-  for (let k = 0; k < n; k++) {
+  const mixed = new Float32Array(n * 3);
+  const dither = centers ? (p.paletteDither ?? 0) : 0;
+  const order = dither > 0 ? scanOrder(shards) : null;
+  const err = dither > 0 ? new Float32Array(n * 3) : null;
+  const next = dither > 0 ? forwardNeighbours(shards, order) : null;
+  for (let o = 0; o < n; o++) {
+    const k = order ? order[o] : o;
     let L = lab[k * 3], a = lab[k * 3 + 1], b = lab[k * 3 + 2];
     if (centers) {
+      if (err && !shards[k].row) {
+        // Capped, so a run of misses cannot push a piece to a far colour.
+        const e = clampVec(err[k * 3], err[k * 3 + 1], err[k * 3 + 2], MAX_CARRY);
+        L += e[0]; a += e[1]; b += e[2];
+      }
       const c = nearest(centers, L, a, b);
-      L += (c[0] - L) * p.paletteMix; a += (c[1] - a) * p.paletteMix; b += (c[2] - b) * p.paletteMix;
+      const oL = L + (c[0] - L) * p.paletteMix, oa = a + (c[1] - a) * p.paletteMix, ob = b + (c[2] - b) * p.paletteMix;
+      if (err && !shards[k].row) {
+        const ds = next[k];
+        let total = 0;
+        for (const [, wt] of ds) total += wt;
+        for (const [j, wt] of ds) {
+          const f = (dither * wt) / total;
+          err[j * 3] += (L - oL) * f;
+          err[j * 3 + 1] += (a - oa) * f * CHROMA_CARRY;
+          err[j * 3 + 2] += (b - ob) * f * CHROMA_CARRY;
+        }
+      }
+      L = oL; a = oa; b = ob;
     }
+    mixed[k * 3] = L; mixed[k * 3 + 1] = a; mixed[k * 3 + 2] = b;
+  }
+
+  // Jitter after the dithering, drawn in shard order so the same seed gives
+  // the same variation with or without it.
+  const out = new Float32Array(n * 3);
+  for (let k = 0; k < n; k++) {
+    let L = mixed[k * 3], a = mixed[k * 3 + 1], b = mixed[k * 3 + 2];
     if (p.colorJitter > 0) {
-      L += rng.normal() * p.colorJitter * 100;
-      a += rng.normal() * p.colorJitter * 40;
-      b += rng.normal() * p.colorJitter * 40;
+      L += rng.normal() * p.colorJitter * 0.85;
+      a += rng.normal() * p.colorJitter * 0.12;
+      b += rng.normal() * p.colorJitter * 0.12;
     }
-    labToRgb(L, a, b, t);
+    oklabToRgb(L, a, b, t);
     out.set(t, k * 3);
   }
-  return { colors: out, centers: centers ? centers.map((c) => labToRgb(c[0], c[1], c[2])) : null };
+  return { colors: out, centers: centers ? centers.map((c) => oklabToRgb(c[0], c[1], c[2])) : null };
+}
+
+// Largest colour difference a piece carries from its neighbours, in OKLab
+// units (0.1 is about the gap between two neighbouring workshop tiles).
+const MAX_CARRY = 0.12;
+// Lightness is passed on whole and hue and chroma at half: shading is what
+// makes a face read, while a full hue error scatters teal pieces in a blue
+// turban and orange ones in a cheek.
+const CHROMA_CARRY = 0.5;
+
+function clampVec(x, y, z, max) {
+  const l = Math.hypot(x, y, z);
+  return l > max ? [(x * max) / l, (y * max) / l, (z * max) / l] : [x, y, z];
+}
+
+// Serpentine scan by centroid in bands one typical piece high, so the error
+// keeps flowing to pieces that are still to come on both sides.
+function scanOrder(shards) {
+  const n = shards.length;
+  let total = 0;
+  const cs = shards.map((s) => {
+    total += area(s.poly);
+    return centroid(s.poly);
+  });
+  const band = Math.max(1, Math.sqrt(total / Math.max(1, n)));
+  const idx = Array.from({ length: n }, (_, k) => k);
+  const row = (k) => Math.floor(cs[k][1] / band);
+  idx.sort((i, j) => row(i) - row(j) || (row(i) % 2 ? cs[j][0] - cs[i][0] : cs[i][0] - cs[j][0]) || i - j);
+  return idx;
+}
+
+// For each piece, its Delaunay neighbours (by centroid) that come later in
+// `order`, weighted by inverse distance.
+function forwardNeighbours(shards, order) {
+  const n = shards.length;
+  const rank = new Int32Array(n);
+  order.forEach((k, r) => { rank[k] = r; });
+  const pts = new Float64Array(n * 2);
+  shards.forEach((s, k) => {
+    const [x, y] = centroid(s.poly);
+    pts[k * 2] = x; pts[k * 2 + 1] = y;
+  });
+  const out = Array.from({ length: n }, () => []);
+  if (n < 3) {
+    for (let r = 0; r + 1 < n; r++) if (!shards[order[r + 1]].row) out[order[r]].push([order[r + 1], 1]);
+    return out;
+  }
+  const del = new Delaunay(pts);
+  for (let k = 0; k < n; k++) {
+    for (const j of del.neighbors(k)) {
+      if (rank[j] <= rank[k] || shards[j].row) continue;
+      const d = Math.hypot(pts[j * 2] - pts[k * 2], pts[j * 2 + 1] - pts[k * 2 + 1]);
+      out[k].push([j, 1 / Math.max(1e-6, d)]);
+    }
+  }
+  return out;
 }
 
 function nearest(centers, L, a, b) {
@@ -140,7 +256,8 @@ function nearest(centers, L, a, b) {
   return best;
 }
 
-// Area-weighted k-means in Lab with k-means++ seeding.
+// Area-weighted k-means (in whatever space `lab` is, OKLab here) with
+// k-means++ seeding.
 export function kmeans(lab, weights, K, rng, iters = 15) {
   const n = weights.length;
   K = Math.max(1, Math.min(K, n));

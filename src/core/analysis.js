@@ -1,10 +1,15 @@
-import { blur, luminance, normalizePercentile, sobel } from './image.js';
+import { blur, luminance, normalizePercentile, rgbToOklab, sobel } from './image.js';
 
 // Stage 0: the maps every tessellation reads.
 //   detail    D(x) in [0,1], local high-frequency energy
 //   theta     edge tangent direction (radians, mod pi) from the structure tensor
 //   coherence how strongly oriented the neighbourhood is, in [0,1]
 //   size      s(x), desired shard diameter in working pixels (withSize)
+//
+// Detail and edges are measured on the luma and on the OKLab a and b
+// channels, so a red flower on green leaves of the same lightness is an edge.
+// The structure tensor adds the three channels' gradients (Di Zenzo, 1986);
+// on a grey photo a and b are zero and everything is as with luma alone.
 //
 // The maps are smooth (every blur has sigma >= 1), so large images are
 // analysed at half resolution and interpolated back; p.exactAnalysis skips that.
@@ -18,12 +23,49 @@ export function analyze(img, p, mask = null) {
 // Everything but `size`, which only needs sMin, sMax and gamma on top.
 export function analyzeMaps(img, p, mask = null) {
   if (!p.exactAnalysis && img.w * img.h > 120000) {
-    const half = analyzeLuminance(halveField(luminance(img), img.w, img.h), Math.ceil(img.w / 2), Math.ceil(img.h / 2), {
+    const W = Math.ceil(img.w / 2), H = Math.ceil(img.h / 2);
+    const half = analyzeChannels(channels(img, true), W, H, {
       ...p, detailSigma: p.detailSigma / 2, detailSmooth: p.detailSmooth / 2, tensorSigma: p.tensorSigma / 2, prefilter: 0.5,
     }, mask);
     return upsample(half, img.w, img.h);
   }
-  return analyzeLuminance(luminance(img), img.w, img.h, p, mask);
+  return analyzeChannels(channels(img, false), img.w, img.h, p, mask);
+}
+
+// Luma, a and b of the photo (or of its half-size copy), once per image: the
+// maps are recomputed when a detail setting changes, the channels are not.
+const channelCache = new WeakMap();
+function channels(img, half) {
+  const cached = channelCache.get(img);
+  if (cached?.half === half) return cached.ch;
+  const src = half ? halveImage(img) : img;
+  const { w, h, rgb } = src;
+  const A = new Float32Array(w * h), B = new Float32Array(w * h);
+  const t = [0, 0, 0];
+  for (let i = 0; i < w * h; i++) {
+    rgbToOklab(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2], t);
+    A[i] = t[1];
+    B[i] = t[2];
+  }
+  const ch = [luminance(src), A, B];
+  channelCache.set(img, { half, ch });
+  return ch;
+}
+
+// The photo at half size, each pixel the mean of a 2 x 2 block.
+function halveImage({ w, h, rgb }) {
+  const W = Math.ceil(w / 2), H = Math.ceil(h / 2);
+  const out = new Float32Array(W * H * 3);
+  for (let y = 0; y < H; y++) {
+    const y0 = 2 * y, y1 = Math.min(h - 1, y0 + 1);
+    for (let x = 0; x < W; x++) {
+      const x0 = 2 * x, x1 = Math.min(w - 1, x0 + 1);
+      for (let c = 0; c < 3; c++) {
+        out[(y * W + x) * 3 + c] = (rgb[(y0 * w + x0) * 3 + c] + rgb[(y0 * w + x1) * 3 + c] + rgb[(y1 * w + x0) * 3 + c] + rgb[(y1 * w + x1) * 3 + c]) / 4;
+      }
+    }
+  }
+  return { w: W, h: H, rgb: out };
 }
 
 const smoothstep = (a, b, x) => {
@@ -31,18 +73,26 @@ const smoothstep = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 
-function analyzeLuminance(L, w, h, p, mask) {
-  const low = blur(L, w, h, p.detailSigma);
-  const hf = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) hf[i] = Math.abs(L[i] - low[i]);
-  const detail = normalizePercentile(blur(hf, w, h, p.detailSmooth));
+function analyzeChannels(ch, w, h, p, mask) {
+  const L = ch[0];
+  // High frequencies as a colour distance: the length of (luma, a, b) minus
+  // its blur.
+  const hf2 = new Float32Array(w * h);
+  for (const c of ch) {
+    const low = blur(c, w, h, p.detailSigma);
+    for (let i = 0; i < w * h; i++) hf2[i] += (c[i] - low[i]) ** 2;
+  }
+  for (let i = 0; i < w * h; i++) hf2[i] = Math.sqrt(hf2[i]);
+  const detail = normalizePercentile(blur(hf2, w, h, p.detailSmooth));
 
-  const { gx, gy } = sobel(blur(L, w, h, p.prefilter ?? 1), w, h);
   const jxx = new Float32Array(w * h), jxy = new Float32Array(w * h), jyy = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    jxx[i] = gx[i] * gx[i];
-    jxy[i] = gx[i] * gy[i];
-    jyy[i] = gy[i] * gy[i];
+  for (const c of ch) {
+    const { gx, gy } = sobel(blur(c, w, h, p.prefilter ?? 1), w, h);
+    for (let i = 0; i < w * h; i++) {
+      jxx[i] += gx[i] * gx[i];
+      jxy[i] += gx[i] * gy[i];
+      jyy[i] += gy[i] * gy[i];
+    }
   }
   const sxx = blur(jxx, w, h, p.tensorSigma), sxy = blur(jxy, w, h, p.tensorSigma), syy = blur(jyy, w, h, p.tensorSigma);
   const theta = new Float32Array(w * h);
@@ -126,18 +176,6 @@ export const sample = (field, w, h, x, y) => {
   const yi = y < 0 ? 0 : y >= h ? h - 1 : y | 0;
   return field[yi * w + xi];
 };
-
-function halveField(f, w, h) {
-  const W = Math.ceil(w / 2), H = Math.ceil(h / 2);
-  const out = new Float32Array(W * H);
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const x1 = Math.min(w - 1, 2 * x + 1), y1 = Math.min(h - 1, 2 * y + 1);
-      out[y * W + x] = (f[2 * y * w + 2 * x] + f[2 * y * w + x1] + f[y1 * w + 2 * x] + f[y1 * w + x1]) / 4;
-    }
-  }
-  return out;
-}
 
 // Bilinear upsampling of the half-size maps. The orientation is interpolated
 // as the doubled-angle vector (cos 2θ, sin 2θ), since θ and θ+π are the same.

@@ -1,6 +1,7 @@
 import { mortarRgb } from '../core/color.js';
 import { toWorkPx } from '../core/params.js';
 import { PLACE } from '../core/placement.js';
+import { pieceShapes, VIEW_DISTANCE } from '../core/glaze.js';
 import { mulberry32 } from '../core/rng.js';
 import { FULLSCREEN_VS, ID_FS, ID_VS, JFA_FS, SEED_FS, SHADE_FS } from './shaders.js';
 import { triangulate } from './triangulate.js';
@@ -58,7 +59,7 @@ export function createRenderer(canvas, { onLost, onRestored } = {}) {
   initGl();
 
   let vao = null, vertexCount = 0, work = [1, 1], rowFlags = [];
-  let colorTex = null, tiltTex = null;
+  let colorTex = null, tiltTex = null, shapeTex = null;
   let targets = null, fieldDirty = true, placed = null;
   // The last arguments of setShards and setColors, to upload again after a restore.
   let lastShards = null, lastColors = null;
@@ -140,6 +141,11 @@ export function createRenderer(canvas, { onLost, onRestored } = {}) {
       vertexCount = positions.length / 2;
       work = [w, h];
       fieldDirty = true;
+      const rows = Math.max(1, Math.ceil(shards.length / DATA_WIDTH));
+      const shape = new Float32Array(DATA_WIDTH * rows * 4);
+      pieceShapes(shards).forEach(([cx, cy, r], i) => shape.set([cx, cy, r, 0], i * 4));
+      if (shapeTex) gl.deleteTexture(shapeTex);
+      shapeTex = texture(gl, gl.RGBA32F, gl.RGBA, gl.FLOAT, DATA_WIDTH, rows, shape);
     },
     setColors(colors, seed) {
       lastColors = [colors, seed];
@@ -180,7 +186,7 @@ export function createRenderer(canvas, { onLost, onRestored } = {}) {
       gl.bindVertexArray(emptyVao);
       const { p: prog, loc } = progShade;
       gl.useProgram(prog);
-      [[targets.id.tex, 'uId'], [targets.field.tex, 'uSeeds'], [colorTex, 'uColor'], [tiltTex, 'uTilt']].forEach(([t, name], i) => {
+      [[targets.id.tex, 'uId'], [targets.field.tex, 'uSeeds'], [colorTex, 'uColor'], [tiltTex, 'uTilt'], [shapeTex, 'uShape']].forEach(([t, name], i) => {
         gl.activeTexture(gl.TEXTURE0 + i);
         gl.bindTexture(gl.TEXTURE_2D, t);
         gl.uniform1i(loc[name], i);
@@ -192,6 +198,8 @@ export function createRenderer(canvas, { onLost, onRestored } = {}) {
       gl.uniform1f(loc.uBevelStrength, p.bevelStrength);
       gl.uniform1f(loc.uGroutShadow, p.groutShadow);
       gl.uniform1f(loc.uTiltAmount, p.tilt);
+      gl.uniform1f(loc.uDome, p.dome ?? 0);
+      gl.uniform1f(loc.uViewDistance, VIEW_DISTANCE);
       gl.uniform1f(loc.uAmbient, p.ambient);
       gl.uniform1f(loc.uSpecular, p.specular);
       gl.uniform1f(loc.uShininess, p.shininess);
@@ -233,7 +241,7 @@ export function createRenderer(canvas, { onLost, onRestored } = {}) {
   canvas.addEventListener('webglcontextrestored', () => {
     // Every GL object died with the context.
     if (!gl.getExtension('EXT_color_buffer_float')) return;
-    vao = null; colorTex = null; tiltTex = null; targets = null; fieldDirty = true; placed = null;
+    vao = null; colorTex = null; tiltTex = null; shapeTex = null; targets = null; fieldDirty = true; placed = null;
     initGl();
     if (lastShards) api.setShards(...lastShards);
     if (lastColors) api.setColors(...lastColors);

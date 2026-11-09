@@ -1,5 +1,6 @@
 import { mortarRgb } from './color.js';
 import { placePolygon, placementRandoms } from './placement.js';
+import { pieceShapes, VIEW_DISTANCE } from './glaze.js';
 import { area, rasterize } from './polygon.js';
 import { hash2, mulberry32 } from './rng.js';
 
@@ -78,13 +79,15 @@ export function renderMosaic(shards, colors, w, h, p, long = p.outLong) {
   const mortar = mortarRgb(p);
   const az = (p.lightAz * Math.PI) / 180, el = (p.lightEl * Math.PI) / 180;
   const L = [Math.cos(el) * Math.cos(az), -Math.cos(el) * Math.sin(az), Math.sin(el)];
-  const Hv = norm([L[0], L[1], L[2] + 1]);
   const rng = mulberry32(p.seed * 7919 + 13);
   const tilt = shards.map((s) => {
     const k = s.row ? 0.5 * p.tilt : p.tilt;
     return [rng.normal() * k, rng.normal() * k];
   });
   const noiseCell = Math.max(1, Math.round(ss * 1.5));
+  const shape = pieceShapes(shards);
+  const dome = p.dome ?? 0;
+  const longOut = Math.max(W, H);
 
   const hi = new Float32Array(W * H * 3);
   for (let y = 0; y < H; y++) {
@@ -110,10 +113,22 @@ export function renderMosaic(shards, colors, w, h, p, long = p.outLong) {
         ny -= (gy / gl) * t;
         edgeShade = 1 - 0.15 * t;
       }
-      const n = norm([nx, ny, 1]);
-      const ndl = Math.max(0, n[0] * L[0] + n[1] * L[1] + n[2] * L[2]);
+      // Each piece is a shallow dome, like a shard of a curved plate: the
+      // normal leans out from its centre, about `dome` at its rim.
+      if (dome > 0) {
+        const sh = shape[l];
+        nx += (dome * ((x + 0.5) / k - sh[0])) / sh[2];
+        ny += (dome * ((y + 0.5) / k - sh[1])) / sh[2];
+      }
+      const nl = 1 / Math.sqrt(nx * nx + ny * ny + 1);
+      const ndl = Math.max(0, (nx * L[0] + ny * L[1] + L[2]) * nl);
       const light = (p.ambient + (1 - p.ambient) * (ndl / Math.max(0.15, L[2]))) * edgeShade;
-      const spec = p.specular * Math.max(0, n[0] * Hv[0] + n[1] * Hv[1] + n[2] * Hv[2]) ** p.shininess;
+      // Half vector between the light and a viewer VIEW_DISTANCE above the centre.
+      const vx = (W / 2 - x - 0.5) / longOut, vy = (H / 2 - y - 0.5) / longOut;
+      const vl = 1 / Math.sqrt(vx * vx + vy * vy + VIEW_DISTANCE * VIEW_DISTANCE);
+      const hx = L[0] + vx * vl, hy = L[1] + vy * vl, hz = L[2] + VIEW_DISTANCE * vl;
+      const ndh = (nx * hx + ny * hy + hz) * nl / Math.sqrt(hx * hx + hy * hy + hz * hz);
+      const spec = p.specular * Math.max(0, ndh) ** p.shininess;
       const glaze = 1 + grain * p.glazeNoise * 2;
       for (let c = 0; c < 3; c++) hi[i * 3 + c] = colors[l * 3 + c] * light * glaze + spec;
     }
@@ -136,9 +151,4 @@ export function renderMosaic(shards, colors, w, h, p, long = p.outLong) {
     }
   }
   return { width: ow, height: oh, data: out };
-}
-
-function norm(v) {
-  const l = Math.hypot(v[0], v[1], v[2]) || 1;
-  return [v[0] / l, v[1] / l, v[2] / l];
 }

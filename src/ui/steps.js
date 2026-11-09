@@ -46,8 +46,8 @@ export const STEPS = [
   {
     id: 'detalle',
     title: 'Detalle',
-    explanation: 'Se mide cuánto detalle hay en cada zona: bordes, texturas, cambios bruscos. Con eso se decide el tamaño de los trozos, pequeños donde hay detalle y grandes en las zonas lisas. También se calcula hacia dónde van los bordes, para que los cortes puedan seguirlos. Con «Tocar una forma» puedes quitar detalle de zonas que no te interesan o añadirlo donde quieras más trozos.',
-    formula: 'D(x) = |L − desenfoque(L, σ)|, suavizado y normalizado a [0, 1]\nignorar texturas: D × (1 − k + k · (1 − manchas)),  manchas = det(Hessiano) / |∇L|²\nzonas con menos detalle: D × (1 + m)\ns(x) = s_max − (s_max − s_min) · D(x)^γ',
+    explanation: 'Se mide cuánto detalle hay en cada zona: bordes, texturas, cambios bruscos, también entre dos colores igual de claros. Con eso se decide el tamaño de los trozos, pequeños donde hay detalle y grandes en las zonas lisas. También se calcula hacia dónde van los bordes, para que los cortes puedan seguirlos. Con «Tocar una forma» puedes quitar detalle de zonas que no te interesan o añadirlo donde quieras más trozos.',
+    formula: 'D(x) = ‖c − desenfoque(c, σ)‖ con c = (L, a, b), suavizado y normalizado a [0, 1]\n  (L: luma; a, b: OKLab)\ndirección: tensor de estructura de Di Zenzo, suma de ∇c ∇cᵀ en los tres canales\nignorar texturas: D × (1 − k + k · (1 − manchas)),  manchas = det(Hessiano) / |∇L|²\nzonas con menos detalle: D × (1 + m)\ns(x) = s_max − (s_max − s_min) · D(x)^γ',
     views: [
       { key: 'size', label: 'Tamaño de trozo' },
       { key: 'detail', label: 'Detalle' },
@@ -70,23 +70,23 @@ export const STEPS = [
   {
     id: 'color',
     title: 'Colores',
-    explanation: 'Cada trozo recibe un solo color, calculado con los píxeles que cubre. Después se puede ajustar a una paleta: los colores más frecuentes de la foto o un juego fijo de azulejos de taller. Una pequeña variación al azar imita que no hay dos azulejos iguales.',
-    formula: 'media: c = (1/N) Σ píxeles del trozo\nmás vivo: media del 30 % más saturado\npaleta: color más cercano en Lab, mezclado según la fuerza',
+    explanation: 'Cada trozo recibe un solo color, calculado con los píxeles que cubre. Después se puede ajustar a una paleta: los colores más frecuentes de la foto o un juego fijo de azulejos de taller. Con la paleta, cada trozo pasa a sus vecinos la diferencia entre el color que quería y el que le ha tocado, y de lejos se ven los degradados. Una pequeña variación al azar imita que no hay dos azulejos iguales.',
+    formula: 'media: c = (1/N) Σ píxeles del trozo, en luz lineal\nmás vivo: media del 30 % más saturado\nsaturación y luminosidad: en OKLCH, sin cambiar el tono\npaleta: color más cercano en OKLab, mezclado según la fuerza\ndegradados: el error pasa a los vecinos que vienen después (Floyd-Steinberg sobre los trozos)',
     views: [
       { key: 'flat', label: 'Color por trozo' },
       { key: 'palette', label: 'Con paleta y variación' },
     ],
     more: [{ param: 'colorMode' }],
-    advanced: ['lightness', 'paletteK', 'paletteMix', 'colorJitter'],
+    advanced: ['lightness', 'paletteK', 'paletteMix', 'paletteDither', 'colorJitter'],
   },
   {
     id: 'acabado',
     title: 'Acabado',
-    explanation: 'Se dibuja el mosaico: el mortero entre trozos, un bisel en cada borde y una inclinación distinta en cada trozo, para que la luz brille de forma desigual, como en el esmalte de verdad. La colocación a mano gira y mueve un poco cada pieza, para que los cortes no queden alineados. Todo esto se calcula en la tarjeta gráfica y responde al momento.',
-    formula: 'junta: píxeles a menos de ancho / 2 del borde\ncolocación: giro ≤ 6°, desplazamiento ≤ 1,2 px, encogido ≤ 6 %\nluz = (ambiente + difusa) · color + brillo · (n · h)^dureza   (Blinn-Phong)',
+    explanation: 'Se dibuja el mosaico: el mortero entre trozos, un bisel en cada borde y una inclinación distinta en cada trozo, para que la luz brille de forma desigual, como en el esmalte de verdad. Cada trozo está algo curvado, como un pedazo de plato, y el brillo se queda en una parte de él. La colocación a mano gira y mueve un poco cada pieza, para que los cortes no queden alineados. Todo esto se calcula en la tarjeta gráfica y responde al momento.',
+    formula: 'junta: píxeles a menos de ancho / 2 del borde\ncolocación: giro ≤ 6°, desplazamiento ≤ 1,2 px, encogido ≤ 6 %\nnormal: inclinación + curvatura · (x − centro) / radio − bisel\nluz = (ambiente + difusa) · color + brillo · (n · h)^dureza   (Blinn-Phong)\n  con quien mira a 1,5 veces el lado largo, sobre el centro',
     views: [],
     more: [{ param: 'grout' }, { param: 'place' }, { param: 'lightAz' }],
-    advanced: ['groutShadow', 'bevel', 'bevelStrength', 'lightEl', 'ambient', 'glazeNoise', 'supersample'],
+    advanced: ['groutShadow', 'bevel', 'bevelStrength', 'dome', 'lightEl', 'ambient', 'glazeNoise', 'supersample'],
     summary: (p) => `Junta de ${String(p.grout).replace('.', ',')} px`,
   },
 ];

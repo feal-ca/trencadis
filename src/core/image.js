@@ -216,6 +216,67 @@ export function toLab(img) {
   return lab;
 }
 
+// sRGB <-> linear light, per channel. srgbToLinear reads a table with linear
+// interpolation (error below 1e-6), since whole images go through it.
+const LIN_STEPS = 1024;
+const LIN_TABLE = Float32Array.from({ length: LIN_STEPS + 2 }, (_, i) => lin(Math.min(1, i / LIN_STEPS)));
+export function srgbToLinear(c) {
+  const x = (c <= 0 ? 0 : c >= 1 ? 1 : c) * LIN_STEPS;
+  const i = x | 0;
+  return LIN_TABLE[i] + (LIN_TABLE[i + 1] - LIN_TABLE[i]) * (x - i);
+}
+export const linearToSrgb = (c) => gam(Math.min(1, Math.max(0, c)));
+
+// OKLab (Björn Ottosson, 2020) from linear-light sRGB: L in [0, 1], and a, b
+// about ±0.3. Equal distances look about equally different, across hues too,
+// which CIELab gets wrong for blues.
+export function linearToOklab(r, g, b, out = [0, 0, 0]) {
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  out[0] = 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s;
+  out[1] = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
+  out[2] = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+  return out;
+}
+
+// The inverse, to linear light. The result can fall outside [0, 1] when the
+// colour is outside sRGB.
+export function oklabToLinear(L, a, b, out = [0, 0, 0]) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  out[0] = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+  out[1] = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+  out[2] = -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s;
+  return out;
+}
+
+export const rgbToOklab = (r, g, b, out = [0, 0, 0]) => linearToOklab(srgbToLinear(r), srgbToLinear(g), srgbToLinear(b), out);
+
+const inGamut = (c) => c[0] >= -1e-4 && c[0] <= 1 + 1e-4 && c[1] >= -1e-4 && c[1] <= 1 + 1e-4 && c[2] >= -1e-4 && c[2] <= 1 + 1e-4;
+
+// OKLab to sRGB in [0, 1]. A colour outside sRGB keeps its lightness and hue
+// and loses chroma until it fits, so a strong saturation boost does not turn
+// a hue into another one, as clipping each channel would.
+export function oklabToRgb(L, a, b, out = [0, 0, 0]) {
+  L = Math.min(1, Math.max(0, L));
+  oklabToLinear(L, a, b, out);
+  if (!inGamut(out)) {
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 16; i++) {
+      const k = (lo + hi) / 2;
+      if (inGamut(oklabToLinear(L, a * k, b * k, out))) lo = k;
+      else hi = k;
+    }
+    oklabToLinear(L, a * lo, b * lo, out);
+  }
+  out[0] = linearToSrgb(out[0]);
+  out[1] = linearToSrgb(out[1]);
+  out[2] = linearToSrgb(out[2]);
+  return out;
+}
+
 export function rgbToHsl(r, g, b) {
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
   const l = (max + min) / 2;

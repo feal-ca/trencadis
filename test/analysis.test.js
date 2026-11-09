@@ -95,3 +95,35 @@ describe('detail stays finite', () => {
     }
   });
 });
+
+describe('colour edges', () => {
+  // A red disc on green with the same luma: invisible to a luma-only analysis.
+  // A black band on the left gives a strong luma edge, as any photo has, so
+  // the detail map's scale is set by a real edge.
+  const w = 200, h = 160, r = 45, cx = 110, cy = 80;
+  const red = [0.8, 0.3, 0.3], green = [0.2, 0.488, 0.2];
+  const luma = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const rgb = new Float32Array(w * h * 3);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) rgb.set(x < 20 ? [0, 0, 0] : Math.hypot(x - cx, y - cy) < r ? red : green, (y * w + x) * 3);
+  const img = { w, h, rgb };
+  const an = analyze(img, { ...DEFAULTS, exactAnalysis: true });
+  const at = (f, x, y) => f[y * w + x];
+
+  it('uses two colours of the same luma', () => {
+    expect(Math.abs(luma(red) - luma(green))).toBeLessThan(0.002);
+  });
+
+  it('finds detail along the border and none inside or far away', () => {
+    expect(at(an.detail, cx + r, cy)).toBeGreaterThan(0.4);
+    expect(at(an.detail, cx, cy - r)).toBeGreaterThan(0.4);
+    expect(at(an.detail, cx, cy)).toBeLessThan(0.05);
+    expect(at(an.detail, w - 5, 5)).toBeLessThan(0.05);
+  });
+
+  it('gives the border as the edge direction', () => {
+    // On the right of the disc the border runs vertically.
+    const t = ((at(an.theta, cx + r, cy) % Math.PI) + Math.PI) % Math.PI;
+    expect(Math.abs(t - Math.PI / 2)).toBeLessThan(0.1);
+    expect(at(an.coherence, cx + r, cy)).toBeGreaterThan(0.5);
+  });
+});

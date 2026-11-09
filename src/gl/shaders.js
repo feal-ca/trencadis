@@ -86,13 +86,17 @@ void main() {
   o = vec4(best, 0.0, 1.0);
 }`;
 
-// Pass 4: grout, bevel, glaze tilt and a Blinn-Phong highlight.
+// Pass 4: grout, bevel, glaze tilt, the dome of each piece and a
+// Blinn-Phong highlight seen from VIEW_DISTANCE (same model as core/render.js).
 export const SHADE_FS = `#version 300 es
 precision highp float;
 uniform sampler2D uId;
 uniform sampler2D uSeeds;
 uniform sampler2D uColor;
 uniform sampler2D uTilt;
+uniform sampler2D uShape;  // per piece: centroid (working px, y down), equivalent radius
+uniform float uDome;
+uniform float uViewDistance; // in long sides of the output
 uniform float uScale;      // output px per working px
 uniform float uGrout, uBevel, uBevelStrength, uGroutShadow;
 uniform float uTiltAmount, uAmbient, uSpecular, uShininess, uGlaze;
@@ -134,10 +138,16 @@ void main() {
   float bw = max(1e-3, uBevel * uScale);
   float di = d - g;
   float t = pow(1.0 - clamp(di / bw, 0.0, 1.0), 2.0) * uBevelStrength;
-  vec3 n = normalize(vec3(tilt - dir * t, 1.0));
+  // Screen position, y down like the working image.
+  vec2 size = vec2(textureSize(uId, 0));
+  vec2 ps = vec2(p.x, size.y - p.y);
+  vec3 shape = texelFetch(uShape, tq, 0).xyz;
+  vec2 dome = uDome * (ps / uScale - shape.xy) / shape.z;
+  vec3 n = normalize(vec3(tilt + dome - dir * t, 1.0));
   float edgeShade = 1.0 - 0.15 * t;
 
-  vec3 H = normalize(uLight + vec3(0.0, 0.0, 1.0));
+  vec3 V = normalize(vec3((0.5 * size - ps) / max(size.x, size.y), uViewDistance));
+  vec3 H = normalize(uLight + V);
   float ndl = max(0.0, dot(n, uLight));
   float light = (uAmbient + (1.0 - uAmbient) * ndl / max(0.15, uLight.z)) * edgeShade;
   float spec = uSpecular * pow(max(0.0, dot(n, H)), uShininess);
