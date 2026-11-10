@@ -1,15 +1,13 @@
 // Parameter schema. The UI is generated from it and the worker uses `stage`
 // to know which cached results a change invalidates.
 //   stage: analysis < tessellation < color < render
-// `help` is the one line shown under each control in advanced mode.
+// `help` is the one line shown under each control.
 
 export const ALGORITHMS = [
-  { value: 'fracture', label: 'Cortes rectos' },
+  { value: 'trencadis', label: 'Trencadís' },
+  { value: 'vitral', label: 'Vitral' },
+  { value: 'romano', label: 'Romano' },
   { value: 'cracks', label: 'Grietas' },
-  { value: 'voronoi', label: 'Teselas redondeadas' },
-  { value: 'voronoi-aniso', label: 'Teselas alargadas' },
-  { value: 'hybrid', label: 'Teselas partidas' },
-  { value: 'slic', label: 'Manchas de color' },
 ];
 
 const any = () => true;
@@ -19,71 +17,32 @@ export const GROUPS = [
   {
     id: 'analysis',
     params: [
-      { key: 'workLong', label: 'Resolución de trabajo', min: 300, max: 1400, step: 50, def: 800, unit: ' px', stage: 'analysis',
+      { key: 'workLong', label: 'Resolución de trabajo', min: 300, max: 1400, step: 20, def: 640, unit: ' px', stage: 'analysis',
         help: 'Más alto: bordes más precisos y cálculo más lento; más bajo: más rápido y más tosco. No cambia el tamaño de los trozos.' },
-      { key: 'sMin', label: 'Trozo mínimo', min: 3, max: 40, step: 0.5, def: 7, unit: ' px', stage: 'analysis',
-        help: 'Tamaño de los trozos en las zonas con más detalle. Más alto: los detalles finos se pierden.' },
-      { key: 'sMax', label: 'Trozo máximo', min: 8, max: 140, step: 1, def: 36, unit: ' px', stage: 'analysis',
-        help: 'Tamaño de los trozos en las zonas lisas. Más alto: fondos con pocas piezas grandes.' },
-      // Read by the size control: sMin = sMax / sizeRatio.
-      { key: 'sizeRatio', label: 'Variedad de tamaños', min: 1.5, max: 8, step: 0.1, def: 36 / 7, unit: '×', stage: 'analysis',
-        help: 'Cuántas veces es mayor el trozo más grande que el más pequeño. Más bajo: trozos parecidos, como el trencadís de verdad, y el detalle se ve por el color; más alto: trozos finos en el detalle.' },
-      { key: 'gamma', label: 'Sensibilidad al detalle', min: 0.15, max: 3, step: 0.05, def: 0.7, stage: 'analysis',
-        help: 'Más bajo: casi cualquier detalle encoge los trozos; más alto: solo los bordes fuertes.' },
-      { key: 'ignoreTexture', label: 'Ignorar texturas', min: 0, max: 1, step: 0.01, def: 0, stage: 'analysis',
-        help: 'Más alto: el detalle hecho de puntos (brillos en el agua, hojas, césped) cuenta menos y se cubre con trozos grandes; los contornos se mantienen.' },
-      { key: 'detailSigma', label: 'Escala del detalle', min: 0.5, max: 8, step: 0.1, def: 2, unit: ' px', stage: 'analysis',
-        help: 'Qué se considera detalle. Más alto: formas más grandes; más bajo: textura fina y ruido.' },
-      { key: 'detailSmooth', label: 'Suavizado del mapa', min: 0.5, max: 20, step: 0.5, def: 5, unit: ' px', stage: 'analysis',
-        help: 'Más alto: el tamaño de trozo cambia de forma gradual; más bajo: cambios bruscos.' },
-      { key: 'tensorSigma', label: 'Escala de los bordes', min: 1, max: 16, step: 0.5, def: 4, unit: ' px', stage: 'analysis',
-        help: 'Más alto: direcciones de borde suaves y largas; más bajo: siguen cada curva pequeña.' },
+      // Fixed settings of the edge maps the cracks follow (analysis.js).
+      { key: 'detailSigma', hidden: true, def: 2, unit: ' px', stage: 'analysis' },
+      { key: 'detailSmooth', hidden: true, def: 5, unit: ' px', stage: 'analysis' },
+      { key: 'tensorSigma', hidden: true, def: 4, unit: ' px', stage: 'analysis' },
+      { key: 'ignoreTexture', hidden: true, def: 0, stage: 'analysis' },
     ],
   },
   {
     id: 'tessellation',
     params: [
-      { key: 'algorithm', label: 'Método', type: 'select', options: ALGORITHMS, def: 'fracture', stage: 'tessellation' },
+      { key: 'algorithm', label: 'Método', type: 'select', options: ALGORITHMS, def: 'trencadis', stage: 'tessellation' },
+      { key: 'contours', label: 'Contornos', min: 3, max: 16, step: 0.5, def: 8, stage: 'tessellation',
+        help: 'Cuánto tienen que diferenciarse dos zonas de la foto para que una junta las separe. Más bajo: más contornos; más alto: solo las formas principales.' },
+      { key: 'pieceCuts', label: 'Trozos partidos', min: 0, max: 1, step: 0.01, def: 0.5, stage: 'tessellation', show: algo('trencadis'),
+        help: 'Cuántas piezas reciben un corte recto de más. Más alto: más triángulos y cuadriláteros, como azulejo roto; 0: piezas redondeadas.' },
       { key: 'seed', hidden: true, label: 'Semilla', min: 1, max: 999, step: 1, def: 7, stage: 'tessellation',
         help: 'Cambia el azar: misma configuración, otra versión del mosaico.' },
-      // Seeds
-      { key: 'spacing', hidden: true, label: 'Separación de semillas', min: 0.4, max: 2.5, step: 0.05, def: 1, stage: 'tessellation', show: algo('voronoi', 'voronoi-aniso', 'hybrid', 'slic'),
-        help: 'Más alto: menos teselas y más grandes; más bajo: más teselas.' },
-      { key: 'lloydIters', label: 'Regularidad', min: 0, max: 20, step: 1, def: 3, stage: 'tessellation', show: algo('voronoi', 'voronoi-aniso', 'hybrid'),
-        help: 'Iteraciones de Lloyd. Más alto: teselas parecidas entre sí, tipo panal; 0: formas al azar.' },
-      { key: 'lloydWeighted', hidden: true, label: 'Regularidad según el detalle', type: 'checkbox', def: true, stage: 'tessellation', show: algo('voronoi', 'voronoi-aniso', 'hybrid'),
-        help: 'Mantiene teselas pequeñas en las zonas con detalle al regularizar.' },
-      { key: 'anisotropy', label: 'Alargamiento', min: 0, max: 8, step: 0.1, def: 2.5, stage: 'tessellation', show: algo('voronoi-aniso'),
-        help: 'Más alto: teselas estiradas a lo largo de los bordes; 0: redondas.' },
-      // Fracture
-      { key: 'tileSize', label: 'Tamaño de los azulejos base', min: 0, max: 8, step: 0.1, def: 3.5, stage: 'tessellation', show: algo('fracture'),
-        help: 'Antes de romper, la imagen se divide en azulejos de este tamaño (en trozos). Más bajo: costuras más cortas; 0: se rompe la imagen entera.' },
-      { key: 'kappa', hidden: true, label: 'Área por trozo', min: 0.3, max: 3, step: 0.05, def: 1, stage: 'tessellation', show: algo('fracture'),
-        help: 'Cuándo se deja de cortar. Más alto: trozos más grandes que el tamaño pedido.' },
-      { key: 'temperature', label: 'Temperatura', min: 0.001, max: 3, step: 0.001, def: 0.08, log: true, stage: 'tessellation', show: algo('fracture', 'hybrid'),
-        help: 'Más bajo: siempre el corte que mejor separa colores; más alto: cortes al azar.' },
-      { key: 'candidates', hidden: true, label: 'Cortes probados', min: 1, max: 48, step: 1, def: 14, stage: 'tessellation', show: algo('fracture', 'hybrid'),
-        help: 'Rectas que se prueban en cada corte. Más alto: más fiel y más lento.' },
-      { key: 'edgeAlign', label: 'Seguir los bordes', min: 0, max: 1, step: 0.01, def: 0.5, stage: 'tessellation', show: algo('fracture', 'hybrid'),
-        help: 'Más alto: más cortes paralelos a los bordes de la foto; más bajo: cortes por el lado corto del trozo.' },
-      { key: 'cutJitter', label: 'Descentrado del corte', min: 0, max: 0.5, step: 0.01, def: 0.22, stage: 'tessellation', show: algo('fracture', 'hybrid'),
-        help: 'Más alto: los cortes pasan lejos del centro y los trozos salen desiguales.' },
-      { key: 'angleNoise', label: 'Ruido de ángulo', min: 0, max: 90, step: 1, def: 25, unit: '°', stage: 'tessellation', show: algo('fracture', 'hybrid'),
-        help: 'Más alto: ángulos de corte más variados; 0: cortes muy ordenados.' },
-      { key: 'sliver', label: 'Castigo a las astillas', min: 0, max: 3, step: 0.05, def: 0.8, stage: 'tessellation', show: algo('fracture', 'hybrid'),
-        help: 'Más alto: evita trozos muy finos o con ángulos muy agudos; 0: permite astillas.' },
-      // Hybrid
-      { key: 'hybridSpacing', label: 'Tamaño de tesela base', min: 1, max: 4, step: 0.1, def: 1.8, stage: 'tessellation', show: algo('hybrid'),
-        help: 'Tamaño de las teselas antes de partirlas. Más alto: menos teselas, más cortes por cada una.' },
-      { key: 'hybridCuts', label: 'Cortes por tesela', min: 0, max: 4, step: 1, def: 2, stage: 'tessellation', show: algo('hybrid'),
-        help: 'Cuántas veces como mucho se parte cada tesela.' },
-      { key: 'hybridCutProb', label: 'Probabilidad de cada corte', min: 0, max: 1, step: 0.01, def: 0.7, stage: 'tessellation', show: algo('hybrid'),
-        help: 'Más bajo: más teselas se quedan enteras.' },
-      // SLIC
-      { key: 'compactness', label: 'Compacidad', min: 1, max: 60, step: 0.5, def: 12, stage: 'tessellation', show: algo('slic'),
-        help: 'Más bajo: las manchas se pegan a los bordes de la foto; más alto: manchas redondas y regulares.' },
-      { key: 'slicIters', hidden: true, label: 'Iteraciones', min: 1, max: 20, step: 1, def: 8, stage: 'tessellation', show: algo('slic'),
-        help: 'Más alto: manchas mejor ajustadas y cálculo más lento.' },
+      { key: 'sMin', label: 'Trozo mínimo', min: 3, max: 40, step: 0.5, def: 7, unit: ' px', stage: 'tessellation',
+        help: 'Tamaño de los trozos en las zonas con más detalle. Más alto: los detalles finos se pierden.' },
+      { key: 'sMax', label: 'Trozo máximo', min: 8, max: 140, step: 1, def: 36, unit: ' px', stage: 'tessellation',
+        help: 'Tamaño de los trozos en las zonas lisas. Más alto: fondos con pocas piezas grandes.' },
+      // Read by the size control: sMin = sMax / sizeRatio.
+      { key: 'sizeRatio', label: 'Variedad de tamaños', min: 1.5, max: 8, step: 0.1, def: 36 / 7, unit: '×', stage: 'tessellation',
+        help: 'Cuántas veces es mayor el trozo más grande que el más pequeño. Más bajo: trozos parecidos, como el trencadís de verdad, y el detalle se ve por el color; más alto: trozos finos en el detalle.' },
       // Cracks
       { key: 'crackDensity', hidden: true, label: 'Densidad de grietas', min: 0.2, max: 3, step: 0.05, def: 1.1, stage: 'tessellation', show: algo('cracks'),
         help: 'Más alto: más grietas y trozos más pequeños.' },
@@ -97,17 +56,10 @@ export const GROUPS = [
         help: 'Una grieta no nace tan cerca de otra (en tamaños de trozo). Más alto: menos trozos finos.' },
       { key: 'crackFollow', label: 'Seguir los bordes', min: 0, max: 1, step: 0.01, def: 0.4, stage: 'tessellation', show: algo('cracks'),
         help: 'Más alto: las grietas se doblan para seguir los contornos de la foto.' },
-      // Rows along guide lines, over any method
-      { key: 'rowScale', label: 'Ancho de las piezas de hilera', min: 0.15, max: 1.5, step: 0.01, def: 0.45, unit: '×', stage: 'tessellation',
-        help: 'En proporción al tamaño de trozo de cada zona: las hileras crecen y menguan con los trozos que las rodean.' },
-      { key: 'rowLength', label: 'Largo de las piezas de hilera', min: 1, max: 4, step: 0.1, def: 1.8, unit: '×', stage: 'tessellation',
-        help: 'Largo en múltiplos del ancho. 1: piezas cuadradas; más alto: rectángulos alargados.' },
-      { key: 'rowCount', label: 'Filas por hilera', min: 1, max: 4, step: 1, def: 2, stage: 'tessellation',
-        help: 'Con 2, el contorno queda justo en la junta entre las dos filas y cada fila toma el color de su lado.' },
       // Shared by raster-based methods
-      { key: 'minWidth', label: 'Grosor mínimo', min: 0, max: 0.8, step: 0.01, def: 0.3, stage: 'tessellation', show: algo('voronoi-aniso', 'slic', 'cracks'),
+      { key: 'minWidth', label: 'Grosor mínimo', min: 0, max: 0.8, step: 0.01, def: 0.3, stage: 'tessellation', show: algo('cracks'),
         help: 'Los trozos más estrechos que esto (en tamaños de trozo) se unen a su vecino. 0: se dejan todos.' },
-      { key: 'simplify', label: 'Rectitud de aristas', min: 0, max: 5, step: 0.1, def: 1.4, unit: ' px', stage: 'tessellation', show: algo('voronoi-aniso', 'slic', 'cracks'),
+      { key: 'simplify', label: 'Rectitud de aristas', min: 0, max: 5, step: 0.1, def: 1.4, unit: ' px', stage: 'tessellation',
         help: 'Más alto: aristas rectas y trozos angulosos; 0: bordes pixelados.' },
     ],
   },
@@ -144,17 +96,6 @@ export const GROUPS = [
         help: '1: solo colores de la paleta; más bajo: mezcla con el color original.' },
       { key: 'paletteDither', label: 'Degradados con la paleta', min: 0, max: 1, step: 0.01, def: 0.6, stage: 'color', show: (p) => p.palette !== 'none',
         help: 'Cada trozo pasa a sus vecinos la diferencia entre el color de la foto y el de la paleta, y los degradados de un cielo o una cara se hacen mezclando dos o tres colores. 0: cada trozo toma el color más cercano.' },
-      {
-        key: 'rowColor', label: 'Color de las hileras', type: 'select', def: 'photo', stage: 'color',
-        options: [
-          { value: 'photo', label: 'El de la foto' },
-          { value: 'dark', label: 'Más oscuro' },
-          { value: 'light', label: 'Más claro' },
-        ],
-        help: 'Más oscuro: las hileras dibujan el contorno como una línea, como en los bancos del Park Güell.',
-      },
-      { key: 'rowContrast', label: 'Intensidad del color de las hileras', min: 0, max: 1, step: 0.01, def: 0.6, stage: 'color', show: (p) => p.rowColor !== 'photo',
-        help: 'Cuánto más oscuras o más claras que la foto salen las hileras. Más alto: se distinguen más del fondo.' },
       { key: 'colorJitter', label: 'Variación entre trozos', min: 0, max: 0.15, step: 0.002, def: 0.025, stage: 'color',
         help: 'Más alto: trozos vecinos con tonos algo distintos, como azulejos de lotes diferentes.' },
     ],
@@ -162,36 +103,36 @@ export const GROUPS = [
   {
     id: 'render',
     params: [
-      { key: 'grout', label: 'Ancho de la junta', min: 0, max: 6, step: 0.1, def: 1.3, unit: ' px', stage: 'render',
-        help: 'Más alto: más mortero entre trozos; 0: sin junta.' },
-      { key: 'rowGrout', label: 'Junta de las hileras', min: 1, max: 3, step: 0.05, def: 1.6, unit: '×', stage: 'render',
-        help: 'Junta más ancha alrededor de las piezas de hilera, para que la fila se lea como una banda aunque las piezas sean grandes.' },
+      { key: 'grout', label: 'Ancho de la junta', min: 0, max: 6, step: 0.1, def: 2, unit: ' px', stage: 'render',
+        help: 'La junta más ancha, la de los trozos grandes. Más alto: más mortero; 0: sin junta.' },
+      { key: 'groutRel', label: 'Junta según el trozo', min: 0.02, max: 0.4, step: 0.01, def: 0.11, stage: 'render',
+        help: 'La junta de cada trozo en proporción a su tamaño, hasta el ancho de arriba: los trozos pequeños llevan juntas finas y el detalle no se llena de mortero.' },
       // 'auto' or a hex colour; 'auto' is resolved per photo (autoGroutColor).
       { key: 'groutColor', label: 'Mortero', type: 'grout', def: 'auto', stage: 'render',
         help: 'Automático: un gris más oscuro que la foto, para que los trozos destaquen. El cemento claro es el clásico, pero sobre fotos oscuras llena la imagen de líneas blancas.' },
       { key: 'groutShadow', label: 'Sombra en la junta', min: 0, max: 1, step: 0.01, def: 0.45, stage: 'render',
         help: 'Más alto: la junta parece más hundida.' },
-      { key: 'bevel', label: 'Ancho del bisel', min: 0, max: 6, step: 0.1, def: 1.4, unit: ' px', stage: 'render',
+      { key: 'bevel', label: 'Ancho del bisel', min: 0, max: 6, step: 0.1, def: 2, unit: ' px', stage: 'render',
         help: 'Zona del borde de cada trozo que se curva. Más alto: bordes más redondeados.' },
-      { key: 'bevelStrength', label: 'Fuerza del bisel', min: 0, max: 2.5, step: 0.05, def: 0.9, stage: 'render',
+      { key: 'bevelStrength', label: 'Fuerza del bisel', min: 0, max: 2.5, step: 0.05, def: 1.1, stage: 'render',
         help: 'Más alto: los bordes captan más luz y sombra.' },
-      { key: 'place', label: 'Colocación a mano', min: 0, max: 1, step: 0.01, def: 0.35, stage: 'render',
+      { key: 'place', label: 'Colocación a mano', min: 0, max: 1, step: 0.01, def: 0.15, stage: 'render',
         help: 'Cada trozo gira y se mueve un poco, como si se hubiera puesto a mano. Rompe las líneas rectas que cruzan varios trozos.' },
-      { key: 'tilt', label: 'Inclinación de los trozos', min: 0, max: 0.6, step: 0.01, def: 0.16, stage: 'render',
+      { key: 'tilt', label: 'Inclinación de los trozos', min: 0, max: 0.6, step: 0.01, def: 0.04, stage: 'render',
         help: 'Más alto: cada trozo refleja la luz de forma distinta; 0: superficie plana.' },
-      { key: 'dome', label: 'Curvatura de los trozos', min: 0, max: 0.6, step: 0.01, def: 0.1, stage: 'render',
-        help: 'Cada trozo se curva un poco, como un pedazo de plato, y el brillo se queda en una parte del trozo en lugar de cubrirlo entero. 0: trozos planos.' },
       { key: 'lightAz', label: 'Dirección de la luz', min: 0, max: 360, step: 1, def: 135, unit: '°', stage: 'render',
         help: 'De dónde viene la luz: 0° derecha, 90° arriba, 180° izquierda.' },
       { key: 'lightEl', label: 'Altura de la luz', min: 10, max: 90, step: 1, def: 50, unit: '°', stage: 'render',
         help: 'Más bajo: luz rasante y relieve marcado; 90°: luz desde arriba.' },
-      { key: 'ambient', label: 'Luz ambiente', min: 0, max: 1, step: 0.01, def: 0.45, stage: 'render',
+      { key: 'ambient', label: 'Luz ambiente', min: 0, max: 1, step: 0.01, def: 0.4, stage: 'render',
         help: 'Más alto: menos contraste entre trozos iluminados y en sombra.' },
-      { key: 'specular', label: 'Brillo', min: 0, max: 2, step: 0.01, def: 0.55, stage: 'render',
-        help: 'Intensidad de los reflejos del esmalte.' },
-      { key: 'shininess', label: 'Dureza del brillo', min: 4, max: 300, step: 1, def: 70, log: true, stage: 'render',
+      { key: 'specular', label: 'Brillo', min: 0, max: 2, step: 0.01, def: 0.5, stage: 'render',
+        help: 'Intensidad del reflejo fino en el canto de cada trozo.' },
+      { key: 'sheen', label: 'Reflejo suave', min: 0, max: 0.5, step: 0.01, def: 0.1, stage: 'render',
+        help: 'Un reflejo amplio y tenue en los trozos inclinados hacia la luz, como el de una ventana en un azulejo.' },
+      { key: 'shininess', label: 'Dureza del brillo', min: 4, max: 300, step: 1, def: 90, log: true, stage: 'render',
         help: 'Más alto: reflejos pequeños y nítidos; más bajo: reflejos amplios y suaves.' },
-      { key: 'glazeNoise', label: 'Textura del esmalte', min: 0, max: 0.2, step: 0.005, def: 0.03, stage: 'render',
+      { key: 'glazeNoise', label: 'Textura del esmalte', min: 0, max: 0.2, step: 0.005, def: 0.0125, stage: 'render',
         help: 'Más alto: superficie con más grano.' },
       { key: 'outLong', label: 'Tamaño de la descarga', min: 600, max: 4000, step: 100, def: 2000, unit: ' px', stage: 'render',
         help: 'Lado largo del PNG descargado.' },
@@ -209,9 +150,6 @@ export const DEFAULTS = Object.fromEntries(ALL_PARAMS.map((q) => [q.key, q.def])
 export const isVisible = (q, p) => !q.hidden && (q.show ?? any)(p);
 
 export const STAGE_ORDER = ['analysis', 'tessellation', 'color', 'render'];
-// The settings the maps (blurs and structure tensor) depend on; the other
-// analysis settings only shape the size field built from them.
-export const MAP_KEYS = ['workLong', 'ignoreTexture', 'detailSigma', 'detailSmooth', 'tensorSigma'];
 export const keysForStage = (stage) => ALL_PARAMS.filter((q) => q.stage === stage).map((q) => q.key);
 
 // Pixel lengths in the settings are pixels of an 800 px wide photo, so the

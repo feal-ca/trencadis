@@ -1,6 +1,6 @@
 import { Delaunay } from 'd3-delaunay';
 import { centroid, rasterize, area } from './polygon.js';
-import { labToRgb, linearToOklab, oklabToRgb, rgbToLab, rgbToOklab, srgbToLinear } from './image.js';
+import { linearToOklab, oklabToRgb, rgbToLab, rgbToOklab, srgbToLinear } from './image.js';
 
 // A plausible set of glazed tiles from a Barcelona workshop around 1900.
 export const GAUDI_PALETTE = [
@@ -15,18 +15,16 @@ export const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 
 // before rendering; this fallback covers callers that skip that.
 export const mortarRgb = (p) => hexToRgb(/^#[0-9a-f]{6}$/i.test(p.groutColor) ? p.groutColor : '#3a3631');
 
-// Automatic grout: a warm grey well below the photo's median lightness, so the
-// pieces read against it. Light cement over a dark photo turns into a lace of
-// white lines; this keeps the joints in the photo's own key. `rgba` is the
-// photo's pixels (a small thumbnail is enough).
+// Automatic grout: light cement, the classic one, on a bright photo and a
+// mid grey on a dark one, where light joints would turn into a lace of white
+// lines. `rgba` is the photo's pixels (a small thumbnail is enough).
+export const MORTAR_LIGHT = '#ddd9d0', MORTAR_MID = '#89857e';
 export function autoGroutColor(rgba) {
   const L = [];
   const t = [0, 0, 0];
   for (let i = 0; i < rgba.length; i += 4) L.push(rgbToLab(rgba[i] / 255, rgba[i + 1] / 255, rgba[i + 2] / 255, t)[0]);
   L.sort((a, b) => a - b);
-  const median = L[L.length >> 1] ?? 50;
-  const g = Math.min(60, Math.max(10, 0.55 * median));
-  return '#' + labToRgb(g, 1, 4).map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('');
+  return (L[L.length >> 1] ?? 50) > 48 ? MORTAR_LIGHT : MORTAR_MID;
 }
 
 // The photo in linear light, once per image: averages of light are taken
@@ -63,10 +61,6 @@ export function shardColors(shards, img, p) {
     a *= p.saturation;
     b *= p.saturation;
     L = Math.min(1, Math.max(0, L + p.lightness));
-    // Row pieces can be darker or lighter so the line reads as an outline.
-    const strength = p.rowContrast ?? 1;
-    if (shards[k].row && p.rowColor === 'dark') L *= 1 - 0.65 * strength;
-    else if (shards[k].row && p.rowColor === 'light') L += (1 - L) * 0.6 * strength;
     oklabToRgb(L, a, b, t);
     out[k * 3] = t[0]; out[k * 3 + 1] = t[1]; out[k * 3 + 2] = t[2];
   });
@@ -152,14 +146,14 @@ export function applyPalette(colors, shards, p, rng) {
     const k = order ? order[o] : o;
     let L = lab[k * 3], a = lab[k * 3 + 1], b = lab[k * 3 + 2];
     if (centers) {
-      if (err && !shards[k].row) {
+      if (err) {
         // Capped, so a run of misses cannot push a piece to a far colour.
         const e = clampVec(err[k * 3], err[k * 3 + 1], err[k * 3 + 2], MAX_CARRY);
         L += e[0]; a += e[1]; b += e[2];
       }
       const c = nearest(centers, L, a, b);
       const oL = L + (c[0] - L) * p.paletteMix, oa = a + (c[1] - a) * p.paletteMix, ob = b + (c[2] - b) * p.paletteMix;
-      if (err && !shards[k].row) {
+      if (err) {
         const ds = next[k];
         let total = 0;
         for (const [, wt] of ds) total += wt;
@@ -233,13 +227,13 @@ function forwardNeighbours(shards, order) {
   });
   const out = Array.from({ length: n }, () => []);
   if (n < 3) {
-    for (let r = 0; r + 1 < n; r++) if (!shards[order[r + 1]].row) out[order[r]].push([order[r + 1], 1]);
+    for (let r = 0; r + 1 < n; r++) out[order[r]].push([order[r + 1], 1]);
     return out;
   }
   const del = new Delaunay(pts);
   for (let k = 0; k < n; k++) {
     for (const j of del.neighbors(k)) {
-      if (rank[j] <= rank[k] || shards[j].row) continue;
+      if (rank[j] <= rank[k]) continue;
       const d = Math.hypot(pts[j * 2] - pts[k * 2], pts[j * 2 + 1] - pts[k * 2 + 1]);
       out[k].push([j, 1 / Math.max(1e-6, d)]);
     }

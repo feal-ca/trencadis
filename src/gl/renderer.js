@@ -1,7 +1,7 @@
 import { mortarRgb } from '../core/color.js';
 import { toWorkPx } from '../core/params.js';
 import { PLACE } from '../core/placement.js';
-import { pieceShapes, VIEW_DISTANCE } from '../core/glaze.js';
+import { BEVEL_SHARE, GROUT_MIN, pieceShapes, VIEW_DISTANCE } from '../core/glaze.js';
 import { mulberry32 } from '../core/rng.js';
 import { FULLSCREEN_VS, ID_FS, ID_VS, JFA_FS, SEED_FS, SHADE_FS } from './shaders.js';
 import { triangulate } from './triangulate.js';
@@ -206,6 +206,10 @@ export function createRenderer(canvas, { onLost, onRestored } = {}) {
       gl.uniform1f(loc.uGlaze, p.glazeNoise);
       gl.uniform1f(loc.uSeed, p.seed);
       gl.uniform1f(loc.uRowGrout, p.rowGrout ?? 1);
+      gl.uniform1f(loc.uGroutRel, p.groutRel ?? 1e9);
+      gl.uniform1f(loc.uGroutMin, GROUT_MIN);
+      gl.uniform1f(loc.uBevelShare, BEVEL_SHARE);
+      gl.uniform1f(loc.uSheen, p.sheen ?? 0);
       gl.uniform3fv(loc.uMortar, mortarRgb(p));
       gl.uniform3f(loc.uLight, Math.cos(el) * Math.cos(az), -Math.cos(el) * Math.sin(az), Math.sin(el));
       gl.drawArrays(gl.TRIANGLES, 0, 3);

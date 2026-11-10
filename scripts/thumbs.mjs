@@ -1,4 +1,4 @@
-// Regenerates the method thumbnails in public/styles/ from the Vermeer sample.
+// Regenerates the style thumbnails in public/styles/ from the Vermeer sample.
 // Usage: CHROMIUM=/path/to/chromium node scripts/thumbs.mjs
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
@@ -8,7 +8,7 @@ const server = await createServer({ server: { port: 5198, strictPort: true }, lo
 await server.listen();
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM || '/usr/bin/chromium-browser',
-  args: ['--no-sandbox', '--enable-gpu', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist'],
+  args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
 const page = await browser.newPage();
 page.on('pageerror', (e) => console.error(e.message));

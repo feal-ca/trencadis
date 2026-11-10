@@ -5,11 +5,6 @@ on:
   push:
     branches-ignore: ['main']
   workflow_call:
-    inputs:
-      seg_shot:
-        description: Run the segmentation job (deploy.yml turns it off so it does not wait for it)
-        type: boolean
-        default: true
 
 permissions:
   contents: read
@@ -46,31 +41,3 @@ jobs:
         run: |
           npx playwright-core install --with-deps chromium
           npm run smoke
-
-  # Runs the segmentation model (downloaded from Hugging Face) on WASM. It
-  # depends on the network and takes a while, so deploy.yml skips it with
-  # seg_shot: false, and a failure here does not fail the workflow.
-  seg-shot:
-    # inputs is empty on push and pull_request, and null == false in expressions,
-    # so the comparison goes through toJSON to tell them apart.
-    if: ${{ toJSON(inputs.seg_shot) != 'false' }}
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Segmentation in Chromium
-        run: |
-          npx playwright-core install --with-deps chromium
-          node scripts/seg-shot.mjs

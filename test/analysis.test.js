@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { analyze, analyzeMaps, withSize } from '../src/core/analysis.js';
-import { DEFAULTS } from '../src/core/params.js';
+import { DEFAULTS as BASE } from '../src/core/params.js';
+
+// The size field of analysis.js still takes a gamma; the app no longer sets one.
+const DEFAULTS = { ...BASE, gamma: 0.7 };
 import { syntheticImage } from './helpers.js';
 
 describe('analysis', () => {

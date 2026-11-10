@@ -52,8 +52,6 @@ export function usePipeline(effective, setAutoGrout) {
   const [error, setError] = useState(null);
   const [bitmap, setBitmap] = useState(null);
   const [mosaicReady, setMosaicReady] = useState(false);
-  // Guide lines actually used for rows (drawn ones first), from the worker.
-  const [lines, setLines] = useState({ drawn: 0, lines: [] });
 
   const worker = useRef(null);
   const runId = useRef(0);
@@ -154,7 +152,7 @@ export function usePipeline(effective, setAutoGrout) {
         // Kept even while the context is lost, so a restore uploads the latest.
         if (data.shards) {
           latest.current.draft = !!data.draft;
-          latest.current.shards = { list: data.shards.map((poly, i) => ({ poly, row: data.rows?.[i] })), w: data.w, h: data.h };
+          latest.current.shards = { list: data.shards.map((poly) => ({ poly })), w: data.w, h: data.h };
           if (renderer.ok) renderer.setShards(latest.current.shards.list, data.w, data.h, effectiveRef.current.seed);
         }
         if (data.colors) {
@@ -165,7 +163,6 @@ export function usePipeline(effective, setAutoGrout) {
           setMosaicReady(true);
           requestRender();
         }
-        if (data.lines) setLines(data.lines);
         if (data.stage === 'render') setMosaicReady(true);
         if (DEBUG) window.__onStage?.(data);
       } else if (data.type === 'done') {
@@ -325,6 +322,6 @@ export function usePipeline(effective, setAutoGrout) {
 
   return {
     worker, renderer, effectiveRef, glCanvas, gpu, bitmap, setBitmap, readable, images, labels, busy, info,
-    error, setError, mosaicReady, lines, post, rerun, dragStart, dragEnd, awaitFull, requestRender, requestCpuExport, setWanted, setViewport, resetResults,
+    error, setError, mosaicReady, post, rerun, dragStart, dragEnd, awaitFull, requestRender, requestCpuExport, setWanted, setViewport, resetResults,
   };
 }

@@ -16,32 +16,6 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --wall: #1c1a17;
-    --panel: #27241f;
-    --ink: #ece8e1;
-    --soft: #a39b8f;
-    --line: #3a3530;
-    --line-strong: #4d473f;
-    --seg: #312d28;
-    --block: #1f1d1a;
-    --panot: #37322b;
-    color-scheme: dark;
-  }
-}
-:root[data-theme='dark'] {
-  --wall: #1c1a17;
-  --panel: #27241f;
-  --ink: #ece8e1;
-  --soft: #a39b8f;
-  --line: #3a3530;
-  --line-strong: #4d473f;
-  --seg: #312d28;
-  --block: #1f1d1a;
-  --panot: #37322b;
-  color-scheme: dark;
-}
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }

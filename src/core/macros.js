@@ -5,22 +5,14 @@
 const lin = (key, a, b) => ({ key, map: (t) => a + b * t, inv: (v) => (v - a) / b });
 const exp10 = (key, a, b) => ({ key, map: (t) => 10 ** (a + b * t), inv: (v) => (Math.log10(v) - a) / b });
 
-const FIDELITY_BY_ALGORITHM = {
-  fracture: [lin('edgeAlign', 0, 0.8), lin('angleNoise', 60, -50), exp10('temperature', 0.3, -2.3)],
-  hybrid: [lin('edgeAlign', 0, 0.8), lin('angleNoise', 60, -50), exp10('temperature', 0.3, -2.3)],
-  slic: [lin('compactness', 40, -34)],
-  'voronoi-aniso': [lin('anisotropy', 0, 5)],
-  cracks: [lin('crackFollow', 0, 0.8), lin('crackAngleNoise', 30, -26)],
-  voronoi: [],
-};
-
 // The first term of each macro is the one readMacro inverts.
 const TERMS = {
   // The size control sets the largest piece; the smallest follows from the
   // style's size ratio (a narrow range looks more like real trencadís).
   size: (p) => [lin('sMax', 16, 50), { key: 'sMin', map: (t) => Math.max(3, (16 + 50 * t) / (p.sizeRatio ?? 36 / 7)) }],
-  fidelity: (p) => FIDELITY_BY_ALGORITHM[p.algorithm] ?? [],
-  gloss: () => [lin('specular', 0, 1.2), lin('tilt', 0.02, 0.28), exp10('shininess', 1.2, 1)],
+  // How much two parts of the photo must differ for a joint to separate them.
+  fidelity: () => [lin('contours', 14, -8)],
+  gloss: () => [lin('specular', 0, 1.1), lin('tilt', 0.01, 0.07), exp10('shininess', 1.5, 1)],
 };
 
 export const MACROS = Object.keys(TERMS);
@@ -55,22 +47,23 @@ export const applyMacroDefaults = (params) =>
 // One-click looks. Each is a full set of settings: the defaults, the style's
 // own parameters, then its simple controls (so they stay simple, not "a mano").
 export const STYLES = [
-  { id: 'natural', label: 'Natural', params: {}, macros: {} },
+  { id: 'trencadis', label: 'Trencadís', params: {}, macros: {} },
   {
     id: 'parkguell', label: 'Park Güell',
-    params: { algorithm: 'fracture', palette: 'gaudi', paletteMix: 0.5, saturation: 1.35, groutColor: '#ece8df', grout: 1.5, sizeRatio: 2.9 },
-    macros: { size: 0.44, fidelity: 0.85, gloss: 0.75 },
-  },
-  {
-    id: 'romano', label: 'Romano',
-    params: { algorithm: 'voronoi', lloydIters: 10, sizeRatio: 2.8, saturation: 0.85, place: 0.55, grout: 1.1, groutColor: '#9a9286', rowScale: 0.9, rowLength: 1.1, colorJitter: 0.05 },
-    macros: { size: 0, gloss: 0.05 },
+    params: { palette: 'gaudi', paletteMix: 0.5, saturation: 1.35, groutColor: '#ece8df', sizeRatio: 2.9 },
+    macros: { size: 0.44, gloss: 0.75 },
   },
   {
     id: 'vitral', label: 'Vitral',
-    params: { algorithm: 'voronoi-aniso', sizeRatio: 6.2, saturation: 1.6, lightness: 0.06, groutColor: '#141210', grout: 3.4, ambient: 0.75, bevel: 0.6, glazeNoise: 0.06, place: 0.1 },
-    macros: { size: 0.8, gloss: 0.15 },
+    params: { algorithm: 'vitral', sizeRatio: 5, saturation: 1.5, lightness: 0.04, groutColor: '#141210', grout: 3.6, groutRel: 0.3, bevel: 0.8, ambient: 0.7, place: 0 },
+    macros: { size: 0.5, fidelity: 0.95, gloss: 0.2 },
   },
+  {
+    id: 'romano', label: 'Romano',
+    params: { algorithm: 'romano', sizeRatio: 1.8, saturation: 0.9, groutColor: '#9a9286', grout: 1.6, groutRel: 0.2, place: 0.4, colorJitter: 0.05 },
+    macros: { size: 0, gloss: 0.05 },
+  },
+  { id: 'cracks', label: 'Grietas', params: { algorithm: 'cracks' }, macros: {} },
 ];
 
 // The parameters and simple-control values of a style, from `defaults`.

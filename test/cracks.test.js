@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { analyze } from '../src/core/analysis.js';
 import { growCracks } from '../src/core/cracks.js';
 import { mergeSlivers, regionWidths } from '../src/core/slivers.js';
-import { DEFAULTS } from '../src/core/params.js';
+import { DEFAULTS as BASE } from '../src/core/params.js';
+
+// The size field of analysis.js still takes a gamma; the app no longer sets one.
+const DEFAULTS = { ...BASE, gamma: 0.7 };
 import { mulberry32 } from '../src/core/rng.js';
 import { syntheticImage } from './helpers.js';
 

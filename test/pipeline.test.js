@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPipeline } from '../src/core/pipeline.js';
-import { applyMacro } from '../src/core/macros.js';
-import { ALGORITHMS, DEFAULTS, toWorkPx } from '../src/core/params.js';
+import { ALGORITHMS, DEFAULTS } from '../src/core/params.js';
 import { area } from '../src/core/polygon.js';
 import { syntheticImage } from './helpers.js';
 
@@ -38,127 +37,25 @@ describe('pipeline', () => {
 });
 
 describe('stage caches', () => {
-  it('a size change keeps the maps', async () => {
-    const pipe = createPipeline();
-    pipe.setImage(syntheticImage());
-    const p = { ...DEFAULTS, outLong: 300, supersample: 1 };
-    const first = await pipe.run(p, () => {});
-    expect(first.timings.maps).toBeDefined();
-    const second = await pipe.run(applyMacro(p, 'size', 0.55), () => {});
-    expect(second.timings.maps).toBeUndefined();
-    expect(second.timings.analysis).toBeDefined();
-  });
-
   it('going back to a previous method reuses its tessellation', async () => {
     const pipe = createPipeline();
     pipe.setImage(syntheticImage());
     const p = { ...DEFAULTS, outLong: 300, supersample: 1 };
     const recomputed = {};
-    for (const algorithm of ['fracture', 'voronoi', 'fracture']) {
+    for (const algorithm of ['trencadis', 'romano', 'trencadis']) {
       await pipe.run({ ...p, algorithm }, (name, _v, fresh) => { recomputed[name] = fresh; });
     }
     expect(recomputed.tessellation).toBe(false);
   });
-});
 
-describe('cpu render switch', () => {
-  it('a new cpuLong redraws only the render stage', async () => {
+  it('a new photo drops what was cached', async () => {
     const pipe = createPipeline();
     pipe.setImage(syntheticImage());
-    const p = { ...DEFAULTS, supersample: 1 };
-    await pipe.run(p, () => {}, undefined, undefined, undefined, { cpuLong: 300 });
+    const p = { ...DEFAULTS, outLong: 300, supersample: 1 };
+    await pipe.run(p, () => {});
+    pipe.setImage(syntheticImage());
     const fresh = [];
-    let width;
-    await pipe.run(p, (name, v, recomputed) => {
-      if (recomputed) fresh.push(name);
-      if (name === 'render') width = v.width;
-    }, undefined, undefined, undefined, { cpuLong: 400 });
-    expect(fresh).toEqual(['render']);
-    expect(width).toBe(400);
-  });
-
-
-  it('cpuRender false skips render stage', async () => {
-    const pipe = createPipeline();
-    pipe.setImage(syntheticImage());
-    const seen = [];
-    const res = await pipe.run({ ...DEFAULTS, outLong: 200 }, (n) => seen.push(n), undefined, undefined, undefined, { cpuRender: false });
-    expect(seen).toEqual(['analysis', 'tessellation', 'color']);
-    expect(res.shards).toBeGreaterThan(0);
-  });
-});
-
-describe('working resolution', () => {
-  // The engine always hands the pipeline the photo at workLong on its long
-  // side; the same photo at 400 and 800 px should give the same mosaic, finer.
-  for (const algorithm of ['fracture', 'voronoi', 'cracks']) {
-    it(`changes quality, not the number of pieces (${algorithm})`, async () => {
-      const count = async (long) => {
-        const pipe = createPipeline();
-        pipe.setImage(syntheticImage(long, Math.round(long * 2 / 3)));
-        const res = await pipe.run({ ...DEFAULTS, algorithm, workLong: long }, () => {}, undefined, undefined, undefined, { cpuRender: false });
-        return res.shards;
-      };
-      const [a, b] = [await count(400), await count(800)];
-      expect(Math.abs(a - b) / b).toBeLessThan(0.2);
-    });
-  }
-});
-
-describe('zones', () => {
-  const BOX = [0.25, 0.25, 0.75, 0.75];
-  const region = (box) => ({ box, w: 16, h: 16, data: new Uint8Array(256).fill(1) });
-  // One part filling the whole zone, at the crop resolution of a 240 x 160 photo.
-  const parts = () => ({ box: BOX, w: 120, h: 80, labels: new Int32Array(120 * 80), count: 1 });
-  const lessZone = { id: 1, mode: 'less', region: region(BOX), parts: null };
-  const moreZone = { id: 2, mode: 'more', region: region(BOX), parts: parts() };
-  const tess = async (zones, p = {}) => {
-    const pipe = createPipeline();
-    pipe.setImage(syntheticImage());
-    pipe.setZones(zones);
-    let value;
-    await pipe.run({ ...DEFAULTS, outLong: 300, supersample: 1, ...p }, (n, v) => { if (n === 'tessellation') value = v; }, undefined, undefined, undefined, { cpuRender: false });
-    return value.shards;
-  };
-  const inside = (s, w = 240, h = 160) => {
-    const cx = s.poly.reduce((a, q) => a + q[0], 0) / s.poly.length / w;
-    const cy = s.poly.reduce((a, q) => a + q[1], 0) / s.poly.length / h;
-    return cx > BOX[0] && cx < BOX[2] && cy > BOX[1] && cy < BOX[3];
-  };
-  const meanArea = (shards) => shards.reduce((a, s) => a + area(s.poly), 0) / shards.length;
-
-  it('a less zone makes its pieces larger', async () => {
-    const without = (await tess(null)).filter((s) => inside(s));
-    const withZone = (await tess([lessZone])).filter((s) => inside(s));
-    expect(meanArea(withZone)).toBeGreaterThan(meanArea(without));
-  });
-
-  it('a more zone adds intent pieces', async () => {
-    expect((await tess(null)).some((s) => s.intent)).toBe(false);
-    expect((await tess([moreZone])).some((s) => s.intent)).toBe(true);
-  });
-
-  it('zones survive a change of working resolution and method', async () => {
-    // Intent pieces stay on the zone at every resolution. They may reach past
-    // its box only by the background slivers the overlay lets them absorb
-    // (overlayPieces merges fragments narrower than 0.25 of the size field,
-    // which is at most sMax), plus a pixel of tracing.
-    const check = (shards, w, h) => {
-      const intent = shards.filter((s) => s.intent);
-      expect(intent.length).toBeGreaterThan(0);
-      const m = 0.25 * toWorkPx({ ...DEFAULTS, workLong: w }).sMax + 1;
-      const [x0, y0, x1, y1] = [BOX[0] * w - m, BOX[1] * h - m, BOX[2] * w + m, BOX[3] * h + m];
-      for (const s of intent) for (const [x, y] of s.poly) expect(x >= x0 && x <= x1 && y >= y0 && y <= y1).toBe(true);
-    };
-    const pipe = createPipeline();
-    pipe.setZones([moreZone]);
-    const run = async (long, algorithm) => {
-      pipe.setImage(syntheticImage(long, Math.round(long * 2 / 3)));
-      let value;
-      await pipe.run({ ...DEFAULTS, algorithm, workLong: long }, (n, v) => { if (n === 'tessellation') value = v; }, undefined, undefined, undefined, { cpuRender: false });
-      return value.shards;
-    };
-    check(await run(800, 'fracture'), 800, 533);
-    check(await run(600, 'voronoi'), 600, 400);
+    await pipe.run(p, (name, _v, recomputed) => recomputed && fresh.push(name));
+    expect(fresh).toContain('tessellation');
   });
 });

@@ -19,7 +19,7 @@ const browser = await chromium.launch({
 // The canvas box with object-fit: contain applied, as a share of the viewport.
 const imageShare = (pg) => pg.evaluate(() => {
   const cv = [...document.querySelectorAll('canvas.viewer-canvas')]
-    .filter((c) => !/seg-outline|shape-canvas|brush-canvas/.test(c.className) && c.getBoundingClientRect().width > 0)
+    .filter((c) => c.getBoundingClientRect().width > 0)
     .sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0];
   const b = cv.getBoundingClientRect();
   const k = Math.min(b.width / cv.width, b.height / cv.height);

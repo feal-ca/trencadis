@@ -25,33 +25,20 @@ let lastParams = null;
 let lastRun = null;
 // Only the view on screen is drawn after a run; others on request.
 let wanted = new Set(['final']);
-const STAGE_OF_VIEW = {
-  original: 'analysis', detail: 'analysis', size: 'analysis', orientation: 'analysis',
-  structure: 'tessellation', tessellation: 'tessellation', flat: 'color', palette: 'color', final: 'render',
-};
-
-const STRUCTURE_LABEL = { seeds: 'Semillas', cracks: 'Grietas', depth: 'Profundidad de corte', guides: 'Líneas guía' };
+const STAGE_OF_VIEW = { original: 'analysis', structure: 'tessellation', tessellation: 'tessellation', flat: 'color', final: 'render' };
 
 // Stage images, built lazily so only the views asked for are drawn.
 function visualsFor(pipe, stage, value, p, img) {
   switch (stage) {
     case 'analysis':
-      return [
-        { key: 'original', label: 'Original', make: () => vis.originalImage(img) },
-        { key: 'detail', label: 'Detalle', make: () => vis.detailImage(value) },
-        { key: 'size', label: 'Tamaño de trozo', make: () => vis.sizeImage(value, p) },
-        { key: 'orientation', label: 'Dirección de los bordes', make: () => vis.orientationImage(value) },
-      ];
+      return [{ key: 'original', label: 'Original', make: () => vis.originalImage(img) }];
     case 'tessellation':
       return [
-        { key: 'structure', label: STRUCTURE_LABEL[value.structure.kind], make: () => vis.structureImage(img, value) },
+        { key: 'structure', label: 'Zonas de la foto', make: () => vis.structureImage(img, value) },
         { key: 'tessellation', label: 'Contornos', make: () => vis.tessellationImage(img, value) },
       ];
     case 'color':
-      return [
-        { key: 'flat', label: 'Color por trozo', make: () => vis.flatImage(img, pipe.cached('tessellation'), value.flat) },
-        { key: 'palette', label: 'Con paleta y variación', make: () => vis.flatImage(img, pipe.cached('tessellation'), value.colors) },
-      ];
+      return [{ key: 'flat', label: 'Color por trozo', make: () => vis.flatImage(img, pipe.cached('tessellation'), value.colors) }];
     case 'render':
       // Copy: the transfer would otherwise detach the cached render.
       return [{ key: 'final', label: 'Mosaico', make: () => new ImageData(new Uint8ClampedArray(value.data), value.width, value.height) }];
@@ -68,21 +55,6 @@ self.onmessage = async (e) => {
     draftPipe.setImage(downscale(img, DRAFT_LONG));
     sentValues = {};
     lastRun = null;
-    return;
-  }
-  if (msg.type === 'zones') {
-    fullPipe.setZones(msg.zones);
-    draftPipe.setZones(msg.zones);
-    return;
-  }
-  if (msg.type === 'segments') {
-    fullPipe.setSegments(msg.segments);
-    draftPipe.setSegments(msg.segments);
-    return;
-  }
-  if (msg.type === 'guides') {
-    fullPipe.setGuides(msg.guides);
-    draftPipe.setGuides(msg.guides);
     return;
   }
   if (msg.type === 'views') {
@@ -141,12 +113,7 @@ self.onmessage = async (e) => {
         const extra = {};
         // The GPU renderer needs the shards (once per tessellation) and the colours.
         if (stage === 'tessellation') {
-          Object.assign(extra, { shards: value.shards.map((s) => s.poly), rows: value.shards.map((s) => !!s.row), w: img.w, h: img.h });
-          // Guide lines in use, normalised, so the drawing tool can show them.
-          const st = value.structure;
-          extra.lines = st.kind === 'guides'
-            ? { drawn: st.drawn, lines: st.guides.map((g) => g.map(([x, y]) => [x / img.w, y / img.h])) }
-            : { drawn: 0, lines: [] };
+          Object.assign(extra, { shards: value.shards.map((s) => s.poly), w: img.w, h: img.h });
         }
         if (stage === 'color') extra.colors = Float32Array.from(value.colors);
         const transfer = images.map((v) => v.image.data.buffer);

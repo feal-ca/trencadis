@@ -109,15 +109,6 @@ describe('applyPalette with dithering', () => {
     expect(seen.size).toBe(2);
   });
 
-  it('leaves row pieces as they would be without it', () => {
-    const rowShards = shards.map((s, k) => (k % 7 === 0 ? { ...s, row: true } : s));
-    const at = (dither) => applyPalette(flat, rowShards, { ...plain, palette: 'kmeans', paletteK: 2, paletteMix: 1, paletteDither: dither }, mulberry32(5)).colors;
-    const a = at(0), b = at(1);
-    rowShards.forEach((s, k) => {
-      if (s.row) expect([...b.slice(k * 3, k * 3 + 3)]).toEqual([...a.slice(k * 3, k * 3 + 3)]);
-    });
-  });
-
   it('does nothing without a palette', () => {
     const a = applyPalette(flat, shards, { ...plain, paletteDither: 0 }, mulberry32(5)).colors;
     const b = applyPalette(flat, shards, { ...plain, paletteDither: 1 }, mulberry32(5)).colors;

@@ -1,20 +1,6 @@
 {
-  "fracture": "a869c5ab",
-  "fracture+rows": "652bedfe",
-  "fracture+seg": "533c6884",
-  "cracks": "8df1bf88",
-  "cracks+rows": "8192453c",
-  "cracks+seg": "56d24b23",
-  "voronoi": "53cb99a2",
-  "voronoi+rows": "d8c771ac",
-  "voronoi+seg": "caf13227",
-  "voronoi-aniso": "c03220bd",
-  "voronoi-aniso+rows": "d57fc4dc",
-  "voronoi-aniso+seg": "1f005941",
-  "hybrid": "01540bfe",
-  "hybrid+rows": "f8229a3f",
-  "hybrid+seg": "cf6f8752",
-  "slic": "9c99d1fa",
-  "slic+rows": "9840bf09",
-  "slic+seg": "447a653a"
+  "trencadis": "472bab6a",
+  "vitral": "58acea0f",
+  "romano": "0b7f71ad",
+  "cracks": "abc4c386"
 }

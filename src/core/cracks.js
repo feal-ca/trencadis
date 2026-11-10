@@ -1,5 +1,4 @@
 import { sample } from './analysis.js';
-import { enforceConnectivity } from './slic.js';
 
 // Crack growth in the spirit of Jared Tarbell's "Substrate": cracks grow in
 // straight-ish lines and stop when they run into another crack, which gives
@@ -128,4 +127,58 @@ function nearCrack(owner, w, h, x, y, r, rng) {
     }
   }
   return false;
+}
+
+// Keep only the largest 4-connected component of each label, then grow the
+// surviving labels into the orphaned pixels (multi-source BFS).
+function enforceConnectivity(labels, w, h) {
+  const N = w * h;
+  const comp = new Int32Array(N).fill(-1);
+  const compSize = [];
+  const compLabel = [];
+  const stack = new Int32Array(N);
+  for (let s = 0; s < N; s++) {
+    if (comp[s] >= 0 || labels[s] < 0) continue;
+    const id = compSize.length, l = labels[s];
+    let top = 0, n = 0;
+    stack[top++] = s;
+    comp[s] = id;
+    while (top) {
+      const i = stack[--top];
+      n++;
+      const x = i % w, y = (i / w) | 0;
+      if (x > 0 && comp[i - 1] < 0 && labels[i - 1] === l) { comp[i - 1] = id; stack[top++] = i - 1; }
+      if (x < w - 1 && comp[i + 1] < 0 && labels[i + 1] === l) { comp[i + 1] = id; stack[top++] = i + 1; }
+      if (y > 0 && comp[i - w] < 0 && labels[i - w] === l) { comp[i - w] = id; stack[top++] = i - w; }
+      if (y < h - 1 && comp[i + w] < 0 && labels[i + w] === l) { comp[i + w] = id; stack[top++] = i + w; }
+    }
+    compSize.push(n);
+    compLabel.push(l);
+  }
+  const bestComp = new Map();
+  compSize.forEach((n, id) => {
+    const l = compLabel[id];
+    const b = bestComp.get(l);
+    if (b === undefined || compSize[b] < n) bestComp.set(l, id);
+  });
+  const out = new Int32Array(N);
+  for (let i = 0; i < N; i++) out[i] = comp[i] >= 0 && bestComp.get(labels[i]) === comp[i] ? labels[i] : -1;
+  return fillUnlabeled(out, w, h);
+}
+
+// Grow the labelled pixels into the -1 ones (multi-source BFS), in place.
+export function fillUnlabeled(out, w, h) {
+  const N = w * h;
+  const queue = new Int32Array(N);
+  let qh = 0, qt = 0;
+  for (let i = 0; i < N; i++) if (out[i] >= 0) queue[qt++] = i;
+  while (qh < qt) {
+    const i = queue[qh++];
+    const x = i % w, y = (i / w) | 0;
+    const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
+    for (const j of nb) {
+      if (j >= 0 && out[j] < 0) { out[j] = out[i]; queue[qt++] = j; }
+    }
+  }
+  return out;
 }

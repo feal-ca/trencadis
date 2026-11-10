@@ -1,6 +1,6 @@
 import { mortarRgb } from './color.js';
 import { placePolygon, placementRandoms } from './placement.js';
-import { pieceShapes, VIEW_DISTANCE } from './glaze.js';
+import { bevelWidth, groutHalf, pieceShapes, softSheen, VIEW_DISTANCE } from './glaze.js';
 import { area, rasterize } from './polygon.js';
 import { hash2, mulberry32 } from './rng.js';
 
@@ -55,11 +55,10 @@ export function renderMosaic(shards, colors, w, h, p, long = p.outLong) {
 
   const labels = new Int32Array(W * H).fill(-1);
   // Largest first, so a region enclosed by another (a crack loop) paints on top.
-  // Rows last, so they stay on top whatever their size.
-  const order = shards.map((s, id) => [area(s.poly), id, s.row ? 1 : 0]).sort((a, b) => a[2] - b[2] || b[0] - a[0]);
+  const order = shards.map((s, id) => [area(s.poly), id]).sort((a, b) => b[0] - a[0]);
   const rand = placementRandoms(shards.length, p.seed);
   for (const [, id] of order) {
-    const poly = shards[id].row ? shards[id].poly : placePolygon(shards[id].poly, rand[id], p.place ?? 0);
+    const poly = placePolygon(shards[id].poly, rand[id], p.place ?? 0);
     rasterize(poly, W, H, (x, y) => { labels[y * W + x] = id; }, k);
   }
 
@@ -74,18 +73,18 @@ export function renderMosaic(shards, colors, w, h, p, long = p.outLong) {
   }
   const dist = distanceTransform(f, W, H);
 
-  const gBase = (p.grout * k) / 2;
-  const bw = Math.max(1e-3, p.bevel * k);
+  const shape = pieceShapes(shards);
+  // Joint and bevel of each piece, bounded by its size (glaze.js).
+  const half = shape.map(([, , r]) => groutHalf(p, r) * k);
+  const bevel = shape.map(([, , r]) => bevelWidth(p, r) * k);
+  const gMax = (p.grout * k) / 2;
+  const sheen = p.sheen ?? 0;
   const mortar = mortarRgb(p);
   const az = (p.lightAz * Math.PI) / 180, el = (p.lightEl * Math.PI) / 180;
   const L = [Math.cos(el) * Math.cos(az), -Math.cos(el) * Math.sin(az), Math.sin(el)];
   const rng = mulberry32(p.seed * 7919 + 13);
-  const tilt = shards.map((s) => {
-    const k = s.row ? 0.5 * p.tilt : p.tilt;
-    return [rng.normal() * k, rng.normal() * k];
-  });
+  const tilt = shards.map(() => [rng.normal() * p.tilt, rng.normal() * p.tilt]);
   const noiseCell = Math.max(1, Math.round(ss * 1.5));
-  const shape = pieceShapes(shards);
   const dome = p.dome ?? 0;
   const longOut = Math.max(W, H);
 
@@ -93,7 +92,8 @@ export function renderMosaic(shards, colors, w, h, p, long = p.outLong) {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const i = y * W + x, l = labels[i], d = dist[i];
-      const g = l >= 0 && shards[l].row ? gBase * (p.rowGrout ?? 1) : gBase;
+      const g = l < 0 ? gMax : half[l];
+      const bw = l < 0 ? 1 : bevel[l];
       const grain = hash2((x / noiseCell) | 0, (y / noiseCell) | 0, p.seed) - 0.5;
       if (l < 0 || d <= g) {
         const shade = (1 - p.groutShadow * (g > 0 ? Math.min(1, d / g) : 0) * 0.6) * (1 + grain * 0.12);
@@ -128,7 +128,8 @@ export function renderMosaic(shards, colors, w, h, p, long = p.outLong) {
       const vl = 1 / Math.sqrt(vx * vx + vy * vy + VIEW_DISTANCE * VIEW_DISTANCE);
       const hx = L[0] + vx * vl, hy = L[1] + vy * vl, hz = L[2] + VIEW_DISTANCE * vl;
       const ndh = (nx * hx + ny * hy + hz) * nl / Math.sqrt(hx * hx + hy * hy + hz * hz);
-      const spec = p.specular * Math.max(0, ndh) ** p.shininess;
+      const flat = hz / Math.sqrt(hx * hx + hy * hy + hz * hz);
+      const spec = p.specular * Math.max(0, ndh) ** p.shininess + sheen * softSheen(Math.max(0, ndh), flat);
       const glaze = 1 + grain * p.glazeNoise * 2;
       for (let c = 0; c < 3; c++) hi[i * 3 + c] = colors[l * 3 + c] * light * glaze + spec;
     }

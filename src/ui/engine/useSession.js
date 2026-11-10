@@ -21,10 +21,9 @@ function jpegOf(bitmap) {
   return encoded.get(bitmap);
 }
 
-// Keeps the photo (or sample), touched shapes, lines and segments in
-// IndexedDB, and brings the saved session back on start; without a usable one
+// Keeps the photo (or sample) in IndexedDB, and brings the saved session back on start; without a usable one
 // the first sample loads. A saved session that cannot be read is no error.
-export function useSession({ samples, loadBlob, loadSample, chosen, rebaseHistory, setError, photoGen, zones, guides, sample, bitmap, photoName, segments }) {
+export function useSession({ samples, loadBlob, loadSample, chosen, setError, photoGen, sample, bitmap, photoName }) {
   const store = useRef(null);
   store.current ??= openSessionStore();
   // The blob a photo was restored from, so saving it again does not re-encode it.
@@ -45,7 +44,7 @@ export function useSession({ samples, loadBlob, loadSample, chosen, rebaseHistor
     }
     if (taken(gen0)) return true;
     const gen = photoGen.current;
-    if (!(await loadBlob(blob, snap.name, snap.segments ?? known?.seg ?? null, known?.src ?? null))) {
+    if (!(await loadBlob(blob, snap.name, known?.src ?? null))) {
       // Dropped for a photo chosen meanwhile: nothing failed.
       if (chosen.current) return true;
       setError(null);
@@ -54,10 +53,6 @@ export function useSession({ samples, loadBlob, loadSample, chosen, rebaseHistor
     // Another photo chosen while this one loaded wins.
     if (photoGen.current !== gen + 1) return true;
     if (!known) restored.current = { gen: photoGen.current, blob };
-    // The restored shapes and lines are where the history starts, not a step.
-    if (snap.zones.length || snap.guides.length) rebaseHistory();
-    zones.loadZones(snap.zones);
-    guides.restoreGuides(snap.guides.map((g) => ({ ...g, gen: photoGen.current })));
     return true;
   };
 
@@ -89,12 +84,9 @@ export function useSession({ samples, loadBlob, loadSample, chosen, rebaseHistor
           photo = await jpegOf(bitmap);
         }
         if (stale) return;
-        await store.current.save(toSnapshot({
-          sample, photo, name: photoName, guides: guides.guides, zones: zones.zones, pixelsOf: zones.pixelsOf, segments,
-        }));
+        await store.current.save(toSnapshot({ sample, photo, name: photoName }));
       } catch { /* the session just is not kept */ }
     }, SAVE_DELAY);
     return () => { stale = true; clearTimeout(timer); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- zonesView carries the zones and their pixels (zones.zones, zones.pixelsOf)
-  }, [bitmap, sample, photoName, guides.guides, zones.zonesView, segments]);
+  }, [bitmap, sample, photoName, photoGen]);
 }

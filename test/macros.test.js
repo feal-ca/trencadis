@@ -1,83 +1,44 @@
 import { describe, expect, it } from 'vitest';
-import { applyMacro, applyMacroDefaults, applyStyle, macroKeys, MACROS, readMacro, readStyle, STYLES } from '../src/core/macros.js';
-import { DEFAULTS } from '../src/core/params.js';
-
-const close = (a, b) => expect(a).toBeCloseTo(b, 4);
+import { applyMacro, applyMacroDefaults, applyStyle, MACRO_DEFAULTS, macroKeys, readMacro, readStyle, STYLES } from '../src/core/macros.js';
+import { ALGORITHMS, DEFAULTS } from '../src/core/params.js';
 
 describe('macros', () => {
-  it('size 0.4 gives sMin 7 and sMax 36', () => {
-    const p = applyMacro(DEFAULTS, 'size', 0.4);
-    close(p.sMin, 7);
-    close(p.sMax, 36);
+  it('size sets the largest piece and the smallest from the ratio', () => {
+    const p = applyMacro(DEFAULTS, 'size', 0.5);
+    expect(p.sMax).toBeCloseTo(41);
+    expect(p.sMin).toBeCloseTo(41 / DEFAULTS.sizeRatio);
   });
-
-  it('fidelity 1 on fracture gives T 0.01, edgeAlign 0.8, angleNoise 10 and leaves gamma alone', () => {
-    const p = applyMacro({ ...DEFAULTS, algorithm: 'fracture', gamma: 0.9 }, 'fidelity', 1);
-    close(p.temperature, 0.01);
-    close(p.edgeAlign, 0.8);
-    close(p.angleNoise, 10);
-    close(p.gamma, 0.9);
+  it('contours go down as fidelity goes up', () => {
+    expect(applyMacro(DEFAULTS, 'fidelity', 0).contours).toBeCloseTo(14);
+    expect(applyMacro(DEFAULTS, 'fidelity', 1).contours).toBeCloseTo(6);
+    expect(macroKeys('fidelity', DEFAULTS)).toEqual(['contours']);
   });
-
-  it('macroKeys lists what a macro moves for the current algorithm', () => {
-    expect(macroKeys('size', DEFAULTS)).toEqual(['sMax', 'sMin']);
-    expect(macroKeys('fidelity', { ...DEFAULTS, algorithm: 'slic' })).toEqual(['compactness']);
-    expect(macroKeys('fidelity', { ...DEFAULTS, algorithm: 'voronoi' })).toEqual([]);
-  });
-
-  it('fidelity on slic sets compactness 40 − 34f', () => {
-    const p = applyMacro({ ...DEFAULTS, algorithm: 'slic' }, 'fidelity', 0.5);
-    close(p.compactness, 23);
-  });
-
   it('gloss sets specular, tilt and shininess', () => {
-    const p = applyMacro(DEFAULTS, 'gloss', 0.5);
-    close(p.specular, 0.6);
-    close(p.tilt, 0.16);
-    close(p.shininess, 10 ** 1.7);
+    const p = applyMacro(DEFAULTS, 'gloss', 1);
+    expect(p.specular).toBeCloseTo(1.1);
+    expect(p.tilt).toBeCloseTo(0.08);
+    expect(p.shininess).toBeCloseTo(10 ** 2.5);
   });
-
-  for (const id of MACROS) {
-    for (const algorithm of ['fracture', 'hybrid', 'voronoi-aniso', 'slic', 'cracks']) {
-      it(`readMacro round-trips applyMacro for ${id} on ${algorithm}`, () => {
-        const p = applyMacro({ ...DEFAULTS, algorithm }, id, 0.3);
-        close(readMacro(p, id), 0.3);
-      });
-    }
-  }
-
-  it('manual edit makes readMacro null', () => {
-    const p = applyMacro({ ...DEFAULTS, algorithm: 'fracture' }, 'fidelity', 0.6);
-    expect(readMacro({ ...p, edgeAlign: 0.1 }, 'fidelity')).toBeNull();
-    expect(readMacro({ ...applyMacro(DEFAULTS, 'size', 0.5), sMin: 20 }, 'size')).toBeNull();
-  });
-});
-
-describe('size ratio', () => {
-  it('sets the smallest piece from the largest', () => {
-    const p = applyMacro({ ...DEFAULTS, sizeRatio: 3 }, 'size', 0.4);
-    close(p.sMax, 36);
-    close(p.sMin, 12);
-    close(readMacro(p, 'size'), 0.4);
+  it('readMacro inverts applyMacro, and is null after a manual edit', () => {
+    for (const id of Object.keys(MACRO_DEFAULTS)) expect(readMacro(applyMacro(DEFAULTS, id, 0.3), id)).toBeCloseTo(0.3);
+    expect(readMacro({ ...applyMacro(DEFAULTS, 'gloss', 0.3), tilt: 0.5 }, 'gloss')).toBeNull();
   });
 });
 
 describe('styles', () => {
-  const base = applyMacroDefaults(DEFAULTS);
-  it('natural is the defaults', () => {
-    expect(applyStyle(DEFAULTS, 'natural').params).toEqual(base);
-    expect(readStyle(base, DEFAULTS)).toBe('natural');
+  it('the first style is the defaults with the default controls', () => {
+    expect(applyStyle(DEFAULTS, STYLES[0].id).params).toEqual(applyMacroDefaults(DEFAULTS));
   });
-
-  for (const s of STYLES) {
-    it(`${s.label} keeps its simple controls simple and is recognised`, () => {
-      const { params, macros } = applyStyle(DEFAULTS, s.id);
-      for (const m of MACROS) {
-        if (macroKeys(m, params).length) close(readMacro(params, m), macros.values[m]);
-      }
+  it('every style uses a method that exists and reads back as itself', () => {
+    const methods = ALGORITHMS.map((a) => a.value);
+    for (const s of STYLES) {
+      const { params } = applyStyle(DEFAULTS, s.id);
+      expect(methods).toContain(params.algorithm);
       expect(readStyle(params, DEFAULTS)).toBe(s.id);
-      expect(readStyle({ ...params, seed: params.seed + 1 }, DEFAULTS)).toBe(s.id);
-      expect(readStyle({ ...params, grout: params.grout + 0.5 }, DEFAULTS)).toBeNull();
-    });
-  }
+      expect(readStyle({ ...params, seed: 99 }, DEFAULTS)).toBe(s.id);
+    }
+  });
+  it('a changed setting is no style', () => {
+    expect(readStyle({ ...applyStyle(DEFAULTS, 'romano').params, saturation: 2 }, DEFAULTS)).toBeNull();
+  });
 });

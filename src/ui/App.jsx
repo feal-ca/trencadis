@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import Extras from './Extras.jsx';
 import Panel, { Export } from './Panel.jsx';
 import Sheet from './Sheet.jsx';
-import { STEPS } from './steps.js';
 import { useEngine } from './useEngine.js';
 import { MOBILE, useMedia } from './useMedia.js';
 import { useWindowDrop } from './useWindowDrop.js';
@@ -10,10 +9,6 @@ import Viewer from './Viewer.jsx';
 
 export default function App() {
   const engine = useEngine();
-  const [open, setOpen] = useState('detalle');
-  // Which step's partial result is on screen instead of the mosaic.
-  const [peek, setPeek] = useState(null);
-  const [brush, setBrush] = useState(null);
   const input = useRef(null);
   const dropping = useWindowDrop(engine.loadBlob);
   // Phones: the steps live in a bottom sheet and the image fills the rest.
@@ -21,7 +16,7 @@ export default function App() {
   const [snap, setSnap] = useState('half');
   const [sheetH, setSheetH] = useState(0);
 
-  // Ctrl+Z / Ctrl+Shift+Z: one history for settings, touched shapes and lines.
+  // Ctrl+Z / Ctrl+Shift+Z: the history of the settings.
   useEffect(() => {
     const onKey = (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
@@ -66,23 +61,7 @@ export default function App() {
     return () => window.removeEventListener('paste', onPaste);
   }, [loadBlob]);
 
-  // `brush` is the active tool: guide drawing, or picking shapes on the mosaic.
-  const view = brush ? (brush.kind === 'shape' ? 'final' : brush.kind) : peek?.view ?? 'final';
-  const peekStep = peek && STEPS.find((s) => s.id === peek.step);
-
-  const panel = (
-    <Panel
-      engine={engine}
-      open={open}
-      setOpen={(id) => { setOpen(id); if (id && snap === 'peek') setSnap('half'); }}
-      peek={peek}
-      setPeek={setPeek}
-      brush={brush}
-      setBrush={setBrush}
-      withExport={!mobile}
-      extras={mobile ? <div className="extras"><Extras engine={engine} /></div> : null}
-    />
-  );
+  const panel = <Panel engine={engine} withExport={!mobile} extras={mobile ? <div className="extras"><Extras engine={engine} /></div> : null} />;
 
   return (
     <div className={`app${mobile ? ' is-mobile' : ''}`} style={mobile ? { '--sheet-h': `${sheetH}px` } : undefined}>
@@ -98,16 +77,7 @@ export default function App() {
       </header>
       <main className="work">
         <div className="work-main">
-          <Viewer engine={engine} dropping={dropping} view={view} brush={brush} setTool={setBrush} onShapeTool={() => { setBrush({ kind: 'shape' }); setPeek(null); }} />
-          {peekStep && peekStep.views.length > 1 && (
-            <div className="views" role="tablist" aria-label="Vista">
-              {peekStep.views.map((v) => (
-                <button key={v.key} type="button" role="tab" aria-selected={peek.view === v.key} className={peek.view === v.key ? 'on' : ''} onClick={() => setPeek({ ...peek, view: v.key })}>
-                  {v.key === 'structure' ? engine.labels.structure ?? v.label : v.label}
-                </button>
-              ))}
-            </div>
-          )}
+          <Viewer engine={engine} dropping={dropping} />
         </div>
         {mobile
           ? <Sheet snap={snap} setSnap={setSnap} onHeight={setSheetH} footer={<Export engine={engine} />}>{panel}</Sheet>

@@ -104,6 +104,7 @@ uniform vec3 uMortar;
 uniform vec3 uLight;
 uniform float uSeed;
 uniform float uRowGrout;   // grout width factor around row pieces
+uniform float uGroutRel, uGroutMin, uBevelShare, uSheen;
 out vec4 o;
 ${DECODE}
 float hash(vec2 p) {
@@ -120,7 +121,9 @@ void main() {
   // Row pieces carry a flag in the tilt texture; their grout is wider so a
   // row still reads as a band when its pieces are as big as the rest.
   float isRow = id > 0 ? texelFetch(uTilt, ivec2((id - 1) % 1024, (id - 1) / 1024), 0).z : 0.0;
-  float g = uGrout * uScale * 0.5 * mix(1.0, uRowGrout, isRow);
+  // Joint and bevel bounded by the size of the piece (core/glaze.js).
+  float rad = id > 0 ? texelFetch(uShape, ivec2((id - 1) % 1024, (id - 1) / 1024), 0).z : 1e6;
+  float g = 0.5 * min(uGrout, max(uGroutMin, uGroutRel * rad)) * uScale * mix(1.0, uRowGrout, isRow);
   float grain = hash(floor(p / max(1.0, 1.5 * uScale / 2.0))) - 0.5;
 
   float shadeM = 1.0 - uGroutShadow * (g > 0.0 ? clamp(d / g, 0.0, 1.0) : 0.0) * 0.6;
@@ -135,7 +138,7 @@ void main() {
   // Inward direction from the nearest edge, flipped to screen space (y down).
   vec2 dir = d > 0.0 ? (p - seed) / d : vec2(0.0);
   dir.y = -dir.y;
-  float bw = max(1e-3, uBevel * uScale);
+  float bw = max(1e-3, min(uBevel, uBevelShare * rad) * uScale);
   float di = d - g;
   float t = pow(1.0 - clamp(di / bw, 0.0, 1.0), 2.0) * uBevelStrength;
   // Screen position, y down like the working image.
@@ -150,7 +153,9 @@ void main() {
   vec3 H = normalize(uLight + V);
   float ndl = max(0.0, dot(n, uLight));
   float light = (uAmbient + (1.0 - uAmbient) * ndl / max(0.15, uLight.z)) * edgeShade;
-  float spec = uSpecular * pow(max(0.0, dot(n, H)), uShininess);
+  float ndh = max(0.0, dot(n, H));
+  float flatS = pow(H.z, 10.0);
+  float spec = uSpecular * pow(ndh, uShininess) + uSheen * max(0.0, pow(ndh, 10.0) - flatS) / max(1e-3, 1.0 - flatS);
   vec3 tile = base * light * (1.0 + grain * uGlaze * 2.0) + spec;
 
   float aa = max(0.75, fwidth(d));

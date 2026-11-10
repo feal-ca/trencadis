@@ -3,11 +3,11 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 export default [
-  { ignores: ['dist/', 'node_modules/', 'public/'] },
+  { ignores: ['dist/', 'node_modules/', 'public/', '.superpowers/'] },
   js.configs.recommended,
   {
     files: ['src/**/*.{js,jsx}'],
-    ignores: ['src/worker.js', 'src/seg/**'],
+    ignores: ['src/worker.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
@@ -24,7 +24,7 @@ export default [
   },
   {
     // Workers have no window or document, so lint catches them.
-    files: ['src/worker.js', 'src/seg/**/*.js'],
+    files: ['src/worker.js'],
     languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: globals.worker },
   },
   {

@@ -3,14 +3,13 @@
 <title>thumbs</title>
 <canvas id="c"></canvas>
 <script type="module">
-// Renders the method and style thumbnails, close-ups of the face where the
+// Renders the style thumbnails, close-ups of the face where the
 // shape of the pieces shows; scripts/thumbs.mjs collects them.
 import { createPipeline } from '/src/core/pipeline.js';
 import { DEFAULTS } from '/src/core/params.js';
-import { applyMacroDefaults, applyStyle, STYLES } from '/src/core/macros.js';
+import { applyStyle, STYLES } from '/src/core/macros.js';
 import { fromImageData } from '/src/core/image.js';
 import { createRenderer } from '/src/gl/renderer.js';
-import { ALGORITHMS } from '/src/core/params.js';
 
 const bmp = await createImageBitmap(await (await fetch('/samples/vermeer.webp')).blob());
 const s = 700 / Math.max(bmp.width, bmp.height);
@@ -20,7 +19,6 @@ const img = fromImageData(cv.getContext('2d').getImageData(0, 0, cv.width, cv.he
 const pipe = createPipeline();
 pipe.setImage(img);
 const r = createRenderer(document.getElementById('c'));
-const base = applyMacroDefaults(DEFAULTS);
 const out = {};
 const render = async (p) => {
   const st = {};
@@ -36,12 +34,10 @@ const render = async (p) => {
   const blob = await out.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
   return { url: await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); }), st };
 };
-let crop = 0.42;
-for (const a of ALGORITHMS) out[`algo-${a.value}`] = (await render({ ...base, groutColor: '#2f2b27', algorithm: a.value })).url;
-crop = 0.6;
+const crop = 0.6;
 for (const st of STYLES) {
   const p = applyStyle(DEFAULTS, st.id).params;
-  out[`style-${st.id}`] = (await render(p.groutColor === 'auto' ? { ...p, groutColor: '#2f2b27' } : p)).url;
+  out[`style-${st.id}`] = (await render(p.groutColor === 'auto' ? { ...p, groutColor: '#89857e' } : p)).url;
 }
 window.result = out;
 document.title = 'done';
